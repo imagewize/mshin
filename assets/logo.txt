@@ -1,0 +1,28 @@
+                .
+               /|\
+              / | \
+             |  |  |
+              \ | /
+       .       \|/       .
+      /|\       |       /|\
+     / | \      |      / | \
+    |  |  |     |     |  |  |
+     \ | /      |      \ | /
+      \|/       |       \|/
+       '---.    |    .---'
+            \   |   /
+             \  |  /
+              \ | /
+               \|/
+                |
+                |
+                |
+               _|_
+              /   \
+              \___/
+
+        A V E N D E S O R A
+   ~ The Leaf that Opens the Ways ~
+
+   "The Wheel weaves as the Wheel wills.
+    With Avendesora, you weave with it."

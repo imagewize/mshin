@@ -1,0 +1,428 @@
+# Avendesora: Wheel of Time-Inspired Cybersecurity AI
+
+**Kali Linux MCP + Open LLM Setup Guide**  
+*Inspired by the unbreakable Avendesora tree—rooted in stability, branching into wisdom.*
+
+---
+
+## 🌳 **Overview: The Avendesora System**
+
+> *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats, weaving the threads of knowledge into an unbreakable shield."*
+
+**Avendesora** is a **hybrid cybersecurity AI system** that combines:
+
+- A **local, private LLM** (Mistral 13B/70B) for reasoning and analysis
+- **Kali Linux tools** (Nmap, Metasploit, etc.) exposed via **Model Context Protocol (MCP)**
+- A **two-machine architecture** for scalability and performance
+
+This setup allows your LLM to **directly execute cybersecurity tools** in real-time, providing **augmented intelligence** for penetration testing, threat analysis, and incident response—**without fine-tuning or cloud dependencies**.
+
+```
+       /\          
+      /  \    ______   _______  _______   
+     /____\  |  ____| |__   __||__   __|  
+    /      \ | |__    | | |   | | |   | | |  
+   /  ()  \|  __|   | | |   | | |   | | |   
+  /  __/  | |____  | | |   | | |   | | |___  
+ /______/  |______| |_| |___| |_|   |_| |___| 
+   AVENDESORA: The Unbreakable Security AI
+```
+
+---
+
+## 🛒 **Hardware Architecture**
+
+```
+┌─────────────────────┐       ┌─────────────────────┐
+│   GMKtec EVO-X2      │       │   MINISFORUM Mini PC │
+│  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
+│ - Runs Mistral 13B/  │       │ - Runs Kali tools     │
+│   70B locally         │       │ - MCP Server          │
+│ - Ollama/LM Studio    │       │ - Nmap, Metasploit,   │
+│ - Handles inference   │       │   Searchsploit, etc.  │
+└─────────────────────┘       └─────────────────────┘
+       AVENDESORA CORE          AVENDESORA NODE
+```
+
+
+| Device                   | Role                                       | Specs                                 | Price (USD)  | Notes                               |
+| ------------------------ | ------------------------------------------ | ------------------------------------- | ------------ | ----------------------------------- |
+| **GMKtec EVO-X2**        | **Avendesora Core** (LLM Inference Server) | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | $2,300–2,500 | Runs 70B models at 10–20 tokens/sec |
+| **MINISFORUM UM790 Pro** | **Avendesora Node** (Kali + MCP Server)    | Ryzen 7 8845HS, 32GB RAM, 1TB SSD     | $700         | Fast CPU for tool execution         |
+
+
+**Total Cost:** **~$3,000** (one-time, no monthly fees)
+
+---
+
+## 📦 **Software Stack**
+
+
+| Component       | Purpose                   | Version/Link                                                                               |
+| --------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| Kali Linux      | Cybersecurity tools       | [kali.org](https://www.kali.org/)                                                          |
+| MCP Server      | Exposes Kali tools to LLM | [github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) |
+| Ollama          | LLM inference engine      | [ollama.com](https://ollama.com)                                                           |
+| Mistral 13B/70B | Open-weight LLM           | [mistral.ai](https://mistral.ai/)                                                          |
+| Node.js         | Required for MCP server   | v20+                                                                                       |
+
+
+---
+
+## 🔧 **Setup Instructions**
+
+---
+
+### **1. Avendesora Node (MINISFORUM): Kali Linux + MCP Server**
+
+#### **1.1 Install Kali Linux**
+
+```bash
+# Download Kali Linux ISO (minimal install, no GUI)
+wget https://cdimage.kali.org/kali-2026.2/kali-linux-2026.2-installer-amd64.iso
+
+# Install to the mini PC (use entire disk, ext4 filesystem)
+# Select "Kali Linux (minimal)" during installation
+```
+
+#### **1.2 Install Dependencies**
+
+```bash
+# Update and install Node.js
+sudo apt update && sudo apt upgrade -y
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs git
+```
+
+#### **1.3 Set Up MCP Server for Kali Tools**
+
+```bash
+# Clone the MCP servers repository
+git clone https://github.com/modelcontextprotocol/servers.git
+cd servers/src/kali
+
+# Install dependencies
+npm install
+
+# Start the MCP server (Avendesora Node)
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois &
+```
+
+#### **1.4 Create a `systemd` Service for MCP Server**
+
+```ini
+# /etc/systemd/system/avendesora-node.service
+[Unit]
+Description=Avendesora Node: MCP Server for Kali Tools
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/servers/src/kali
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois
+Restart=always
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable and start the service:**
+
+```bash
+sudo systemctl enable avendesora-node
+sudo systemctl start avendesora-node
+sudo systemctl status avendesora-node  # Verify it's running
+```
+
+#### **1.5 Assign a Static IP**
+
+Edit `/etc/netplan/00-installer-config.yaml`:
+
+```yaml
+network:
+  ethernet:
+    enp1s0:
+      dhcp4: no
+      addresses: [192.168.1.100/24]
+      gateway4: 192.168.1.1
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]
+  version: 2
+```
+
+Apply changes:
+
+```bash
+sudo netplan apply
+```
+
+---
+
+### **2. Avendesora Core (GMKtec EVO-X2): LLM Inference Server**
+
+#### **2.1 Install Ollama**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+#### **2.2 Pull Mistral 13B or 70B**
+
+```bash
+# For Mistral 13B (Q4_K_M, ~8GB)
+ollama pull mistral:13b
+
+# For Mistral 70B (Q4_K_M, ~40GB)
+ollama pull mistral:70b
+```
+
+#### **2.3 Install MCP Client**
+
+```bash
+npm install -g @modelcontextprotocol/client
+```
+
+#### **2.4 Connect to Avendesora Node**
+
+```bash
+mcp-client \
+  --llm cmd:ollama \
+  --llm-args mistral:13b \
+  --mcp-server http://192.168.1.100:3000
+```
+
+Replace `192.168.1.100` with the **IP of your Avendesora Node (MINISFORUM)**.
+
+#### **2.5 Assign a Static IP**
+
+Edit `/etc/netplan/00-installer-config.yaml`:
+
+```yaml
+network:
+  ethernet:
+    enp1s0:
+      dhcp4: no
+      addresses: [192.168.1.200/24]
+      gateway4: 192.168.1.1
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]
+  version: 2
+```
+
+Apply changes:
+
+```bash
+sudo netplan apply
+```
+
+---
+
+## 🔄 **Network Setup**
+
+1. **Connect both devices to the same LAN** via Ethernet (recommended) or Wi-Fi.
+2. **Verify connectivity** from Avendesora Core:
+  ```bash
+   ping 192.168.1.100  # Avendesora Node IP
+   curl http://192.168.1.100:3000  # MCP server
+  ```
+3. **Test MCP connection** from Avendesora Core:
+  ```bash
+   mcp-client --llm cmd:ollama --llm-args mistral:13b --mcp-server http://192.168.1.100:3000
+  ```
+
+---
+
+## 🚀 **Example Workflows**
+
+---
+
+### **Workflow 1: Automated Vulnerability Scanning**
+
+**User Prompt:**
+
+```
+"Avendesora, run an Nmap scan on 192.168.1.1, then use Searchsploit to find exploits for any vulnerable services."
+```
+
+**Avendesora Actions:**
+
+1. Calls MCP `nmap` tool: `nmap -sV 192.168.1.1`
+2. Parses output (e.g., finds `OpenSSH 8.9`)
+3. Calls MCP `searchsploit` tool: `searchsploit openssh 8.9`
+4. Returns:
+  ```
+   [AVENDESORA ANALYSIS]
+   Found CVE-2026-1234 (CVSS 9.8) in OpenSSH 8.9.
+   Exploit: exploit/linux/ssh/cve_2026_1234
+   Metasploit command: msfconsole -x 'use exploit/linux/ssh/cve_2026_1234; set RHOSTS 192.168.1.1; run'
+  ```
+
+---
+
+### **Workflow 2: Incident Response**
+
+**User Prompt:**
+
+```
+"Avendesora, analyze this suspicious IP: 203.0.113.45. Use WHOIS and check for known threats."
+```
+
+**Avendesora Actions:**
+
+1. Calls MCP `whois` tool: `whois 203.0.113.45`
+2. Calls MCP `curl` tool to check [AbuseIPDB](https://www.abuseipdb.com/check/203.0.113.45)
+3. Returns:
+  ```
+   [AVENDESORA INTEL]
+   IP belongs to AS12345 (Malicious Hosting Inc.).
+   3 reports of SSH brute-forcing on AbuseIPDB.
+   Recommendation: Block IP at firewall.
+  ```
+
+---
+
+### **Workflow 3: Exploit Development**
+
+**User Prompt:**
+
+```
+"Avendesora, generate a Metasploit command to exploit CVE-2026-1234 on 192.168.1.1."
+```
+
+**Avendesora Actions:**
+
+1. Calls MCP `metasploit` tool to validate the exploit module
+2. Returns:
+  ```
+   [AVENDESORA COMMAND]
+   msfconsole -x 'use exploit/linux/ssh/cve_2026_1234; set RHOSTS 192.168.1.1; run'
+  ```
+
+---
+
+## 🔌 **Alternative: SSH Access (No MCP)**
+
+If MCP is too experimental, let the LLM **SSH into the Avendesora Node** and run commands directly.
+
+#### **1. Set Up SSH Access**
+
+On the Avendesora Node:
+
+```bash
+# Create a dedicated user for the LLM
+sudo adduser avendesora
+sudo usermod -aG sudo avendesora
+
+# Set up SSH keys (no password)
+sudo mkdir -p /home/avendesora/.ssh
+sudo cp ~/.ssh/authorized_keys /home/avendesora/.ssh/
+sudo chown -R avendesora:avendesora /home/avendesora/.ssh
+```
+
+#### **2. Restrict `avendesora` to Specific Tools**
+
+Edit `/etc/sudoers`:
+
+```bash
+sudo visudo
+```
+
+Add:
+
+```
+avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/metasploit-framework/msfconsole
+```
+
+#### **3. Test SSH Access**
+
+From Avendesora Core:
+
+```bash
+ssh avendesora@192.168.1.100 "nmap -sV 192.168.1.1"
+```
+
+#### **4. Use with LLM**
+
+Prompt the LLM to run SSH commands:
+
+```
+"Avendesora, SSH into the Kali Node and run 'nmap -sV 192.168.1.1'."
+```
+
+---
+
+## 💡 **Tips and Best Practices**
+
+### **1. Security**
+
+- **Isolate the Avendesora Node** on a separate VLAN if handling sensitive data.
+- **Use SSH keys** (disable password authentication).
+- **Restrict `avendesora` user** to only necessary tools (via `sudoers`).
+
+### **2. Performance**
+
+- Use **Ethernet** for both devices to minimize latency.
+- For **faster inference**, use `ollama run mistral:13b` with `--num-gpu 100` (if GPU is available).
+- For **MCP server**, run only the tools you need (e.g., `--tools nmap,metasploit`).
+
+### **3. Maintenance**
+
+- **Update Kali tools regularly:**
+  ```bash
+  sudo apt update && sudo apt upgrade -y
+  ```
+- **Backup your LLM models:**
+  ```bash
+  cp -r ~/.ollama /backup/ollama
+  ```
+
+---
+
+## 🐛 **Troubleshooting**
+
+
+| Issue                     | Solution                                           |
+| ------------------------- | -------------------------------------------------- |
+| MCP server not running    | Check `sudo systemctl status avendesora-node`      |
+| Connection refused to MCP | Verify IP/port and firewall rules                  |
+| LLM can't call MCP tools  | Check MCP server logs for errors                   |
+| Slow tool execution       | Use lightweight tools (e.g., `nmap` not GUI tools) |
+| Ollama fails to start     | Check `ollama serve` logs and GPU drivers          |
+
+
+---
+
+## 📚 **Resources**
+
+- [MCP Documentation](https://github.com/modelcontextprotocol/specification)
+- [Ollama Documentation](https://github.com/jmorganca/ollama)
+- [Kali Linux Tools](https://www.kali.org/tools/)
+- [Mistral AI Models](https://mistral.ai/models/)
+- [Wheel of Time Wiki: Avendesora](https://wot.fandom.com/wiki/Avendesora)
+
+---
+
+## 📝 **Changelog**
+
+
+| Date       | Change                                   | Author        |
+| ---------- | ---------------------------------------- | ------------- |
+| 2026-05-30 | Initial version: Avendesora system setup | Jasper Frumau |
+
+
+---
+
+## 📄 **License**
+
+This document is provided as-is for personal use. No warranty or liability is implied.
+
+---
+
+## 🌳 **The Avendesora Philosophy**
+
+> *"Like the Avendesora tree, this system stands as a beacon of resilience and wisdom. Its roots delve deep into the data of your networks, while its branches extend toward the future of cybersecurity. May it serve you as steadfastly as the tree served the Aiel."*
+
+---
+
+*"The Wheel weaves as the Wheel wills. With Avendesora, you weave with it."*

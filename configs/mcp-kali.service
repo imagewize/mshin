@@ -1,0 +1,22 @@
+[Unit]
+Description=Avendesora Node: MCP Server for Kali Tools
+After=network.target
+
+[Service]
+User=avendesora
+WorkingDirectory=/opt/avendesora/servers/src/kali
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
+Restart=always
+RestartSec=5s
+Environment=NODE_ENV=production
+
+Security settings
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/avendesora /home/avendesora
+
+[Install]
+WantedBy=multi-user.target
