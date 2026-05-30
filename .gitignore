@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs & temp
+*.log
+*.tmp
+*.bak
+tmp/
+
+# Environment / secrets
+.env
+.env.*
+*.local
+
+# Python (provisioning helpers)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
