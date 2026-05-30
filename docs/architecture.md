@@ -56,6 +56,28 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 - **Ryzen AI Max+ 395**: High-performance CPU with **Radeon 8060S iGPU** for inference acceleration.
 - **2TB SSD**: Stores multiple LLM models and datasets.
 
+**Why Ollama (and not raw llama.cpp)?**
+
+A fair question, since [`llama.cpp`](https://github.com/ggml-org/llama.cpp) is the faster-sounding choice. The key fact: **Ollama runs on llama.cpp under the hood** — the same inference engine powers both. The choice is therefore not "fast vs. slow" but "managed runtime vs. raw engine."
+
+| **Aspect**            | **Ollama**                                                              | **Raw llama.cpp**                                              |
+| --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Inference speed**   | Baseline llama.cpp speed, minus ~5–15% wrapper overhead in some cases   | Fastest possible (it *is* the engine), if hand-tuned          |
+| **Tuning control**    | Sane auto-detected defaults (GPU/CPU layer offload)                     | Total control (`-ngl`, batch size, KV cache type, etc.)       |
+| **Model management**  | `ollama pull` / `ollama create` — central to our setup                 | Manual GGUF file + prompt-template handling                   |
+| **Daemon + HTTP API** | Built in, keep-alive, fits the Core → MCP-client flow                   | `llama-server` exists, but lifecycle is yours to wire up      |
+| **Persona / tooling** | Defined declaratively in [`configs/ollama-modelfile`](../configs/ollama-modelfile) | No Modelfile equivalent — rebuild this layer by hand          |
+
+**Decision:** Avendesora uses **Ollama**. The bottleneck on this deployment is model size and VRAM/RAM, not the thin wrapper overhead — so the operational ergonomics win decisively:
+
+- The **Modelfile** abstraction defines Avendesora's persona and tool list declaratively (`ollama create avendesora -f configs/ollama-modelfile`). Switching engines means rewriting that whole layer.
+- **Built-in model management and daemon** map cleanly onto the Core → MCP-client data flow.
+- **Swapping models** is one command (see *Switching LLM Models* below), keeping the system approachable for contributors.
+
+**When to reconsider llama.cpp:** only if you (1) hit a hard performance wall on fixed hardware *after* benchmarking Ollama as the proven bottleneck, or (2) need a bleeding-edge quant or feature Ollama hasn't shipped yet. A lighter middle path first: point Ollama at a custom GGUF quant via `FROM ./model.gguf` in a Modelfile — that often buys more real-world speed than changing engines, while keeping all the Ollama tooling intact.
+
+> *Like the One Power drawn through a well-made angreal, the engine matters less than the hand that shapes its flow.*
+
 ---
 
 ### **2. Avendesora Node (MINISFORUM Mini PC)**

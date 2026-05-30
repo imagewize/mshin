@@ -10,7 +10,7 @@ Avendesora is **documentation and deployment configuration** for a self-hosted, 
 
 Everything here describes splitting LLM inference from security-tool execution across two LAN-connected hosts:
 
-- **Avendesora Core** — runs **Ollama** (Mistral 13B/70B) for inference plus the **MCP client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/avendesora` that launches `mcp-client` pointed at the Node's IP.
+- **Avendesora Core** — runs **Ollama** (Mistral 13B/70B) for inference plus the **MCP client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/avendesora` that launches `mcp-client` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/architecture.md` ("Why Ollama (and not raw llama.cpp)?").
 - **Avendesora Node** — runs **Kali Linux** and an **MCP server** (from `github.com/modelcontextprotocol/servers`, `src/kali`) exposing tools (`nmap`, `metasploit`, `searchsploit`, `nikto`, `whois`, `tshark`) on port **3000**. Provisioned by `scripts/setup_mcp_server.sh`, kept alive by the `avendesora-node` systemd service (`configs/mcp-kali.service`).
 
 Data flow: `User prompt → Core (LLM) → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona and tool list are defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`).
