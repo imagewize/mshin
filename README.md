@@ -27,13 +27,13 @@
 ## Architecture
 
 ```
-┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X3      │       │   Kali Node (mini PC)│
-│  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
-│ - Avendesora Core    │       │ - Avendesora Node    │
-│ - Runs Mistral Small │       │ - Runs Kali tools     │
-│   / Llama 3.3 70B    │       │ - MCP Server          │
-└─────────────────────┘       └─────────────────────┘
+┌──────────────────────┐          ┌─────────────────────┐
+│ GMKtec EVO-X3        │          │ Kali Node (mini PC) │
+│ (128GB RAM, 2TB)     │          │ (Kali Linux + MCP)  │
+│ - Avendesora Core    │ <──────> │ - Avendesora Node   │
+│ - Runs Mistral Small │          │ - Runs Kali tools   │
+│   / Llama 3.3 70B    │          │ - MCP Server        │
+└──────────────────────┘          └─────────────────────┘
 ```
 
 

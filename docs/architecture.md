@@ -9,24 +9,26 @@
 Avendesora is designed as a **modular, two-node architecture** to balance performance, scalability, and security. The system separates **LLM inference** (resource-intensive) from **tool execution** (Kali Linux), allowing each component to operate at peak efficiency.
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                        AVENDESORA SYSTEM                          │
-├───────────────────────────┬───────────────────────────────────┤
-│   AVENDESORA CORE          │        AVENDESORA NODE            │
-│  (GMKtec EVO-X3)           │      (Kali Node / mini PC)        │
-│                            │                                   │
-│  ┌─────────────────────┐  │  ┌─────────────────────────────┐  │
-│  │  Ollama              │  │  │  Kali Linux                  │  │
-│  │  - Mistral / Llama   │◄─┼─►│  - Nmap, Metasploit, etc.      │  │
-│  │  - Local Inference   │  │  │  - MCP Server                │  │
-│  └─────────────────────┘  │  │  - Tool Execution             │  │
-│                            │  └─────────────────────────────┘  │
-│  ┌─────────────────────┐  │                                   │
-│  │  MCP Client          │◄─┼───────────────────────────────┘  │
-│  │  - Bridges LLM and   │  │                                   │
-│  │    MCP Server        │  │                                   │
-│  └─────────────────────┘  │                                   │
-└───────────────────────────┴───────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      AVENDESORA SYSTEM                      │
+├────────────────────────────┬────────────────────────────────┤
+│                            │                                │
+│       AVENDESORA CORE      │        AVENDESORA NODE         │
+│       (GMKtec EVO-X3)      │     (Kali Node / mini PC)      │
+│                            │                                │
+│  ┌───────────────────────┐ │ ┌───────────────────────────┐  │
+│  │ Ollama                │ │ │ Kali Linux                │  │
+│  │ - Mistral / Llama     │◄─►│ - Nmap, Metasploit, etc.  │  │
+│  │ - Local Inference     │ │ │ - MCP Server              │  │
+│  └───────────────────────┘ │ │ - Tool Execution          │  │
+│                            │ └───────────────────────────┘  │
+│  ┌───────────────────────┐ │                                │
+│  │ MCP Client            │ │                                │
+│  │ - Bridges LLM and     │ │                                │
+│  │   MCP Server          │ │                                │
+│  └───────────────────────┘ │                                │
+│                            │                                │
+└────────────────────────────┴────────────────────────────────┘
 ```
 
 ---

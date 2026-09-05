@@ -33,15 +33,15 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 ## **Hardware Architecture**
 
 ```
-┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X3      │       │   Kali Node (mini PC)│
-│  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
-│ - Runs Mistral Small │       │ - Runs Kali tools     │
-│   / Llama 3.3 70B    │       │ - MCP Server          │
-│ - Ollama/LM Studio    │       │ - Nmap, Metasploit,   │
-│ - Handles inference   │       │   Searchsploit, etc.  │
-└─────────────────────┘       └─────────────────────┘
-       AVENDESORA CORE          AVENDESORA NODE
+┌──────────────────────┐        ┌──────────────────────┐
+│ GMKtec EVO-X3        │        │ Kali Node (mini PC)  │
+│ (128GB RAM, 2TB)     │ <────> │ (Kali Linux + MCP)   │
+│ - Runs Mistral Small │        │ - Runs Kali tools    │
+│   / Llama 3.3 70B    │        │ - MCP Server         │
+│ - Ollama / LM Studio │        │ - Nmap, Metasploit,  │
+│ - Handles inference  │        │   Searchsploit, etc. │
+└──────────────────────┘        └──────────────────────┘
+    AVENDESORA CORE                 AVENDESORA NODE
 ```
 
 

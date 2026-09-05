@@ -58,12 +58,12 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 ### Option A: Pure Local — Unified-Memory APU (Recommended)
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│  GMKtec EVO-X3       │     │   Kali Node          │
-│  - Ryzen AI Max+ 395 │◄───►│  - Kali + MCP        │
-│  - 128GB unified     │     │  - Static IP         │
-│  - Llama 3.3 70B (Q4)│     │  (cheap box or VM)   │
-└─────────────────────┘     └─────────────────────┘
+┌──────────────────────┐     ┌───────────────────┐
+│ GMKtec EVO-X3        │     │ Kali Node         │
+│ - Ryzen AI Max+ 395  │<───>│ - Kali + MCP      │
+│ - 128GB unified      │     │ - Static IP       │
+│ - Llama 3.3 70B (Q4) │     │ (cheap box or VM) │
+└──────────────────────┘     └───────────────────┘
 ```
 - **Cost**: ~**$4,000–4,500** (EVO-X3 128GB ~$3,800 + a cheap/repurposed Kali Node)
 - **Pros**: Single box holds a Q4 70B (or ~120B MoE) with no discrete GPU; lowest cost-per-capacity; air-gapped capable; low idle power
@@ -71,12 +71,12 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 ### Option A′: Pure Local — Discrete GPU (only if you need the throughput)
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│  Workstation         │     │   Kali Node          │
-│  - RTX 6000 Ada 48GB │◄───►│  - Kali + MCP        │
-│  - 64–128GB DIMM RAM │     │  - Static IP         │
-│  - Llama 3.3 70B (Q4)│     └─────────────────────┘
-└─────────────────────┘
+┌──────────────────────┐     ┌──────────────┐
+│ Workstation          │     │ Kali Node    │
+│ - RTX 6000 Ada 48GB  │<───>│ - Kali + MCP │
+│ - 64–128GB DIMM RAM  │     │ - Static IP  │
+│ - Llama 3.3 70B (Q4) │     └──────────────┘
+└──────────────────────┘
 ```
 - **Cost**: ~**$7,000–8,000** (48GB-class card + DIMM RAM at 2026 prices + CPU/board/PSU)
 - **Pros**: Much higher throughput; upgradeable
@@ -84,11 +84,11 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 ### Option B: Hybrid Cloud + Local Tools
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│  RunPod/Lambda      │     │   Local Kali Node    │
-│  - A100/RTX 6000    │◄────►│  - MCP Server        │
-│  - 48–80GB VRAM     │     │  - on YOUR LAN       │
-└─────────────────────┘     └─────────────────────┘
+┌─────────────────┐     ┌─────────────────┐
+│ RunPod/Lambda   │<───>│ Local Kali Node │
+│ - A100/RTX 6000 │     │ - MCP Server    │
+│ - 48–80GB VRAM  │     │ - on YOUR LAN   │
+└─────────────────┘     └─────────────────┘
 ```
 - **Cost**: ~$500–2,000/month (cloud GPU) + one-off ~$700 (local Node)
 - **Pros**: Lower upfront, scalable, no RAM-pricing risk on the inference side
@@ -97,12 +97,12 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 ### Option C: Full Cloud (For Teams)
 ```
-┌───────────────────────────────────────────────────────┐
-│  RunPod/Lambda Labs                                  │
-│  - A100/H100 instance (80GB+ VRAM)                     │
-│  - Docker container with Kali + MCP                  │
-│  - Llama 3.3 70B / gpt-oss-120b (or a fine-tune)     │
-└───────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ RunPod/Lambda Labs                              │
+│ - A100/H100 instance (80GB+ VRAM)               │
+│ - Docker container with Kali + MCP              │
+│ - Llama 3.3 70B / gpt-oss-120b (or a fine-tune) │
+└─────────────────────────────────────────────────┘
 ```
 - **Cost**: $500–2,000/month
 - **Pros**: Zero hardware hassle, team access, auto-scaling
