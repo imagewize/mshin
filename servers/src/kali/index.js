@@ -31,54 +31,74 @@ if (enabledTools.length === 0) {
 console.error(`[INFO] Avendesora Node starting on port ${PORT}`);
 console.error(`[INFO] Enabled tools: ${enabledTools.map((t) => t.name).join(", ")}`);
 
-const server = new Server(
-  { name: "avendesora-kali-node", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+// Build a fresh Server instance for each client connection. A single Server
+// can only be bound to one transport at a time, so sharing one across clients
+// (or across reconnects) would clobber the previous session.
+function createServer() {
+  const server = new Server(
+    { name: "avendesora-kali-node", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: enabledTools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    })),
-  };
-});
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  const tool = enabledTools.find((t) => t.name === name);
-  if (!tool) {
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      content: [{ type: "text", text: `Tool '${name}' is not enabled.` }],
-      isError: true,
+      tools: enabledTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
     };
-  }
+  });
 
-  try {
-    return await tool.handler(args || {});
-  } catch (err) {
-    console.error(`[ERROR] Tool ${name} failed:`, err.message);
-    return {
-      content: [{ type: "text", text: `Error: ${err.message}` }],
-      isError: true,
-    };
-  }
-});
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const tool = enabledTools.find((t) => t.name === name);
+    if (!tool) {
+      return {
+        content: [{ type: "text", text: `Tool '${name}' is not enabled.` }],
+        isError: true,
+      };
+    }
+
+    try {
+      return await tool.handler(args || {});
+    } catch (err) {
+      console.error(`[ERROR] Tool ${name} failed:`, err.message);
+      return {
+        content: [{ type: "text", text: `Error: ${err.message}` }],
+        isError: true,
+      };
+    }
+  });
+
+  return server;
+}
 
 const app = express();
-let transport = null;
+
+// Active SSE transports keyed by session id, so concurrent clients (and
+// reconnects) each get their own message channel.
+const transports = new Map();
 
 app.get("/sse", async (req, res) => {
-  console.error("[INFO] MCP client connected via SSE");
-  transport = new SSEServerTransport("/messages", res);
+  const transport = new SSEServerTransport("/messages", res);
+  transports.set(transport.sessionId, transport);
+  console.error(`[INFO] MCP client connected via SSE (session ${transport.sessionId})`);
+
+  res.on("close", () => {
+    transports.delete(transport.sessionId);
+    console.error(`[INFO] MCP client disconnected (session ${transport.sessionId})`);
+  });
+
+  const server = createServer();
   await server.connect(transport);
 });
 
 app.post("/messages", async (req, res) => {
+  const sessionId = req.query.sessionId;
+  const transport = sessionId ? transports.get(sessionId) : null;
   if (!transport) {
-    res.status(425).send("SSE connection not established");
+    res.status(425).send("No active SSE session for the given sessionId");
     return;
   }
   await transport.handlePostMessage(req, res);

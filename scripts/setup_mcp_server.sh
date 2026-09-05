@@ -49,7 +49,7 @@ apt-get install -y \
     openssl \
     nmap \
     metasploit-framework \
-    searchsploit \
+    exploitdb \
     nikto \
     whois \
     tshark \
