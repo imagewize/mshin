@@ -37,11 +37,11 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ```
 ┌──────────────────────┐        ┌──────────────────────┐
-│ GMKtec EVO-X3        │        │ Kali Node (mini PC)  │
-│ (128GB RAM, 2TB)     │ <────> │ (Kali Linux + MCP)   │
+│ Avendesora Core      │        │ Kali Node (mini PC)  │
+│ (32GB+ RAM, any box) │ <────> │ (Kali Linux + MCP)   │
 │ - Runs Mistral Small │        │ - Runs Kali tools    │
-│   / Llama 3.3 70B    │        │ - MCP Server         │
-│ - Ollama / LM Studio │        │ - Nmap, Metasploit,  │
+│   24B (or larger)    │        │ - MCP Server         │
+│ - Ollama             │        │ - Nmap, Metasploit,  │
 │ - Handles inference  │        │   Searchsploit, etc. │
 └──────────────────────┘        └──────────────────────┘
     AVENDESORA CORE                 AVENDESORA NODE
@@ -50,11 +50,19 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 | Device                   | Role                                       | Specs                                 | Price (USD)  | Notes                               |
 | ------------------------ | ------------------------------------------ | ------------------------------------- | ------------ | ----------------------------------- |
-| **GMKtec EVO-X3**        | **Avendesora Core** (LLM Inference Server) | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | ~$3,800 (2026) | Runs 70B models at 10–20 tokens/sec |
+| **A machine you already own** | **Avendesora Core** (LLM Inference Server) | 32GB+ RAM, any modern x86_64 or Apple Silicon | **$0**   | Runs Mistral Small 24B — the default, and enough for everything here |
 | **Any x86_64 mini PC / SFF** | **Avendesora Node** (Kali + MCP Server) | Intel N100/N150, Core i9-10980HK, Ryzen 7 5800U/7730U, etc. | $150–350     | Tool execution only; no inference   |
+| **GMKtec EVO-X3** *(optional)* | Upgraded **Avendesora Core**         | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | ~$3,800 (2026) | Only if you want 70B / 120B-class models locally |
 
 
-**Total Cost:** **~$2,000–4,500** (one-time, no monthly fees), depending on the Node choice and whether you already own a suitable Core machine.
+**Total Cost:** **~$150–350** if you already have a 32GB machine for the Core — which
+is the intended starting point. Add the EVO-X3 only when you have a concrete reason to
+run a model that doesn't fit; see
+[Sizing the Core](docs/architecture.md#sizing-the-core).
+
+> **RAM does not buy speed.** It buys *capacity* — which models fit. A 32GB box and a
+> 128GB box with the same memory bus run a 24B model at the same tokens/sec. Read the
+> sizing section before spending anything.
 
 ---
 
@@ -176,7 +184,7 @@ sudo netplan apply
 
 ---
 
-### **2. Avendesora Core (GMKtec EVO-X3): LLM Inference Server**
+### **2. Avendesora Core: LLM Inference Server**
 
 #### **2.1 Install Ollama**
 
@@ -190,8 +198,10 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Default: Mistral Small 3 24B (Q4_K_M, ~14GB) — fast, good tool-caller
 ollama pull mistral-small
 
-# Larger/more capable: Llama 3.3 70B (Q4_K_M, ~40GB)
-ollama pull llama3.3:70b
+# Larger/more capable — only if the Core has the RAM (see Sizing the Core):
+ollama pull qwen3:32b      # ~20GB
+ollama pull llama3.3:70b   # ~40GB
+ollama pull gpt-oss:120b   # ~65GB, MoE — fastest of the three despite its size
 ```
 
 #### **2.3 Create the Avendesora Persona Model**

@@ -7,8 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-05
+
+Documentation-only release. Reframes the hardware guidance so Avendesora is
+documented as something you start on hardware you already own, with the 128GB
+unified-memory box as an optional upgrade tier rather than a prerequisite.
+
+### Changed
+
+- **Reframe the hardware guidance around starting small.** The docs presented
+  the GMKtec EVO-X3 (128GB) as *the* Avendesora Core; it is now documented as
+  an optional upgrade tier, with "a 32GB machine you already own" as the
+  default starting point across `README.md`, `KALI-OPENLLM.md`,
+  `CONTRIBUTING.md`, `docs/setup.md`, and the roadmap's deployment options
+  (new Option A: existing hardware; the APU build becomes Option A′).
+- **Add a "Sizing the Core" section** to `docs/architecture.md` explaining
+  that Core RAM buys model *capacity*, not throughput, with weight and
+  KV-cache budgets per model and a three-tier hardware ladder. Documents why
+  the 128GB pool pays off on MoE models (`gpt-oss-120b`, ~5B active params)
+  rather than on a bandwidth-starved dense 70B.
+- De-brand the ASCII architecture diagrams so the Core is described by its
+  requirements rather than by one specific product.
+
 ### Fixed
 
+- **Correct the inference throughput claims.** `docs/architecture.md` and
+  `KALI-OPENLLM.md` claimed 10–20 tok/s for a Q4 Llama 3.3 70B on the EVO-X3.
+  A ~40GB dense model on a ~256 GB/s memory bus has an arithmetic ceiling near
+  6 tok/s. The performance table now derives ceilings from bandwidth ÷
+  bytes-per-token, separates inference from tool-execution latency, and is
+  explicitly labelled as unmeasured on Avendesora hardware.
 - Correct the Wheel of Time lore in the README, master guide, and Ollama
   modelfile: Avendesora was not "unbroken"/"unbreakable" through the Breaking
   of the World — it is the only chora tree to survive, preserved as a cutting
@@ -63,5 +91,6 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/imagewize/avendesora/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/imagewize/avendesora/releases/tag/v0.1.0

@@ -54,7 +54,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
 ### **Prerequisites**
 
 - **Avendesora Node:** Any x86_64 mini PC or SFF with Kali Linux.
-- **Avendesora Core:** GMKtec EVO-X3 (or equivalent) with Ubuntu/Debian.
+- **Avendesora Core:** any Linux/macOS machine with 32GB+ RAM (a GMKtec EVO-X3 or similar 128GB box is optional headroom, not a requirement).
 - **Basic knowledge** of Linux, networking, and Git.
 
 ### **Setting Up a Development Environment**
