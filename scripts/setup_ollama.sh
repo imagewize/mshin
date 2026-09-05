@@ -1,12 +1,12 @@
 #!/bin/bash
-
+#
 # Avendesora Core Setup Script
 #
-# Description: Automates the setup of Ollama + Mistral LLM on the GMKtec EVO-X3.
+# Description: Automates the setup of Ollama + the Avendesora CLI harness.
 #
 # Usage: bash setup_ollama.sh
 
-set -e  # Exit on error
+set -e
 
 # --- Avendesora ASCII Art ---
 
@@ -25,7 +25,12 @@ cat <<'ART'
 
 ART
 
-# --- Check for Root ---
+# --- Configuration ---
+
+AVENDESORA_DIR="/opt/avendesora"
+DEFAULT_NODE_IP="192.168.1.100"
+
+# --- Check for Root (recommended) ---
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "[WARNING] This script is recommended to be run as root. Continuing as current user."
@@ -38,8 +43,28 @@ sudo apt-get update && sudo apt-get upgrade -y
 sudo apt-get install -y \
     curl \
     git \
-    nodejs \
     net-tools
+
+# --- Install Node.js 20+ ---
+
+echo "[+] Installing Node.js 20+..."
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'v' -f2 | cut -d'.' -f1)" -lt 20 ]; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+fi
+node --version
+npm --version
+
+# --- Clone / Refresh Avendesora Repository ---
+
+echo "[+] Installing Avendesora Core code to ${AVENDESORA_DIR}..."
+if [ -d "${AVENDESORA_DIR}/.git" ]; then
+    cd "${AVENDESORA_DIR}"
+    sudo git pull
+else
+    sudo rm -rf "${AVENDESORA_DIR}"
+    sudo git clone https://github.com/imagewize/avendesora.git "${AVENDESORA_DIR}"
+fi
 
 # --- Install Ollama ---
 
@@ -51,6 +76,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 echo "[+] Pulling Mistral Small 3 24B (Q4_K_M)..."
 ollama pull mistral-small
 
+# --- Create Avendesora Persona Model ---
+
+echo "[+] Creating Avendesora Ollama model from Modelfile..."
+ollama create avendesora -f "${AVENDESORA_DIR}/configs/ollama-modelfile"
+
 # --- Optional: Pull Llama 3.3 70B ---
 
 read -p "[?] Pull Llama 3.3 70B as well? (y/n): " pull_70b
@@ -59,10 +89,11 @@ if [ "$pull_70b" = "y" ]; then
     ollama pull llama3.3:70b
 fi
 
-# --- Install MCP Client ---
+# --- Install Avendesora CLI Client ---
 
-echo "[+] Installing MCP client..."
-npm install -g @modelcontextprotocol/client
+echo "[+] Installing Avendesora CLI client..."
+cd "${AVENDESORA_DIR}/clients/avendesora-cli"
+sudo npm install
 
 # --- Assign Static IP (Optional) ---
 
@@ -71,46 +102,89 @@ if [ "$assign_ip" = "y" ]; then
     read -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
     read -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
-cat > /etc/netplan/00-avendesora-core.yaml <<EOF
+cat | sudo tee /etc/netplan/00-avendesora-core.yaml <<EOF
 network:
   version: 2
-  ethernet:
+  ethernets:
     enp1s0:
       dhcp4: no
-      addresses: [$static_ip/24]
-      gateway4: $gateway
+      addresses:
+        - ${static_ip}/24
+      routes:
+        - to: default
+          via: ${gateway}
       nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4
 EOF
 
 sudo netplan apply
-echo "[+] Static IP assigned: $static_ip"
-
+echo "[+] Static IP assigned: ${static_ip}"
 fi
 
 # --- Create a Wrapper Script for Avendesora ---
 
-cat > /usr/local/bin/avendesora <<'EOF'
+sudo tee /usr/local/bin/avendesora <<'EOF'
 #!/bin/bash
-
+#
 # Avendesora Core Wrapper Script
 #
-# Usage: avendesora [AVENDESORA_NODE_IP]
+# Usage:
+#   avendesora [NODE_IP_OR_URL]
+#   avendesora --node http://192.168.1.100:3000 --model avendesora
 
-NODE_IP=${1:-192.168.1.100}  # Default IP for Avendesora Node
+NODE_URL=""
+MODEL="avendesora"
+POSITIONAL=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --node)
+            NODE_URL="$2"
+            shift 2
+            ;;
+        --model)
+            MODEL="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: avendesora [NODE_IP_OR_URL] [--node URL] [--model MODEL]"
+            exit 0
+            ;;
+        --*)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            if [ -z "$POSITIONAL" ]; then
+                POSITIONAL="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$NODE_URL" ]; then
+    NODE_ARG="${POSITIONAL:-192.168.1.100}"
+    if [[ "$NODE_ARG" == http* ]]; then
+        NODE_URL="$NODE_ARG"
+    else
+        NODE_URL="http://${NODE_ARG}:3000"
+    fi
+fi
 
 echo "Starting Avendesora Core..."
-echo "Connecting to Avendesora Node at $NODE_IP..."
+echo "Connecting to Avendesora Node at ${NODE_URL}..."
 echo ""
 
-mcp-client \
-  --llm cmd:ollama \
-  --llm-args mistral-small \
-  --mcp-server http://$NODE_IP:3000
+exec /opt/avendesora/clients/avendesora-cli/index.js --node "${NODE_URL}" --model "${MODEL}"
 EOF
 
-chmod +x /usr/local/bin/avendesora
-sudo ln -s /usr/local/bin/avendesora /usr/bin/avendesora
+sudo chmod +x /usr/local/bin/avendesora
+if [ ! -e /usr/bin/avendesora ]; then
+    sudo ln -s /usr/local/bin/avendesora /usr/bin/avendesora
+fi
 
 # --- Display Setup Summary ---
 
@@ -118,11 +192,11 @@ echo ""
 echo "[+] Avendesora Core setup complete!"
 echo ""
 echo "   Ollama: Installed"
-echo "   Models: mistral-small"
+echo "   Models: mistral-small, avendesora (custom persona)"
 if [ "$pull_70b" = "y" ]; then
     echo "          llama3.3:70b"
 fi
-echo "   MCP Client: Installed"
+echo "   CLI Client: Installed at /opt/avendesora/clients/avendesora-cli"
 echo ""
 echo "   To start Avendesora:"
 echo "   avendesora [AVENDESORA_NODE_IP]"

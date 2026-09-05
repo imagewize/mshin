@@ -4,38 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Avendesora is **documentation and deployment configuration** for a self-hosted, Wheel of Time-themed cybersecurity AI system — *not* a runnable application. There is no source tree to build, no package manifest, and no test suite. The deliverables are Markdown guides, Bash provisioning scripts, and Linux config files (systemd unit, Ollama Modelfile) that are meant to be deployed onto two separate Linux machines. The primary working directory is itself not a git repository.
+Avendesora is a self-hosted, Wheel of Time-themed cybersecurity AI system. It pairs a local LLM (Ollama) with Kali Linux security tools over the Model Context Protocol (MCP). The repo contains:
+
+- Markdown guides (`docs/`, `KALI-OPENLLM.md`).
+- Bash provisioning scripts (`scripts/`).
+- Linux config files (`configs/`).
+- A runnable **custom Kali MCP server** (`servers/src/kali`).
+- A runnable **Ollama + MCP CLI client** (`clients/avendesora-cli`).
+
+Everything is meant to be deployed onto two separate Linux machines. The macOS working directory is for authoring only.
 
 ## The two-machine architecture
 
 Everything here describes splitting LLM inference from security-tool execution across two LAN-connected hosts:
 
-- **Avendesora Core** — runs **Ollama** (Mistral Small 3 / Llama 3.3 70B) for inference plus the **MCP client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/avendesora` that launches `mcp-client` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/architecture.md` ("Why Ollama (and not raw llama.cpp)?").
-- **Avendesora Node** — runs **Kali Linux** and an **MCP server** (from `github.com/modelcontextprotocol/servers`, `src/kali`) exposing tools (`nmap`, `metasploit`, `searchsploit`, `nikto`, `whois`, `tshark`) on port **3000**. Provisioned by `scripts/setup_mcp_server.sh`, kept alive by the `avendesora-node` systemd service (`configs/mcp-kali.service`).
+- **Avendesora Core** — runs **Ollama** (Mistral Small 3 / Llama 3.3 70B) for inference plus the **Avendesora CLI client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/avendesora` that launches `/opt/avendesora/clients/avendesora-cli/index.js` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/architecture.md` ("Why Ollama (and not raw llama.cpp)?").
+- **Avendesora Node** — runs **Kali Linux** and the **custom Kali MCP server** (`servers/src/kali`) exposing tools (`nmap`, `metasploit`, `searchsploit`, `nikto`, `whois`, `tshark`) on port **3000**. Provisioned by `scripts/setup_mcp_server.sh`, kept alive by the `avendesora-node` systemd service (`configs/mcp-kali.service`).
 
-Data flow: `User prompt → Core (LLM) → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona and tool list are defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`).
+Data flow: `User prompt → Core (LLM) → Avendesora CLI → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona and tool list are defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`).
 
-When changing the tool set, three places must stay in sync: the `--tools` flag in `scripts/setup_mcp_server.sh`, the same flag in `configs/mcp-kali.service`, *and* the `sudoers` allowlist for the `avendesora` user in the setup script. The Modelfile's documented tool list should match too.
+When changing the tool set, four places must stay in sync:
+1. The `--tools` flag in `scripts/setup_mcp_server.sh`.
+2. The same flag in `configs/mcp-kali.service`.
+3. The `sudoers` allowlist for the `avendesora` user in the setup script.
+4. The tool list in `servers/src/kali/tools.js` (and any tool metadata there).
+
+The Modelfile's documented tool list should match too.
 
 ## Where things live
 
 The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 
-- `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`.
+- `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`, `cybersecurity-agent-roadmap.md`.
 - `scripts/` holds both provisioning scripts: `setup_mcp_server.sh` (Node) and `setup_ollama.sh` (Core).
 - `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
+- `servers/src/kali/` holds the custom Kali MCP server (`index.js`, `tools.js`, `package.json`).
+- `clients/avendesora-cli/` holds the Ollama + MCP CLI harness (`index.js`, `package.json`).
 - `KALI-OPENLLM.md` at the repo root is the most complete single-file master guide, superseding the split docs.
 
 If you add or move files, keep `README.md`'s Documentation links and `CONTRIBUTING.md`'s "Project Structure" section in sync.
-
-## Important: the Bash scripts are currently not executable as-is
-
-`scripts/setup_mcp_server.sh` and `scripts/setup_ollama.sh` have lost their formatting in two systematic ways — fix these before treating any script as runnable:
-
-1. **Comment lines lost their `#` prefix** — section headers like `--- Install Dependencies ---` and descriptions like `Avendesora Node Setup Script` are bare text that the shell will try to execute.
-2. **Multi-line commands lost their `\` continuations** — e.g. `apt-get install -y` followed by package names on separate unindented lines, and `mcp-client` / `cat <<EOF` blocks. These need line continuations or to be joined onto one line.
-
-The intended commands are correct; only the comment markers and continuations are missing. The same corruption affects the embedded heredocs (the wrapper script in `setup_ollama.sh`).
 
 ## Conventions
 

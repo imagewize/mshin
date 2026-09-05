@@ -53,7 +53,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 ### **Prerequisites**
 
-- **Avendesora Node:** MINISFORUM mini PC (or equivalent) with Kali Linux.
+- **Avendesora Node:** Any x86_64 mini PC or SFF with Kali Linux.
 - **Avendesora Core:** GMKtec EVO-X3 (or equivalent) with Ubuntu/Debian.
 - **Basic knowledge** of Linux, networking, and Git.
 
@@ -73,22 +73,32 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 ```
 avendesora/
-├── README.md               # Project overview
-├── LICENSE                  # MIT License
-├── CONTRIBUTING.md         # This file
-├── KALI-OPENLLM.md         # Complete single-file master guide
+├── README.md                  # Project overview
+├── LICENSE                    # MIT License
+├── CONTRIBUTING.md            # This file
+├── KALI-OPENLLM.md            # Complete single-file master guide
 ├── docs/
-│   ├── architecture.md     # System architecture
-│   ├── setup.md           # Setup instructions
-│   └── workflows.md        # Example workflows
+│   ├── architecture.md        # System architecture
+│   ├── setup.md               # Setup instructions
+│   ├── workflows.md           # Example workflows
+│   └── cybersecurity-agent-roadmap.md  # Agent roadmap
 ├── scripts/
-│   ├── setup_mcp_server.sh # MCP server setup script
-│   └── setup_ollama.sh      # Ollama setup script
+│   ├── setup_mcp_server.sh    # MCP server setup script
+│   └── setup_ollama.sh        # Ollama / Core setup script
 ├── configs/
-│   ├── mcp-kali.service     # systemd service for MCP server
-│   └── ollama-modelfile     # Custom Ollama model configuration
+│   ├── mcp-kali.service       # systemd service for MCP server
+│   └── ollama-modelfile       # Custom Ollama model configuration
+├── servers/
+│   └── src/kali/              # Custom Kali MCP server
+│       ├── package.json
+│       ├── index.js
+│       └── tools.js
+├── clients/
+│   └── avendesora-cli/        # Ollama + MCP client harness
+│       ├── package.json
+│       └── index.js
 └── assets/
-    └── logo.txt            # ASCII logo
+    └── logo.txt               # ASCII logo
 ```
 
 ---

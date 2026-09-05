@@ -80,8 +80,7 @@ Investigate a suspicious IP address for malicious activity.
 ```
 Avendesora, analyze the following suspicious IP: 203.0.113.45.
 1. Run a WHOIS lookup to identify the owner.
-2. Check for known threats on AbuseIPDB.
-3. Provide a risk assessment and recommended actions.
+2. Provide a risk assessment and recommended actions.
 ```
 
 ### **Avendesora Actions:**
@@ -91,27 +90,20 @@ Avendesora, analyze the following suspicious IP: 203.0.113.45.
    whois 203.0.113.45
   ```
    **Example Output:**
-2. Calls MCP `curl` tool to check AbuseIPDB:
-  ```bash
-   curl -s "https://api.abuseipdb.com/api/v2/check?ipAddress=203.0.113.45" \
-     -H "Key: YOUR_API_KEY" -H "Accept: application/json"
-  ```
-   **Example Output:**
-3. **Generates a Risk Assessment:**
+2. **Generates a Risk Assessment:**
   ```
    [AVENDESORA THREAT INTEL]
    IP: 203.0.113.45
    Owner: Malicious Hosting Inc. (RU)
-   Abuse Confidence Score: 100/100
-   Reports: 3 (SSH Brute Force, Port Scanning)
 
-   RISK LEVEL: CRITICAL
+   RISK LEVEL: HIGH
 
    RECOMMENDED ACTIONS:
   ```
-  1. Block IP at firewall: iptables -A INPUT -s 203.0.113.45 -j DROP
-  2. Monitor for connections from this IP in SIEM logs.
-  3. Investigate any internal systems that may have communicated with this IP.
+  1. Correlate the IP with external threat-intel sources (e.g., AbuseIPDB) from a trusted outbound host.
+  2. Block IP at firewall: iptables -A INPUT -s 203.0.113.45 -j DROP
+  3. Monitor for connections from this IP in SIEM logs.
+  4. Investigate any internal systems that may have communicated with this IP.
     `
 
 ---
@@ -324,23 +316,14 @@ The script takes a subnet as an argument (e.g., 192.168.1.0/24).
 
 ### **Prerequisites:**
 
-1. Add your custom script to the MCP server’s allowed tools:
-  - Edit the MCP server command to include your script:
-  - Update the `sudoers` file to allow the `avendesora` user to run the script:
-    ```
-
-    ```
-
-avendesora ALL=(ALL) NOPASSWD: /scripts/scan_subnets.py  
-     ```
+1. Add your custom tool to `servers/src/kali/tools.js` by implementing a new entry with a name, schema, and handler.
+2. Add the tool name to the `--tools` list in the systemd service file.
+3. If the tool needs elevated privileges, add its absolute path to `/etc/sudoers.d/avendesora`.
 
 ### **Avendesora Actions:**
 
-1. Calls MCP tool `/scripts/scan_subnets.py`:
-  ```bash
-   /scripts/scan_subnets.py 192.168.1.0/24
-  ```
-2. **Returns the script output**, which the LLM can then analyze.
+1. The LLM calls the new MCP tool with the provided arguments.
+2. The server executes the handler and returns the output, which the LLM then analyzes.
 
 ---
 

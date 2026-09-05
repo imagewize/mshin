@@ -14,7 +14,7 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 | Component           | Role                    | Minimum Requirements            | Recommended Model         |
 | ------------------- | ----------------------- | ------------------------------- | ------------------------- |
 | **Avendesora Core** | LLM Inference Server    | 32GB RAM, 1TB SSD, modern CPU   | GMKtec EVO-X3 (128GB RAM) |
-| **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | MINISFORUM UM790 Pro      |
+| **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | Any x86_64 mini PC / SFF  |
 
 
 ### **Network**
@@ -35,20 +35,25 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 
 To ensure both devices can always communicate, assign static IPs.
 
-#### **On Avendesora Node (MINISFORUM):**
+#### **On Avendesora Node:**
 
-Edit `/etc/netplan/00-installer-config.yaml`:
+Create `/etc/netplan/00-avendesora-node.yaml`:
 
 ```yaml
 network:
-  ethernet:
+  version: 2
+  ethernets:
     enp1s0:
       dhcp4: no
-      addresses: [192.168.1.100/24]
-      gateway4: 192.168.1.1
+      addresses:
+        - 192.168.1.100/24
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
-  version: 2
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4
 ```
 
 Apply the changes:
@@ -59,18 +64,23 @@ sudo netplan apply
 
 #### **On Avendesora Core (GMKtec EVO-X3):**
 
-Edit `/etc/netplan/00-installer-config.yaml`:
+Create `/etc/netplan/00-avendesora-core.yaml`:
 
 ```yaml
 network:
-  ethernet:
+  version: 2
+  ethernets:
     enp1s0:
       dhcp4: no
-      addresses: [192.168.1.200/24]
-      gateway4: 192.168.1.1
+      addresses:
+        - 192.168.1.200/24
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
-  version: 2
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4
 ```
 
 Apply the changes:
@@ -104,7 +114,7 @@ If successful, you should see responses like:
    wget https://cdimage.kali.org/kali-2026.2/kali-linux-2026.2-installer-amd64.iso
   ```
 2. Create a bootable USB drive (use **Rufus** or **Balena Etcher**).
-3. Boot the MINISFORUM from the USB and install Kali Linux:
+3. Boot the mini PC from the USB and install Kali Linux:
   - Select **"Kali Linux (minimal)"** during installation.
   - Use the entire disk for installation.
   - Set a **strong root password** (you’ll disable root login later).
@@ -123,22 +133,20 @@ sudo apt install -y git curl wget
 The MCP server requires Node.js v20+:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-```
-
-Verify the installation:
-
-```bash
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'v' -f2 | cut -d'.' -f1)" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt install -y nodejs
+fi
 node --version  # Should output v20.x.x
 ```
 
 ### **1.4 Set Up the MCP Server**
 
-1. Clone the MCP servers repository:
+Avendesora ships its own Kali MCP server at `servers/src/kali`.
+
+1. Change to the server directory (adjust the path if you did not use `/opt/avendesora`):
   ```bash
-   git clone https://github.com/modelcontextprotocol/servers.git
-   cd servers/src/kali
+   cd /opt/avendesora/servers/src/kali
   ```
 2. Install dependencies:
   ```bash
@@ -146,16 +154,14 @@ node --version  # Should output v20.x.x
   ```
 3. Test the MCP server manually:
   ```bash
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois &
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark &
   ```
    This starts the server on `http://localhost:3000`.
 4. Verify the server is running:
   ```bash
-   curl -X POST http://localhost:3000/mcp \
-     -H "Content-Type: application/json" \
-     -d '{"tool": "nmap", "args": ["-sV", "127.0.0.1"]}'
+   curl http://localhost:3000/health
   ```
-   You should see a JSON response with the Nmap scan results.
+   You should see a JSON response listing the enabled tools.
 
 ### **1.5 Create a Dedicated User for Avendesora**
 
@@ -199,10 +205,18 @@ To ensure the MCP server starts automatically on boot:
 
    [Service]
    User=avendesora
-   WorkingDirectory=/home/avendesora/servers/src/kali
-   ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois
+   WorkingDirectory=/opt/avendesora/servers/src/kali
+   ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
    Restart=always
+   RestartSec=5s
    Environment=NODE_ENV=production
+
+   # Security settings
+   NoNewPrivileges=true
+   PrivateTmp=true
+   ProtectSystem=strict
+   ProtectHome=read-only
+   ReadWritePaths=/opt/avendesora /home/avendesora
 
    [Install]
    WantedBy=multi-user.target
@@ -229,7 +243,7 @@ sudo visudo
 Add the following line:
 
 ```
-avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/metasploit-framework/msfconsole, /usr/bin/nikto, /usr/bin/whois
+avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
 ```
 
 ---
@@ -252,7 +266,13 @@ Update the system and install required packages:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl git nodejs
+sudo apt install -y curl git
+
+# Node.js 20+ is required for the CLI client
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'v' -f2 | cut -d'.' -f1)" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt install -y nodejs
+fi
 ```
 
 ### **2.3 Install Ollama**
@@ -277,26 +297,34 @@ For **Llama 3.3 70B** (requires more RAM):
 ollama pull llama3.3:70b
 ```
 
-### **2.5 Install the MCP Client**
+### **2.5 Create the Avendesora Persona Model**
 
 ```bash
-npm install -g @modelcontextprotocol/client
+ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
 ```
 
-### **2.6 Connect to Avendesora Node**
-
-Run the MCP client, pointing it to the Avendesora Node’s MCP server:
+### **2.6 Install the Avendesora CLI Client**
 
 ```bash
-mcp-client \
-  --llm cmd:ollama \
-  --llm-args mistral-small \
-  --mcp-server http://192.168.1.100:3000
+cd /opt/avendesora/clients/avendesora-cli
+npm install
+```
+
+### **2.7 Connect to Avendesora Node**
+
+Run the client, pointing it to the Avendesora Node’s MCP server:
+
+```bash
+# Wrapper installed by setup_ollama.sh:
+avendesora 192.168.1.100
+
+# Or directly:
+/opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.1.100:3000 --model avendesora
 ```
 
 Replace `192.168.1.100` with the **IP of your Avendesora Node**.
 
-### **2.7 Test the Connection**
+### **2.8 Test the Connection**
 
 Once connected, test the system with a prompt:
 
@@ -326,15 +354,15 @@ If everything is set up correctly, Avendesora should:
   ```
 - **Manual start:**
   ```bash
-  cd /home/avendesora/servers/src/kali
-  node index.js --tools nmap,metasploit,searchsploit,nikto,whois
+  cd /opt/avendesora/servers/src/kali
+  node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
   ```
 
 ### **Connection Refused to MCP Server**
 
 - **Verify the IP and port:**
   ```bash
-  curl http://192.168.1.100:3000
+  curl http://192.168.1.100:3000/health
   ```
 - **Check firewall rules:**
   ```bash
@@ -362,9 +390,9 @@ If everything is set up correctly, Avendesora should:
 
 ### **LLM Can’t Call MCP Tools**
 
-- **Verify the MCP client is connected:**
+- **Verify the CLI client can connect:**
   ```bash
-  mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://192.168.1.100:3000
+  /opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.1.100:3000 --model avendesora
   ```
 - **Check the MCP server logs for errors.**
 
