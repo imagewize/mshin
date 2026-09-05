@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Correct the Wheel of Time lore in the README, master guide, and Ollama
+  modelfile: Avendesora was not "unbroken"/"unbreakable" through the Breaking
+  of the World — it is the only chora tree to survive, preserved as a cutting
+  the Aiel carried to safety and replanted in Rhuidean. Also replaced the
+  inaccurate "source of ter'angreal" line (its trefoil leaf is the shape of
+  the Waygate key).
+
 ## [0.1.0] - 2026-09-05
 
 First tagged release. Avendesora is a self-hosted, Wheel of Time-themed

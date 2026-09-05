@@ -9,7 +9,7 @@
 <h1>Avendesora</h1>
 </div>
 
-> *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats."*
+> *"When the Breaking shattered the world, Avendesora endured—carried to safety as a cutting by the Aiel and rooted anew, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats."*
 
 **Avendesora** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral Small 3 / Llama 3.3 70B) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
 
@@ -20,7 +20,7 @@
 - **Private & Offline**: No cloud dependencies—your data stays yours.
 - **Real-Time Tool Access**: LLM directly executes Kali Linux tools (Nmap, Metasploit, etc.) via MCP.
 - **Scalable Architecture**: Two-machine setup for optimal performance.
-- **Wheel of Time Themed**: Inspired by the unbreakable Avendesora tree—symbolizing resilience and wisdom.
+- **Wheel of Time Themed**: Inspired by the enduring Avendesora tree—symbolizing resilience and wisdom.
 
 ---
 
@@ -88,9 +88,9 @@
 
 **Avendesora** is named after the legendary tree in the *Wheel of Time* series:
 
-- **Unbreakable**: Survived the Breaking of the World
+- **Enduring**: The only chora tree to survive the Breaking of the World, preserved as a cutting the Aiel carried to safety
 - **Rooted in the Pattern**: Symbolizes deep knowledge and stability
-- **Source of Ter’angreal**: Created powerful artifacts, much like how this system empowers your cybersecurity workflows
+- **A Key in Its Leaf**: The trefoil leaf of Avendesora is the very shape of the keys to the Ways—much like this system unlocks powerful cybersecurity workflows
 
 > *"The tree’s roots run deep, and its branches stretch toward the future. So too does Avendesora weave the threads of your security."*
 

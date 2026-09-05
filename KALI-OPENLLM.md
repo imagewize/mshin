@@ -1,13 +1,13 @@
 # Avendesora: Wheel of Time-Inspired Cybersecurity AI
 
 **Kali Linux MCP + Open LLM Setup Guide**  
-*Inspired by the unbreakable Avendesora tree—rooted in stability, branching into wisdom.*
+*Inspired by the enduring Avendesora tree—rooted in stability, branching into wisdom.*
 
 ---
 
 ## **Overview: The Avendesora System**
 
-> *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats, weaving the threads of knowledge into an unbreakable shield."*
+> *"When the Breaking shattered the world, Avendesora endured—carried to safety as a cutting by the Aiel and rooted anew, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats, weaving the threads of knowledge into a lasting shield."*
 
 **Avendesora** is a **hybrid cybersecurity AI system** that combines:
 
@@ -25,7 +25,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
    /  ()  \|  __|   | | |   | | |   | | |   
   /  __/  | |____  | | |   | | |   | | |___  
  /______/  |______| |_| |___| |_|   |_| |___| 
-   AVENDESORA: The Unbreakable Security AI
+   AVENDESORA: The Enduring Security AI
 ```
 
 ---
