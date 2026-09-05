@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- README's opening line still led with `Mistral Small 3 / Llama 3.3 70B`, a
+  leftover from the pre-0.1.1 framing in which the 70B was the headline model.
+  It now reads "Mistral Small 3 by default, larger models if your hardware
+  allows", matching the sizing guidance in `docs/architecture.md`.
+
 ## [0.1.1] - 2026-09-05
 
 Documentation-only release. Reframes the hardware guidance so Avendesora is
