@@ -102,7 +102,7 @@ if [ "$assign_ip" = "y" ]; then
     read -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
     read -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
-cat | sudo tee /etc/netplan/00-avendesora-core.yaml <<EOF
+sudo tee /etc/netplan/00-avendesora-core.yaml <<EOF
 network:
   version: 2
   ethernets:
