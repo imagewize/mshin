@@ -1,10 +1,10 @@
-# Avendesora Architecture 🏗️
+# Avendesora Architecture
 
 > *"The Pattern of an Age, the great tapestry of fate, is woven from the threads of every life. Avendesora weaves the threads of your cybersecurity into a shield against the Dark One's storms."*
 
 ---
 
-## 🌳 **System Overview**
+## **System Overview**
 
 Avendesora is designed as a **modular, two-node architecture** to balance performance, scalability, and security. The system separates **LLM inference** (resource-intensive) from **tool execution** (Kali Linux), allowing each component to operate at peak efficiency.
 
@@ -13,11 +13,11 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 │                        AVENDESORA SYSTEM                          │
 ├───────────────────────────┬───────────────────────────────────┤
 │   AVENDESORA CORE          │        AVENDESORA NODE            │
-│  (GMKtec EVO-X2)           │      (MINISFORUM Mini PC)         │
+│  (GMKtec EVO-X3)           │      (MINISFORUM Mini PC)         │
 │                            │                                   │
 │  ┌─────────────────────┐  │  ┌─────────────────────────────┐  │
 │  │  Ollama              │  │  │  Kali Linux                  │  │
-│  │  - Mistral 13B/70B  │◄─┼─►│  - Nmap, Metasploit, etc.      │  │
+│  │  - Mistral / Llama   │◄─┼─►│  - Nmap, Metasploit, etc.      │  │
 │  │  - Local Inference   │  │  │  - MCP Server                │  │
 │  └─────────────────────┘  │  │  - Tool Execution             │  │
 │                            │  └─────────────────────────────┘  │
@@ -31,22 +31,22 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 
 ---
 
-## 🧩 **Components**
+## **Components**
 
 ---
 
-### **1. Avendesora Core (GMKtec EVO-X2)**
+### **1. Avendesora Core (GMKtec EVO-X3)**
 
 **Role:** LLM Inference Server
 
 
 | **Aspect**      | **Details**                                                      |
 | --------------- | ---------------------------------------------------------------- |
-| **Hardware**    | GMKtec EVO-X2 (Ryzen AI Max+ 395, 128GB RAM, 2TB SSD)            |
-| **Purpose**     | Runs the LLM (Mistral 13B/70B) and handles inference requests    |
+| **Hardware**    | GMKtec EVO-X3 (Ryzen AI Max+ 395, 128GB RAM, 2TB SSD)            |
+| **Purpose**     | Runs the LLM (Mistral Small 3 / Llama 3.3 70B) and handles inference requests    |
 | **Software**    | Ollama, MCP Client                                               |
-| **Models**      | Mistral 13B (Q4_K_M, ~8GB), Mistral 70B (Q4_K_M, ~40GB)          |
-| **Performance** | 10–20 tokens/sec for 70B models, 20–30 tokens/sec for 13B models |
+| **Models**      | Mistral Small 3 (Q4_K_M, ~14GB), Llama 3.3 70B (Q4_K_M, ~40GB)          |
+| **Performance** | 10–20 tokens/sec for the 70B model, 20–40 tokens/sec for the 24B model |
 | **Network**     | Connects to Avendesora Node via MCP (port 3000)                  |
 
 
@@ -128,12 +128,12 @@ User → LLM (Avendesora Core) → MCP Client → MCP Server (Avendesora Node) �
 
 ---
 
-## 🔄 **Data Flow**
+## **Data Flow**
 
 ```mermaid
 graph TD
     A[User Prompt] -->|Sent to| B[Avendesora Core]
-    B -->|Processes with| C[LLM: Mistral 13B/70B]
+    B -->|Processes with| C[LLM: Mistral Small / Llama 3.3 70B]
     C -->|Needs tool?| D{MCP Client}
     D -->|Calls| E[MCP Server on Avendesora Node]
     E -->|Executes| F[Kali Tool: Nmap/Metasploit/etc.]
@@ -169,7 +169,7 @@ graph TD
 
 ---
 
-## 🔧 **Customization**
+## **Customization**
 
 ### **Adding New Tools to MCP Server**
 
@@ -202,7 +202,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ---
 
-## 🛡️ **Security Considerations**
+## **Security Considerations**
 
 ### **Network Isolation**
 
@@ -221,13 +221,13 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ---
 
-## 📊 **Performance Metrics**
+## **Performance Metrics**
 
 
-| **Task**              | **Avendesora Core (EVO-X2)** | **Avendesora Node (UM790 Pro)** | **End-to-End Latency** |
+| **Task**              | **Avendesora Core (EVO-X3)** | **Avendesora Node (UM790 Pro)** | **End-to-End Latency** |
 | --------------------- | ---------------------------- | ------------------------------- | ---------------------- |
-| Mistral 13B Inference | 20–30 tokens/sec             | N/A                             | <1 sec                 |
-| Mistral 70B Inference | 10–20 tokens/sec             | N/A                             | <2 sec                 |
+| Mistral Small 3 (24B)  | 20–30 tokens/sec             | N/A                             | <1 sec                 |
+| Llama 3.3 70B         | 10–20 tokens/sec             | N/A                             | <2 sec                 |
 | Nmap Scan             | N/A                          | ~5–10 sec (depends on target)   | <15 sec                |
 | Searchsploit Query    | N/A                          | ~1–2 sec                        | <5 sec                 |
 | Metasploit Command    | N/A                          | ~3–5 sec                        | <10 sec                |
@@ -235,7 +235,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ---
 
-## 🌳 **Wheel of Time Parallels**
+## **Wheel of Time Parallels**
 
 
 | **Avendesora System**  | **Wheel of Time Lore**                | **Symbolism**                                       |
@@ -249,7 +249,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ---
 
-## 🔮 **Future Extensions**
+## **Future Extensions**
 
 ### **1. Multi-Node Support**
 
@@ -257,7 +257,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ### **2. Custom LLM Fine-Tuning**
 
-- Fine-tune Mistral 7B/13B on cybersecurity datasets for **domain-specific knowledge** (see `docs/fine-tuning.md` in future updates).
+- Fine-tune Mistral 7B / Mistral Small 3 (24B) on cybersecurity datasets for **domain-specific knowledge** (see `docs/fine-tuning.md` in future updates).
 
 ### **3. Web Interface**
 
@@ -269,7 +269,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 
 ---
 
-## 📚 **References**
+## **References**
 
 - [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/specification)
 - [Ollama Documentation](https://github.com/jmorganca/ollama)

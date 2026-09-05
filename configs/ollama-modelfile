@@ -2,7 +2,7 @@ Avendesora Custom Model File for Ollama
 
 Usage: Save as Modelfile and create a model with ollama create avendesora -f Modelfile
 
-FROM mistral:13b
+FROM mistral-small
 
 Custom system prompt for Avendesora
 

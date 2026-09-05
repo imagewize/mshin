@@ -5,13 +5,13 @@
 
 ---
 
-## 🌳 **Overview: The Avendesora System**
+## **Overview: The Avendesora System**
 
 > *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats, weaving the threads of knowledge into an unbreakable shield."*
 
 **Avendesora** is a **hybrid cybersecurity AI system** that combines:
 
-- A **local, private LLM** (Mistral 13B/70B) for reasoning and analysis
+- A **local, private LLM** (Mistral Small 3 / Llama 3.3 70B) for reasoning and analysis
 - **Kali Linux tools** (Nmap, Metasploit, etc.) exposed via **Model Context Protocol (MCP)**
 - A **two-machine architecture** for scalability and performance
 
@@ -30,14 +30,14 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ---
 
-## 🛒 **Hardware Architecture**
+## **Hardware Architecture**
 
 ```
 ┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X2      │       │   MINISFORUM Mini PC │
+│   GMKtec EVO-X3      │       │   MINISFORUM Mini PC │
 │  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
-│ - Runs Mistral 13B/  │       │ - Runs Kali tools     │
-│   70B locally         │       │ - MCP Server          │
+│ - Runs Mistral Small │       │ - Runs Kali tools     │
+│   / Llama 3.3 70B    │       │ - MCP Server          │
 │ - Ollama/LM Studio    │       │ - Nmap, Metasploit,   │
 │ - Handles inference   │       │   Searchsploit, etc.  │
 └─────────────────────┘       └─────────────────────┘
@@ -47,7 +47,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 | Device                   | Role                                       | Specs                                 | Price (USD)  | Notes                               |
 | ------------------------ | ------------------------------------------ | ------------------------------------- | ------------ | ----------------------------------- |
-| **GMKtec EVO-X2**        | **Avendesora Core** (LLM Inference Server) | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | $2,300–2,500 | Runs 70B models at 10–20 tokens/sec |
+| **GMKtec EVO-X3**        | **Avendesora Core** (LLM Inference Server) | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | ~$3,800 (2026) | Runs 70B models at 10–20 tokens/sec |
 | **MINISFORUM UM790 Pro** | **Avendesora Node** (Kali + MCP Server)    | Ryzen 7 8845HS, 32GB RAM, 1TB SSD     | $700         | Fast CPU for tool execution         |
 
 
@@ -55,7 +55,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ---
 
-## 📦 **Software Stack**
+## **Software Stack**
 
 
 | Component       | Purpose                   | Version/Link                                                                               |
@@ -63,13 +63,13 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 | Kali Linux      | Cybersecurity tools       | [kali.org](https://www.kali.org/)                                                          |
 | MCP Server      | Exposes Kali tools to LLM | [github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) |
 | Ollama          | LLM inference engine      | [ollama.com](https://ollama.com)                                                           |
-| Mistral 13B/70B | Open-weight LLM           | [mistral.ai](https://mistral.ai/)                                                          |
+| Mistral Small 3 / Llama 3.3 | Open-weight LLMs | [ollama.com/library](https://ollama.com/library)                                                          |
 | Node.js         | Required for MCP server   | v20+                                                                                       |
 
 
 ---
 
-## 🔧 **Setup Instructions**
+## **Setup Instructions**
 
 ---
 
@@ -159,7 +159,7 @@ sudo netplan apply
 
 ---
 
-### **2. Avendesora Core (GMKtec EVO-X2): LLM Inference Server**
+### **2. Avendesora Core (GMKtec EVO-X3): LLM Inference Server**
 
 #### **2.1 Install Ollama**
 
@@ -167,14 +167,14 @@ sudo netplan apply
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-#### **2.2 Pull Mistral 13B or 70B**
+#### **2.2 Pull Your Model**
 
 ```bash
-# For Mistral 13B (Q4_K_M, ~8GB)
-ollama pull mistral:13b
+# Default: Mistral Small 3 24B (Q4_K_M, ~14GB) — fast, good tool-caller
+ollama pull mistral-small
 
-# For Mistral 70B (Q4_K_M, ~40GB)
-ollama pull mistral:70b
+# Larger/more capable: Llama 3.3 70B (Q4_K_M, ~40GB)
+ollama pull llama3.3:70b
 ```
 
 #### **2.3 Install MCP Client**
@@ -188,7 +188,7 @@ npm install -g @modelcontextprotocol/client
 ```bash
 mcp-client \
   --llm cmd:ollama \
-  --llm-args mistral:13b \
+  --llm-args mistral-small \
   --mcp-server http://192.168.1.100:3000
 ```
 
@@ -218,7 +218,7 @@ sudo netplan apply
 
 ---
 
-## 🔄 **Network Setup**
+## **Network Setup**
 
 1. **Connect both devices to the same LAN** via Ethernet (recommended) or Wi-Fi.
 2. **Verify connectivity** from Avendesora Core:
@@ -228,12 +228,12 @@ sudo netplan apply
   ```
 3. **Test MCP connection** from Avendesora Core:
   ```bash
-   mcp-client --llm cmd:ollama --llm-args mistral:13b --mcp-server http://192.168.1.100:3000
+   mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://192.168.1.100:3000
   ```
 
 ---
 
-## 🚀 **Example Workflows**
+## **Example Workflows**
 
 ---
 
@@ -301,7 +301,7 @@ sudo netplan apply
 
 ---
 
-## 🔌 **Alternative: SSH Access (No MCP)**
+## **Alternative: SSH Access (No MCP)**
 
 If MCP is too experimental, let the LLM **SSH into the Avendesora Node** and run commands directly.
 
@@ -352,7 +352,7 @@ Prompt the LLM to run SSH commands:
 
 ---
 
-## 💡 **Tips and Best Practices**
+## **Tips and Best Practices**
 
 ### **1. Security**
 
@@ -363,7 +363,7 @@ Prompt the LLM to run SSH commands:
 ### **2. Performance**
 
 - Use **Ethernet** for both devices to minimize latency.
-- For **faster inference**, use `ollama run mistral:13b` with `--num-gpu 100` (if GPU is available).
+- For **faster inference**, use `ollama run mistral-small` with `--num-gpu 100` (if GPU is available).
 - For **MCP server**, run only the tools you need (e.g., `--tools nmap,metasploit`).
 
 ### **3. Maintenance**
@@ -379,7 +379,7 @@ Prompt the LLM to run SSH commands:
 
 ---
 
-## 🐛 **Troubleshooting**
+## **Troubleshooting**
 
 
 | Issue                     | Solution                                           |
@@ -393,7 +393,7 @@ Prompt the LLM to run SSH commands:
 
 ---
 
-## 📚 **Resources**
+## **Resources**
 
 - [MCP Documentation](https://github.com/modelcontextprotocol/specification)
 - [Ollama Documentation](https://github.com/jmorganca/ollama)
@@ -403,7 +403,7 @@ Prompt the LLM to run SSH commands:
 
 ---
 
-## 📝 **Changelog**
+## **Changelog**
 
 
 | Date       | Change                                   | Author        |
@@ -413,13 +413,13 @@ Prompt the LLM to run SSH commands:
 
 ---
 
-## 📄 **License**
+## **License**
 
 This document is provided as-is for personal use. No warranty or liability is implied.
 
 ---
 
-## 🌳 **The Avendesora Philosophy**
+## **The Avendesora Philosophy**
 
 > *"Like the Avendesora tree, this system stands as a beacon of resilience and wisdom. Its roots delve deep into the data of your networks, while its branches extend toward the future of cybersecurity. May it serve you as steadfastly as the tree served the Aiel."*
 

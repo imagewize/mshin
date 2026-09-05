@@ -2,7 +2,7 @@
 
 # Avendesora Core Setup Script
 #
-# Description: Automates the setup of Ollama + Mistral LLM on the GMKtec EVO-X2.
+# Description: Automates the setup of Ollama + Mistral LLM on the GMKtec EVO-X3.
 #
 # Usage: bash setup_ollama.sh
 
@@ -46,17 +46,17 @@ sudo apt-get install -y \
 echo "[+] Installing Ollama..."
 curl -fsSL https://ollama.com/install.sh | sh
 
-# --- Pull Mistral 13B (Default) ---
+# --- Pull Mistral Small 3 24B (Default) ---
 
-echo "[+] Pulling Mistral 13B (Q4_K_M)..."
-ollama pull mistral:13b
+echo "[+] Pulling Mistral Small 3 24B (Q4_K_M)..."
+ollama pull mistral-small
 
-# --- Optional: Pull Mistral 70B ---
+# --- Optional: Pull Llama 3.3 70B ---
 
-read -p "[?] Pull Mistral 70B as well? (y/n): " pull_70b
+read -p "[?] Pull Llama 3.3 70B as well? (y/n): " pull_70b
 if [ "$pull_70b" = "y" ]; then
-    echo "[+] Pulling Mistral 70B (Q4_K_M)..."
-    ollama pull mistral:70b
+    echo "[+] Pulling Llama 3.3 70B (Q4_K_M)..."
+    ollama pull llama3.3:70b
 fi
 
 # --- Install MCP Client ---
@@ -105,7 +105,7 @@ echo ""
 
 mcp-client \
   --llm cmd:ollama \
-  --llm-args mistral:13b \
+  --llm-args mistral-small \
   --mcp-server http://$NODE_IP:3000
 EOF
 
@@ -118,9 +118,9 @@ echo ""
 echo "[+] Avendesora Core setup complete!"
 echo ""
 echo "   Ollama: Installed"
-echo "   Models: mistral:13b"
+echo "   Models: mistral-small"
 if [ "$pull_70b" = "y" ]; then
-    echo "          mistral:70b"
+    echo "          llama3.3:70b"
 fi
 echo "   MCP Client: Installed"
 echo ""

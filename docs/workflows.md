@@ -1,4 +1,4 @@
-# Avendesora Workflows 🔄
+# Avendesora Workflows
 
 > *"The Wheel weaves the Pattern of the Age, and the threads of every life are part of the design. So too does Avendesora weave the threads of your cybersecurity workflows into a tapestry of defense."*
 
@@ -6,20 +6,20 @@ This document provides **practical examples** of how to use Avendesora for commo
 
 ---
 
-## 📋 **General Tips for Prompting Avendesora**
+## **General Tips for Prompting Avendesora**
 
 1. **Be Specific:** Include **IPs, domains, or parameters** in your prompts.
-  - ❌ "Scan a network."
-  - ✅ "Avendesora, run an Nmap scan on 192.168.1.1/24 and list all open ports."
+  - "Scan a network."
+  - "Avendesora, run an Nmap scan on 192.168.1.1/24 and list all open ports."
 2. **Chain Commands:** Avendesora can **execute multiple tools in sequence**.
-  - ✅ "Run Nmap on 192.168.1.1, then use Searchsploit to find exploits for any vulnerable services."
+  - "Run Nmap on 192.168.1.1, then use Searchsploit to find exploits for any vulnerable services."
 3. **Ask for Analysis:** The LLM can **interpret tool outputs** and provide recommendations.
-  - ✅ "Analyze this Nmap scan for critical vulnerabilities and suggest mitigation steps."
+  - "Analyze this Nmap scan for critical vulnerabilities and suggest mitigation steps."
 4. **Use the Name:** Addressing the system as **"Avendesora"** helps it recognize the context.
 
 ---
 
-## 🔍 **Workflow 1: Automated Vulnerability Scanning**
+## **Workflow 1: Automated Vulnerability Scanning**
 
 ### **Objective:**
 
@@ -69,7 +69,7 @@ Avendesora, perform the following steps on 192.168.1.1:
 
 ---
 
-## 🛡️ **Workflow 2: Incident Response**
+## **Workflow 2: Incident Response**
 
 ### **Objective:**
 
@@ -116,7 +116,7 @@ Avendesora, analyze the following suspicious IP: 203.0.113.45.
 
 ---
 
-## 🔓 **Workflow 3: Exploit Development**
+## **Workflow 3: Exploit Development**
 
 ### **Objective:**
 
@@ -155,7 +155,7 @@ Include the full command with all necessary parameters.
 
 ---
 
-## 🌐 **Workflow 4: Web Application Testing**
+## **Workflow 4: Web Application Testing**
 
 ### **Objective:**
 
@@ -204,7 +204,7 @@ Provide a prioritized list of issues and remediation steps.
 
 ---
 
-## 📊 **Workflow 5: Network Traffic Analysis**
+## **Workflow 5: Network Traffic Analysis**
 
 ### **Objective:**
 
@@ -252,7 +252,7 @@ Focus on:
 
 ---
 
-## 📝 **Workflow 6: Phishing Email Analysis**
+## **Workflow 6: Phishing Email Analysis**
 
 ### **Objective:**
 
@@ -309,7 +309,7 @@ Body:
 
 ---
 
-## 🛠️ **Workflow 7: Custom Tool Integration**
+## **Workflow 7: Custom Tool Integration**
 
 ### **Objective:**
 
@@ -344,7 +344,7 @@ avendesora ALL=(ALL) NOPASSWD: /scripts/scan_subnets.py
 
 ---
 
-## 💡 **Advanced Workflows**
+## **Advanced Workflows**
 
 ### **Workflow 8: Automated Penetration Testing**
 
@@ -381,7 +381,7 @@ Avendesora, audit 192.168.1.1 for PCI DSS compliance:
 
 ---
 
-## 📌 **Best Practices for Workflows**
+## **Best Practices for Workflows**
 
 1. **Start Small:** Test with **single tools** before chaining multiple commands.
 2. **Validate Outputs:** Always **verify tool outputs** before acting on them.
@@ -391,7 +391,7 @@ Avendesora, audit 192.168.1.1 for PCI DSS compliance:
 
 ---
 
-## 🔗 **Integrating with Other Tools**
+## **Integrating with Other Tools**
 
 ### **Slack/Teams Bot**
 
