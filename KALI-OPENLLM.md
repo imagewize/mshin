@@ -34,7 +34,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ```
 ┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X3      │       │   MINISFORUM Mini PC │
+│   GMKtec EVO-X3      │       │   Kali Node (mini PC)│
 │  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
 │ - Runs Mistral Small │       │ - Runs Kali tools     │
 │   / Llama 3.3 70B    │       │ - MCP Server          │
@@ -48,10 +48,10 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 | Device                   | Role                                       | Specs                                 | Price (USD)  | Notes                               |
 | ------------------------ | ------------------------------------------ | ------------------------------------- | ------------ | ----------------------------------- |
 | **GMKtec EVO-X3**        | **Avendesora Core** (LLM Inference Server) | Ryzen AI Max+ 395, 128GB RAM, 2TB SSD | ~$3,800 (2026) | Runs 70B models at 10–20 tokens/sec |
-| **MINISFORUM UM790 Pro** | **Avendesora Node** (Kali + MCP Server)    | Ryzen 7 8845HS, 32GB RAM, 1TB SSD     | $700         | Fast CPU for tool execution         |
+| **Any x86_64 mini PC / SFF** | **Avendesora Node** (Kali + MCP Server) | Intel N100/N150, Core i9-10980HK, Ryzen 7 5800U/7730U, etc. | $150–350     | Tool execution only; no inference   |
 
 
-**Total Cost:** **~$3,000** (one-time, no monthly fees)
+**Total Cost:** **~$2,000–4,500** (one-time, no monthly fees), depending on the Node choice and whether you already own a suitable Core machine.
 
 ---
 
@@ -61,7 +61,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 | Component       | Purpose                   | Version/Link                                                                               |
 | --------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
 | Kali Linux      | Cybersecurity tools       | [kali.org](https://www.kali.org/)                                                          |
-| MCP Server      | Exposes Kali tools to LLM | [github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) |
+| MCP Server      | Exposes Kali tools to LLM | `servers/src/kali` (custom Avendesora server) |
 | Ollama          | LLM inference engine      | [ollama.com](https://ollama.com)                                                           |
 | Mistral Small 3 / Llama 3.3 | Open-weight LLMs | [ollama.com/library](https://ollama.com/library)                                                          |
 | Node.js         | Required for MCP server   | v20+                                                                                       |
@@ -73,7 +73,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ---
 
-### **1. Avendesora Node (MINISFORUM): Kali Linux + MCP Server**
+### **1. Avendesora Node: Kali Linux + MCP Server**
 
 #### **1.1 Install Kali Linux**
 
@@ -96,16 +96,17 @@ sudo apt install -y nodejs git
 
 #### **1.3 Set Up MCP Server for Kali Tools**
 
+Avendesora ships its own Kali MCP server (the upstream `modelcontextprotocol/servers` repo does not include a Kali server).
+
 ```bash
-# Clone the MCP servers repository
-git clone https://github.com/modelcontextprotocol/servers.git
-cd servers/src/kali
+# The server lives in the Avendesora repository
+cd /opt/avendesora/servers/src/kali
 
 # Install dependencies
 npm install
 
 # Start the MCP server (Avendesora Node)
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois &
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark &
 ```
 
 #### **1.4 Create a `systemd` Service for MCP Server**
@@ -117,11 +118,19 @@ Description=Avendesora Node: MCP Server for Kali Tools
 After=network.target
 
 [Service]
-User=root
-WorkingDirectory=/root/servers/src/kali
-ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois
+User=avendesora
+WorkingDirectory=/opt/avendesora/servers/src/kali
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
 Restart=always
+RestartSec=5s
 Environment=NODE_ENV=production
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/avendesora /home/avendesora
 
 [Install]
 WantedBy=multi-user.target
@@ -137,18 +146,23 @@ sudo systemctl status avendesora-node  # Verify it's running
 
 #### **1.5 Assign a Static IP**
 
-Edit `/etc/netplan/00-installer-config.yaml`:
+Create `/etc/netplan/00-avendesora-node.yaml`:
 
 ```yaml
 network:
-  ethernet:
+  version: 2
+  ethernets:
     enp1s0:
       dhcp4: no
-      addresses: [192.168.1.100/24]
-      gateway4: 192.168.1.1
+      addresses:
+        - 192.168.1.100/24
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
-  version: 2
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4
 ```
 
 Apply changes:
@@ -177,37 +191,50 @@ ollama pull mistral-small
 ollama pull llama3.3:70b
 ```
 
-#### **2.3 Install MCP Client**
+#### **2.3 Create the Avendesora Persona Model**
 
 ```bash
-npm install -g @modelcontextprotocol/client
+ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
 ```
 
-#### **2.4 Connect to Avendesora Node**
+#### **2.4 Install the Avendesora CLI Client**
 
 ```bash
-mcp-client \
-  --llm cmd:ollama \
-  --llm-args mistral-small \
-  --mcp-server http://192.168.1.100:3000
+cd /opt/avendesora/clients/avendesora-cli
+npm install
 ```
 
-Replace `192.168.1.100` with the **IP of your Avendesora Node (MINISFORUM)**.
+#### **2.5 Connect to Avendesora Node**
 
-#### **2.5 Assign a Static IP**
+```bash
+# Use the wrapper installed by setup_ollama.sh:
+avendesora 192.168.1.100
 
-Edit `/etc/netplan/00-installer-config.yaml`:
+# Or run the client directly:
+/opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.1.100:3000 --model avendesora
+```
+
+Replace `192.168.1.100` with the **IP of your Avendesora Node**.
+
+#### **2.6 Assign a Static IP**
+
+Create `/etc/netplan/00-avendesora-core.yaml`:
 
 ```yaml
 network:
-  ethernet:
+  version: 2
+  ethernets:
     enp1s0:
       dhcp4: no
-      addresses: [192.168.1.200/24]
-      gateway4: 192.168.1.1
+      addresses:
+        - 192.168.1.200/24
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
-  version: 2
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4
 ```
 
 Apply changes:
@@ -224,11 +251,11 @@ sudo netplan apply
 2. **Verify connectivity** from Avendesora Core:
   ```bash
    ping 192.168.1.100  # Avendesora Node IP
-   curl http://192.168.1.100:3000  # MCP server
+   curl http://192.168.1.100:3000/health  # MCP server health check
   ```
-3. **Test MCP connection** from Avendesora Core:
+3. **Test the connection** from Avendesora Core:
   ```bash
-   mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://192.168.1.100:3000
+   avendesora 192.168.1.100
   ```
 
 ---
@@ -271,13 +298,11 @@ sudo netplan apply
 **Avendesora Actions:**
 
 1. Calls MCP `whois` tool: `whois 203.0.113.45`
-2. Calls MCP `curl` tool to check [AbuseIPDB](https://www.abuseipdb.com/check/203.0.113.45)
-3. Returns:
+2. Returns:
   ```
    [AVENDESORA INTEL]
    IP belongs to AS12345 (Malicious Hosting Inc.).
-   3 reports of SSH brute-forcing on AbuseIPDB.
-   Recommendation: Block IP at firewall.
+   Recommendation: Correlate with external threat intel (e.g., AbuseIPDB) and consider blocking at the firewall.
   ```
 
 ---
@@ -331,7 +356,7 @@ sudo visudo
 Add:
 
 ```
-avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/metasploit-framework/msfconsole
+avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
 ```
 
 #### **3. Test SSH Access**

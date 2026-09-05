@@ -28,7 +28,7 @@
 
 ```
 ┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X3      │       │   MINISFORUM Mini PC │
+│   GMKtec EVO-X3      │       │   Kali Node (mini PC)│
 │  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
 │ - Avendesora Core    │       │ - Avendesora Node    │
 │ - Runs Mistral Small │       │ - Runs Kali tools     │
@@ -37,10 +37,10 @@
 ```
 
 
-| Component           | Role                    | Hardware                  |
-| ------------------- | ----------------------- | ------------------------- |
-| **Avendesora Core** | LLM Inference Server    | GMKtec EVO-X3 (128GB RAM) |
-| **Avendesora Node** | Kali Linux + MCP Server | MINISFORUM UM790 Pro      |
+| Component           | Role                    | Hardware                              |
+| ------------------- | ----------------------- | ------------------------------------- |
+| **Avendesora Core** | LLM Inference Server    | GMKtec EVO-X3 (128GB RAM)             |
+| **Avendesora Node** | Kali Linux + MCP Server | Any x86_64 mini PC / SFF ($150–350)   |
 
 
 ---
@@ -50,7 +50,7 @@
 ### Prerequisites
 
 - **Avendesora Core**: GMKtec EVO-X3 (or any PC with 32GB+ RAM)
-- **Avendesora Node**: MINISFORUM mini PC (or any Linux-compatible machine)
+- **Avendesora Node**: Any x86_64 mini PC or SFF running Kali Linux
 - **Network**: Both devices on the same LAN
 
 ### Setup
@@ -66,7 +66,7 @@
 3. **Connect and Test:**
   ```bash
    # On Avendesora Core, run:
-   mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://<AVENDESORA_NODE_IP>:3000
+   avendesora <AVENDESORA_NODE_IP>
   ```
 4. **Try a Command:**
   ```

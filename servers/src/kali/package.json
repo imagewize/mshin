@@ -1,0 +1,19 @@
+{
+  "name": "avendesora-kali-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server exposing a curated set of Kali Linux security tools for Avendesora.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --check index.js && node --check tools.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^4.21.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

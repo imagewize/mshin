@@ -13,7 +13,7 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 │                        AVENDESORA SYSTEM                          │
 ├───────────────────────────┬───────────────────────────────────┤
 │   AVENDESORA CORE          │        AVENDESORA NODE            │
-│  (GMKtec EVO-X3)           │      (MINISFORUM Mini PC)         │
+│  (GMKtec EVO-X3)           │      (Kali Node / mini PC)        │
 │                            │                                   │
 │  ┌─────────────────────┐  │  ┌─────────────────────────────┐  │
 │  │  Ollama              │  │  │  Kali Linux                  │  │
@@ -80,25 +80,25 @@ A fair question, since [`llama.cpp`](https://github.com/ggml-org/llama.cpp) is t
 
 ---
 
-### **2. Avendesora Node (MINISFORUM Mini PC)**
+### **2. Avendesora Node (Kali Node / mini PC)**
 
 **Role:** Kali Linux + MCP Server
 
 
 | **Aspect**   | **Details**                                                          |
 | ------------ | -------------------------------------------------------------------- |
-| **Hardware** | MINISFORUM UM790 Pro (Ryzen 7 8845HS, 32GB RAM, 1TB SSD)             |
-| **Purpose**  | Runs Kali Linux tools and exposes them via MCP to the LLM            |
-| **Software** | Kali Linux, MCP Server, Nmap, Metasploit, Searchsploit, Nikto, WHOIS |
-| **Tools**    | Any Kali tool can be exposed via MCP (customizable)                  |
+| **Hardware** | Any x86_64 mini PC / SFF (e.g., Intel N100/N150, Core i9-10980HK, Ryzen 7 5800U/7730U) |
+| **Purpose**  | Runs Kali Linux tools and exposes them via MCP to the LLM                                |
+| **Software** | Kali Linux, Avendesora Kali MCP Server, Nmap, Metasploit, Searchsploit, Nikto, WHOIS, Tshark |
+| **Tools**    | Any Kali tool can be exposed via MCP (customizable)                                      |
 | **Network**  | Hosts MCP server on port 3000, accessible by Avendesora Core         |
 
 
 **Why This Hardware?**
 
-- **32GB RAM**: More than enough for Kali Linux and MCP server.
-- **Ryzen 7 8845HS**: Fast CPU for tool execution.
-- **Compact**: Fits anywhere, low power consumption.
+- **16–32GB RAM**: More than enough for Kali Linux and the MCP server.
+- **x86_64 CPU**: Required for Kali Linux and most security tools.
+- **Low cost / low power**: The Node does not run inference; a $150–300 mini PC is sufficient.
 
 ---
 
@@ -109,12 +109,14 @@ A fair question, since [`llama.cpp`](https://github.com/ggml-org/llama.cpp) is t
 MCP is an **open protocol** that allows LLMs to interact with external tools and data sources. In Avendesora:
 
 - The **MCP Server** runs on the Avendesora Node and exposes Kali tools as callable functions.
-- The **MCP Client** runs on the Avendesora Core and lets the LLM call these functions.
+- The **MCP Client** is the Avendesora CLI harness on the Avendesora Core; it lets the LLM call these functions.
+
+Avendesora uses a **custom Kali MCP server** (`servers/src/kali`) because the upstream `modelcontextprotocol/servers` repository does not include a Kali-specific server.
 
 **Example Flow:**
 
 ```
-User → LLM (Avendesora Core) → MCP Client → MCP Server (Avendesora Node) → Kali Tool → Response
+User → LLM (Avendesora Core) → Avendesora CLI → MCP Server (Avendesora Node) → Kali Tool → Response
 ```
 
 **Supported Tools (Default):**
@@ -123,7 +125,8 @@ User → LLM (Avendesora Core) → MCP Client → MCP Server (Avendesora Node) �
 - `metasploit` (Exploit framework)
 - `searchsploit` (Exploit database)
 - `nikto` (Web server scanner)
-- `whois` (Domain information)
+- `whois` (Domain/IP information)
+- `tshark` (Packet analysis)
 - Custom tools can be added by extending the MCP server.
 
 ---
@@ -177,7 +180,7 @@ To expose additional Kali tools via MCP:
 
 1. Edit the MCP server configuration on the Avendesora Node:
   ```bash
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,new_tool
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,new_tool
   ```
 2. Ensure the new tool is installed on the Avendesora Node:
   ```bash
@@ -194,10 +197,10 @@ To use a different model on the Avendesora Core:
 
 ```bash
 # Pull a new model
-ollama pull llama2:70b
+ollama pull llama3.3:70b
 
-# Update the MCP client command
-mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.100:3000
+# Run the client with that model
+avendesora --model llama3.3:70b 192.168.1.100
 ```
 
 ---
@@ -224,7 +227,7 @@ mcp-client --llm cmd:ollama --llm-args llama2:70b --mcp-server http://192.168.1.
 ## **Performance Metrics**
 
 
-| **Task**              | **Avendesora Core (EVO-X3)** | **Avendesora Node (UM790 Pro)** | **End-to-End Latency** |
+| **Task**              | **Avendesora Core (EVO-X3)** | **Avendesora Node (mini PC)**   | **End-to-End Latency** |
 | --------------------- | ---------------------------- | ------------------------------- | ---------------------- |
 | Mistral Small 3 (24B)  | 20–30 tokens/sec             | N/A                             | <1 sec                 |
 | Llama 3.3 70B         | 10–20 tokens/sec             | N/A                             | <2 sec                 |

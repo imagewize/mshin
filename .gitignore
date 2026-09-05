@@ -28,5 +28,8 @@ __pycache__/
 .venv/
 venv/
 
+# Node.js
+node_modules/
+
 # Claude Code
 .claude/
