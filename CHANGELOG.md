@@ -7,12 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-05
+
+Agent-harness release. Introduces the first `observe-decide-act` loop in the
+CLI client, persistent session memory, an approval gate for destructive tools,
+and context compaction for long-running security workflows. Also includes the
+README lead-in fix that was pending in `Unreleased`.
+
+### Added
+
+- **`clients/avendesora-cli/agent.js`** — a new `Agent` class that implements
+  the ReAct-style loop described in `docs/cybersecurity-agent-roadmap.md`:
+  one tool decision per turn, native Ollama tool-calling, a hard step budget,
+  and structured callbacks for UI updates.
+- **Persistent session memory** (`AgentMemory`) stored as JSON under
+  `~/.avendesora/memory.json`. Keeps a running transcript of each session so
+  the agent can refer back to previous tool results without relying solely on
+  the LLM context window. Swappable for SQLite/Redis if multi-user support is
+  needed later.
+- **Active-tool approval gate**. Destructive tools such as `metasploit` now
+  require explicit user confirmation before each invocation. Passive
+  reconnaissance tools run automatically.
+- **Context compaction** to keep long tool-output streams within a token
+  budget. Oldest non-essential messages are dropped while preserving the
+  system prompt and the original user goal.
+
+### Changed
+
+- Refactored `clients/avendesora-cli/index.js` to delegate the LLM/MCP loop
+  to the new `Agent` class. The CLI now prints tool-call previews and
+  approval prompts instead of handling the loop inline.
+- Expanded the CLI test script to syntax-check both `index.js` and
+  `agent.js`.
+
 ### Fixed
 
 - README's opening line still led with `Mistral Small 3 / Llama 3.3 70B`, a
   leftover from the pre-0.1.1 framing in which the 70B was the headline model.
   It now reads "Mistral Small 3 by default, larger models if your hardware
   allows", matching the sizing guidance in `docs/architecture.md`.
+- Shellcheck warnings in provisioning scripts:
+  - `read -p` without `-r` in `scripts/setup_mcp_server.sh` and
+    `scripts/setup_ollama.sh` could mangle backslashes in user input.
+  - Removed unused `DEFAULT_NODE_IP` from `scripts/setup_ollama.sh`.
 
 ## [0.1.1] - 2026-09-05
 
@@ -98,6 +135,7 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/imagewize/avendesora/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/imagewize/avendesora/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/imagewize/avendesora/releases/tag/v0.1.0

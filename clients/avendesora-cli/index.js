@@ -2,11 +2,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import readline from "node:readline";
+import { Agent, AgentMemory, askYesNo } from "./agent.js";
 
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "avendesora";
-const MAX_TOOL_ITERATIONS = 10;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -47,33 +47,6 @@ The positional NODE_IP argument can be used as a shortcut for --node.
   }
 
   return { nodeUrl, ollamaUrl, model };
-}
-
-async function chatWithOllama(ollamaUrl, model, messages, tools) {
-  const body = {
-    model,
-    messages,
-    tools,
-    stream: false,
-    options: {
-      temperature: 0.7,
-      top_p: 0.9,
-      top_k: 40,
-    },
-  };
-
-  const res = await fetch(`${ollamaUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Ollama returned ${res.status}: ${text}`);
-  }
-
-  return res.json();
 }
 
 function mcpToolsToOllama(tools) {
@@ -124,6 +97,15 @@ async function main() {
   console.log("");
   console.log('Type a prompt, or "exit" to quit.\n');
 
+  const memory = new AgentMemory();
+  const agent = new Agent({
+    mcpClient: client,
+    ollamaUrl,
+    model,
+    tools: ollamaTools,
+    memory,
+  });
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -143,48 +125,32 @@ async function main() {
       return;
     }
 
-    const messages = [
-      {
-        role: "user",
-        content: userInput,
-      },
-    ];
+    // Each prompt is its own session for now. A future UI can let the user
+    // continue a prior session by ID.
+    const sessionId = `cli-${Date.now()}`;
 
     try {
-      for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-        const response = await chatWithOllama(
-          ollamaUrl,
-          model,
-          messages,
-          ollamaTools
-        );
-
-        const assistantMessage = response.message;
-        messages.push(assistantMessage);
-
-        const toolCalls = assistantMessage.tool_calls || [];
-        if (toolCalls.length === 0) {
-          console.log(`\n${assistantMessage.content}\n`);
-          break;
-        }
-
-        for (const call of toolCalls) {
-          const name = call.function?.name;
-          const args = call.function?.arguments || {};
+      await agent.run({
+        sessionId,
+        userGoal: userInput,
+        onToolCall: (name, args) => {
           console.log(`  [tool] ${name}(${JSON.stringify(args)})`);
-
-          const result = await client.callTool({ name, arguments: args });
-          const text = result.content
-            ?.map((c) => (c.type === "text" ? c.text : ""))
-            .join("\n") || "(no output)";
-
-          messages.push({
-            role: "tool",
-            name,
-            content: text,
-          });
-        }
-      }
+        },
+        onToolResult: (name, text) => {
+          // Keep the UI tidy; full results live in memory.
+          const preview = text.split("\n").slice(0, 3).join("\n");
+          console.log(`  [result] ${preview}${text.length > preview.length ? " ..." : ""}`);
+        },
+        onApproval: async (name, args) => {
+          const argSummary = JSON.stringify(args, null, 2);
+          return askYesNo(
+            `\n  [approval] The agent wants to run the active tool '${name}' with:\n  ${argSummary}\n  Allow this execution?`
+          );
+        },
+        onComplete: (answer) => {
+          console.log(`\n${answer}\n`);
+        },
+      });
     } catch (err) {
       console.error(`\n[ERROR] ${err.message}\n`);
     }

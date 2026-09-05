@@ -1,6 +1,6 @@
 {
   "name": "avendesora-cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Interactive CLI harness that connects Ollama to the Avendesora Kali MCP server.",
   "type": "module",
   "main": "index.js",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --check index.js"
+    "test": "node --check index.js && node --check agent.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"
