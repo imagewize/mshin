@@ -1,4 +1,4 @@
-# Contributing to Avendesora 🤝
+# Contributing to Avendesora
 
 > *"The Aiel say, 'The way of the leaf is the way of the coward.' But in the world of code, the way of the leaf is the way of collaboration. Together, we weave a stronger Pattern."*
 
@@ -6,13 +6,13 @@ We welcome contributions to **Avendesora**! Whether you're fixing bugs, adding n
 
 ---
 
-## 📌 **Code of Conduct**
+## **Code of Conduct**
 
 By participating in this project, you agree to abide by the **[Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/version/2/0/code_of_conduct.html)**. Be respectful, inclusive, and collaborative.
 
 ---
 
-## 🚀 **How to Contribute**
+## **How to Contribute**
 
 ### **1. Reporting Bugs**
 
@@ -49,12 +49,12 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 ---
 
-## 🛠️ **Development Setup**
+## **Development Setup**
 
 ### **Prerequisites**
 
 - **Avendesora Node:** MINISFORUM mini PC (or equivalent) with Kali Linux.
-- **Avendesora Core:** GMKtec EVO-X2 (or equivalent) with Ubuntu/Debian.
+- **Avendesora Core:** GMKtec EVO-X3 (or equivalent) with Ubuntu/Debian.
 - **Basic knowledge** of Linux, networking, and Git.
 
 ### **Setting Up a Development Environment**
@@ -69,7 +69,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 ---
 
-## 📂 **Project Structure**
+## **Project Structure**
 
 ```
 avendesora/
@@ -93,7 +93,7 @@ avendesora/
 
 ---
 
-## 🎯 **Contribution Guidelines**
+## **Contribution Guidelines**
 
 ### **1. Code Style**
 
@@ -122,7 +122,7 @@ avendesora/
 
 ---
 
-## 🌟 **Ways to Contribute**
+## **Ways to Contribute**
 
 
 | Type               | Examples                                   | How to Start                        |
@@ -137,13 +137,13 @@ avendesora/
 
 ---
 
-## 🙏 **Acknowledgments**
+## **Acknowledgments**
 
 Thank you to all contributors who help make **Avendesora** better! Your efforts are woven into the Pattern of this project.
 
 ---
 
-## 📜 **License**
+## **License**
 
 By contributing to Avendesora, you agree that your contributions will be licensed under the **MIT License** (see [LICENSE](LICENSE)).
 

@@ -1,4 +1,4 @@
-# Avendesora Setup Guide 🛠️
+# Avendesora Setup Guide
 
 > *"The Way of the Leaf is not for all, but the Way of the Blade must be mastered. So too must you master the setup of Avendesora, that it may serve you as the Aiel serve the Dragon."*
 
@@ -6,14 +6,14 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 
 ---
 
-## 📋 **Prerequisites**
+## **Prerequisites**
 
 ### **Hardware**
 
 
 | Component           | Role                    | Minimum Requirements            | Recommended Model         |
 | ------------------- | ----------------------- | ------------------------------- | ------------------------- |
-| **Avendesora Core** | LLM Inference Server    | 32GB RAM, 1TB SSD, modern CPU   | GMKtec EVO-X2 (128GB RAM) |
+| **Avendesora Core** | LLM Inference Server    | 32GB RAM, 1TB SSD, modern CPU   | GMKtec EVO-X3 (128GB RAM) |
 | **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | MINISFORUM UM790 Pro      |
 
 
@@ -29,7 +29,7 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 
 ---
 
-## 🌍 **Network Setup**
+## **Network Setup**
 
 ### **1. Assign Static IPs**
 
@@ -57,7 +57,7 @@ Apply the changes:
 sudo netplan apply
 ```
 
-#### **On Avendesora Core (GMKtec EVO-X2):**
+#### **On Avendesora Core (GMKtec EVO-X3):**
 
 Edit `/etc/netplan/00-installer-config.yaml`:
 
@@ -95,7 +95,7 @@ If successful, you should see responses like:
 
 ---
 
-## 🖥️ **Step 1: Set Up Avendesora Node (Kali Linux + MCP Server)**
+## **Step 1: Set Up Avendesora Node (Kali Linux + MCP Server)**
 
 ### **1.1 Install Kali Linux**
 
@@ -234,11 +234,11 @@ avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/me
 
 ---
 
-## 🧠 **Step 2: Set Up Avendesora Core (LLM Inference Server)**
+## **Step 2: Set Up Avendesora Core (LLM Inference Server)**
 
 ### **2.1 Install Ubuntu/Debian**
 
-If your GMKtec EVO-X2 doesn’t already have Linux installed:
+If your GMKtec EVO-X3 doesn’t already have Linux installed:
 
 1. Download **Ubuntu 24.04 LTS** or **Debian 12**:
   ```bash
@@ -265,16 +265,16 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ### **2.4 Pull the LLM Model**
 
-Pull **Mistral 13B** (recommended for balance of performance and capability):
+Pull **Mistral Small 3 (24B)** (recommended for balance of performance and capability):
 
 ```bash
-ollama pull mistral:13b
+ollama pull mistral-small
 ```
 
-For **Mistral 70B** (requires more RAM):
+For **Llama 3.3 70B** (requires more RAM):
 
 ```bash
-ollama pull mistral:70b
+ollama pull llama3.3:70b
 ```
 
 ### **2.5 Install the MCP Client**
@@ -290,7 +290,7 @@ Run the MCP client, pointing it to the Avendesora Node’s MCP server:
 ```bash
 mcp-client \
   --llm cmd:ollama \
-  --llm-args mistral:13b \
+  --llm-args mistral-small \
   --mcp-server http://192.168.1.100:3000
 ```
 
@@ -312,7 +312,7 @@ If everything is set up correctly, Avendesora should:
 
 ---
 
-## 🔧 **Troubleshooting**
+## **Troubleshooting**
 
 ### **MCP Server Not Running**
 
@@ -364,13 +364,13 @@ If everything is set up correctly, Avendesora should:
 
 - **Verify the MCP client is connected:**
   ```bash
-  mcp-client --llm cmd:ollama --llm-args mistral:13b --mcp-server http://192.168.1.100:3000
+  mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://192.168.1.100:3000
   ```
 - **Check the MCP server logs for errors.**
 
 ---
 
-## 🎯 **Next Steps**
+## **Next Steps**
 
 Once Avendesora is set up, explore the following:
 
@@ -380,7 +380,7 @@ Once Avendesora is set up, explore the following:
 
 ---
 
-## 📚 **Additional Resources**
+## **Additional Resources**
 
 - [MCP Documentation](https://github.com/modelcontextprotocol/specification)
 - [Ollama Documentation](https://github.com/jmorganca/ollama)

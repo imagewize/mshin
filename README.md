@@ -11,7 +11,7 @@
 
 > *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats."*
 
-**Avendesora** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral 13B/70B) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
+**Avendesora** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral Small 3 / Llama 3.3 70B) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
 
 ---
 
@@ -28,18 +28,18 @@
 
 ```
 ┌─────────────────────┐       ┌─────────────────────┐
-│   GMKtec EVO-X2      │       │   MINISFORUM Mini PC │
+│   GMKtec EVO-X3      │       │   MINISFORUM Mini PC │
 │  (128GB RAM, 2TB)    │◄──────►│  (Kali Linux + MCP)   │
 │ - Avendesora Core    │       │ - Avendesora Node    │
-│ - Runs Mistral 13B/  │       │ - Runs Kali tools     │
-│   70B locally         │       │ - MCP Server          │
+│ - Runs Mistral Small │       │ - Runs Kali tools     │
+│   / Llama 3.3 70B    │       │ - MCP Server          │
 └─────────────────────┘       └─────────────────────┘
 ```
 
 
 | Component           | Role                    | Hardware                  |
 | ------------------- | ----------------------- | ------------------------- |
-| **Avendesora Core** | LLM Inference Server    | GMKtec EVO-X2 (128GB RAM) |
+| **Avendesora Core** | LLM Inference Server    | GMKtec EVO-X3 (128GB RAM) |
 | **Avendesora Node** | Kali Linux + MCP Server | MINISFORUM UM790 Pro      |
 
 
@@ -49,7 +49,7 @@
 
 ### Prerequisites
 
-- **Avendesora Core**: GMKtec EVO-X2 (or any PC with 32GB+ RAM)
+- **Avendesora Core**: GMKtec EVO-X3 (or any PC with 32GB+ RAM)
 - **Avendesora Node**: MINISFORUM mini PC (or any Linux-compatible machine)
 - **Network**: Both devices on the same LAN
 
@@ -66,7 +66,7 @@
 3. **Connect and Test:**
   ```bash
    # On Avendesora Core, run:
-   mcp-client --llm cmd:ollama --llm-args mistral:13b --mcp-server http://<AVENDESORA_NODE_IP>:3000
+   mcp-client --llm cmd:ollama --llm-args mistral-small --mcp-server http://<AVENDESORA_NODE_IP>:3000
   ```
 4. **Try a Command:**
   ```
