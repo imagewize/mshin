@@ -18,14 +18,17 @@
 This setup allows your LLM to **directly execute cybersecurity tools** in real-time, providing **augmented intelligence** for penetration testing, threat analysis, and incident response—**without fine-tuning or cloud dependencies**.
 
 ```
-       /\          
-      /  \    ______   _______  _______   
-     /____\  |  ____| |__   __||__   __|  
-    /      \ | |__    | | |   | | |   | | |  
-   /  ()  \|  __|   | | |   | | |   | | |   
-  /  __/  | |____  | | |   | | |   | | |___  
- /______/  |______| |_| |___| |_|   |_| |___| 
-   AVENDESORA: The Enduring Security AI
+       \ | /
+     \  \|/  /
+   '-.\\\|///.-'
+  '--._\\|//_.--'
+      \\\|///
+        \|/
+         |
+         |
+
+        A V E N D E S O R A
+   ~ The Enduring Security AI ~
 ```
 
 ---

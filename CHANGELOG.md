@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Aiel carried to safety and replanted in Rhuidean. Also replaced the
   inaccurate "source of ter'angreal" line (its trefoil leaf is the shape of
   the Waygate key).
+- Replace the garbled block-letter banner in `KALI-OPENLLM.md` with the
+  canonical tree logo from `assets/logo.txt`.
 
 ## [0.1.0] - 2026-09-05
 
