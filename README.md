@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Avendesora logo" width="120" height="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" alt="Avendesora logo" width="120" height="120">
+  </picture>
 </p>
 
 <div align="center">
