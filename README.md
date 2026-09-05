@@ -28,19 +28,23 @@
 
 ```
 ┌──────────────────────┐          ┌─────────────────────┐
-│ GMKtec EVO-X3        │          │ Kali Node (mini PC) │
-│ (128GB RAM, 2TB)     │          │ (Kali Linux + MCP)  │
-│ - Avendesora Core    │ <──────> │ - Avendesora Node   │
+│ Avendesora Core      │          │ Kali Node (mini PC) │
+│ (32GB+ RAM, any box) │          │ (Kali Linux + MCP)  │
+│ - Ollama + CLI       │ <──────> │ - Avendesora Node   │
 │ - Runs Mistral Small │          │ - Runs Kali tools   │
-│   / Llama 3.3 70B    │          │ - MCP Server        │
+│   24B (or larger)    │          │ - MCP Server        │
 └──────────────────────┘          └─────────────────────┘
 ```
 
 
-| Component           | Role                    | Hardware                              |
-| ------------------- | ----------------------- | ------------------------------------- |
-| **Avendesora Core** | LLM Inference Server    | GMKtec EVO-X3 (128GB RAM)             |
-| **Avendesora Node** | Kali Linux + MCP Server | Any x86_64 mini PC / SFF ($150–350)   |
+| Component           | Role                    | Hardware                                              |
+| ------------------- | ----------------------- | ----------------------------------------------------- |
+| **Avendesora Core** | LLM Inference Server    | Any Linux/macOS box with 32GB+ RAM — start with one you own |
+| **Avendesora Node** | Kali Linux + MCP Server | Any x86_64 mini PC / SFF ($150–350)                   |
+
+The Core is deliberately undemanding: 32GB runs the default 24B model and everything
+in this repo today. Bigger boxes buy *bigger models*, not more speed — see
+[Sizing the Core](docs/architecture.md#sizing-the-core) before spending anything.
 
 
 ---
@@ -49,7 +53,7 @@
 
 ### Prerequisites
 
-- **Avendesora Core**: GMKtec EVO-X3 (or any PC with 32GB+ RAM)
+- **Avendesora Core**: any Linux or macOS machine with **32GB+ RAM** (an existing desktop or Mac is fine)
 - **Avendesora Node**: Any x86_64 mini PC or SFF running Kali Linux
 - **Network**: Both devices on the same LAN
 

@@ -11,10 +11,16 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 ### **Hardware**
 
 
-| Component           | Role                    | Minimum Requirements            | Recommended Model         |
-| ------------------- | ----------------------- | ------------------------------- | ------------------------- |
-| **Avendesora Core** | LLM Inference Server    | 32GB RAM, 1TB SSD, modern CPU   | GMKtec EVO-X3 (128GB RAM) |
-| **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | Any x86_64 mini PC / SFF  |
+| Component           | Role                    | Minimum (start here)            | Optional ceiling                    |
+| ------------------- | ----------------------- | ------------------------------- | ----------------------------------- |
+| **Avendesora Core** | LLM Inference Server    | 32GB RAM, ~50GB free disk, modern CPU | 128GB unified-memory APU (e.g. GMKtec EVO-X3) |
+| **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | Any x86_64 mini PC / SFF            |
+
+The 32GB minimum is a real minimum, not a polite one — it runs the default
+`mistral-small` (24B) model and every workflow in this guide. **Use a machine you
+already own before buying anything.** More RAM buys larger models, not faster ones;
+[Sizing the Core](architecture.md#sizing-the-core) explains the trade-off and when the
+128GB box is actually worth it.
 
 
 ### **Network**
@@ -62,7 +68,7 @@ Apply the changes:
 sudo netplan apply
 ```
 
-#### **On Avendesora Core (GMKtec EVO-X3):**
+#### **On Avendesora Core:**
 
 Create `/etc/netplan/00-avendesora-core.yaml`:
 
@@ -252,7 +258,7 @@ avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/ms
 
 ### **2.1 Install Ubuntu/Debian**
 
-If your GMKtec EVO-X3 doesn’t already have Linux installed:
+If your Core machine doesn’t already have Linux installed:
 
 1. Download **Ubuntu 24.04 LTS** or **Debian 12**:
   ```bash
@@ -291,10 +297,13 @@ Pull **Mistral Small 3 (24B)** (recommended for balance of performance and capab
 ollama pull mistral-small
 ```
 
-For **Llama 3.3 70B** (requires more RAM):
+Larger models, **only if your Core has the memory for them** (see
+[Sizing the Core](architecture.md#sizing-the-core)) — they are not required:
 
 ```bash
-ollama pull llama3.3:70b
+ollama pull qwen3:32b      # ~20GB, needs ~48GB+ RAM
+ollama pull llama3.3:70b   # ~40GB, needs ~64GB+ RAM
+ollama pull gpt-oss:120b   # ~65GB, needs 128GB — fastest of the three (MoE)
 ```
 
 ### **2.5 Create the Avendesora Persona Model**

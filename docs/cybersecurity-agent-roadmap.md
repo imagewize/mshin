@@ -37,7 +37,9 @@ As of September 2026, DDR5 module prices have risen sharply on AI-driven demand 
 | GMKtec EVO-X3 (128GB/2TB)  | ~$2,300       | **~$3,800**           | Current SKU, Ryzen AI Max+ 395, soldered LPDDR5X |
 | RTX 4090 (24GB)            | ~$1,600       | ~$1,800               | Discrete GPU path (see caveats below)        |
 
-> **Why this still favours the unified-memory APU — even at ~$3,800.** The surge hits **memory chips across the board**, so these boxes climbed too. The current-gen **GMKtec EVO-X3** (Ryzen AI Max+ 395, 128GB, 2TB) lists at **$3,799.99**. It's genuinely pricey now. But the comparison that matters is *cost per GB of model-capable memory*. A discrete build that can hold a Q4 70B needs both a 48GB-class card (or 2× 24GB) **and** a big DIMM kit — realistically **~$7,000–8,000** once you add CPU/board/PSU — and it still caps at the card's VRAM. The single ~$3,800 APU box holds a Q4 70B (and even a ~120B MoE) in its 128GB unified pool. So the APU is roughly **half the cost for more model capacity**. This is the choice the base Avendesora architecture already made; the deployment options below lead with it. **If** you buy hardware, 128GB is the floor — don't get one with less, or you lose the 70B headroom that justifies the box.
+> **First: don't buy anything yet.** With memory priced like this, the cheapest correct move is to run the Core on a machine you already own. A 32GB desktop or Mac runs `mistral-small` (24B) fine, and the work that remains on this roadmap — the agent loop, context management, safety gating, reporting — is **model-agnostic harness code**. You can build and test all of it against a 24B model, then let real measurements (tokens per session, context high-water mark, tool-call success rate by model) tell you which box to buy. See [Sizing the Core](architecture.md#sizing-the-core).
+>
+> **If you do buy, the unified-memory APU is still the right shape — even at ~$3,800.** The surge hits **memory chips across the board**, so these boxes climbed too. The current-gen **GMKtec EVO-X3** (Ryzen AI Max+ 395, 128GB, 2TB) lists around **$3,800**. It is genuinely pricey, and it is genuinely close to the best local-inference machine available at that price. But the comparison that matters is *cost per GB of model-capable memory*. A discrete build that can hold a Q4 70B needs both a 48GB-class card (or 2× 24GB) **and** a big DIMM kit — realistically **~$7,000–8,000** once you add CPU/board/PSU — and it still caps at the card's VRAM. The single ~$3,800 APU box holds a Q4 70B (and even a ~120B MoE) in its 128GB unified pool: roughly **half the cost for more model capacity**. At that tier 128GB is the floor — a 64GB SKU of the same machine loses the 70B/120B headroom that is the entire reason to buy it. But that is an argument about *which* box to buy, not about *whether* you need one.
 
 ### Model VRAM / Memory Requirements
 
@@ -52,11 +54,27 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 **Key Insight**: the 128GB unified-memory box runs everything up to a ~120B MoE **without a discrete GPU**. A single RTX 6000 Ada (48GB) also runs a Q4 70B, but costs more and caps you at 48GB. Full-precision or >120B models need multi-GPU or cloud.
 
+**The counter-insight, which matters more day to day**: on a ~256 GB/s memory bus a *dense* Q4 70B is bandwidth-starved — ~40GB read per token puts a hard ceiling near 6 tok/s. The 128GB pool earns its money on **MoE** models instead: `gpt-oss-120b` needs ~65GB resident but activates only ~5B parameters per token, so it is several times faster than the dense 70B on the same box. If you buy 128GB, buy it for the MoE model. And note what this implies for the low end: a 24B model on a 32GB machine is *not* slow — it reads only ~14GB per token and is the most responsive option of the lot.
+
 ---
 
 ## Cloud vs. Local: Deployment Options
 
-### Option A: Pure Local — Unified-Memory APU (Recommended)
+### Option A: Pure Local — Hardware You Already Own (Start Here)
+```
+┌──────────────────────┐     ┌───────────────────┐
+│ Existing desktop/Mac │     │ Kali Node         │
+│ - 32GB+ RAM          │<───>│ - Kali + MCP      │
+│ - Mistral Small 24B  │     │ - Static IP       │
+│ - Ollama + CLI       │     │ (cheap box or VM) │
+└──────────────────────┘     └───────────────────┘
+```
+- **Cost**: **$150–350** (the Kali Node only — the Core is hardware you have)
+- **Pros**: Zero inference spend; 24B tool-callers are reliable and fast; no exposure to the RAM-price surge; proves the harness before it costs anything
+- **Cons**: No 70B/120B headroom; long, noisy agent sessions will eventually pressure a 32GB context budget
+- **Graduate when**: you measure context overflow, or a 24–32B model demonstrably fails the tool-calling reliability bar your loop needs — not before
+
+### Option A′: Pure Local — Unified-Memory APU (The Upgrade Target)
 ```
 ┌──────────────────────┐     ┌───────────────────┐
 │ GMKtec EVO-X3        │     │ Kali Node         │
@@ -69,7 +87,7 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 - **Pros**: Single box holds a Q4 70B (or ~120B MoE) with no discrete GPU; lowest cost-per-capacity; air-gapped capable; low idle power
 - **Cons**: Lower peak throughput than a discrete GPU (~10–20 tok/s on 70B); soldered RAM is not upgradeable
 
-### Option A′: Pure Local — Discrete GPU (only if you need the throughput)
+### Option A″: Pure Local — Discrete GPU (only if you need the throughput)
 ```
 ┌──────────────────────┐     ┌──────────────┐
 │ Workstation          │     │ Kali Node    │
@@ -319,11 +337,12 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 ### Phase 2: Scale & Specialization (1–2 Months)
 **Goal**: Scale to larger models and add security-specific features.
 
-- [ ] **Hardware Decision**:
-  - **Option A (recommended)**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE
-  - **Option A′**: RTX 6000 Ada (48GB) + DIMM RAM (~$7k–8k) — only if you need the throughput
-  - **Option B**: RunPod A100 (~$2/hr, pay-as-you-go) for bursts
-- [ ] **Model**: Deploy `llama3.3:70b` (Q4), and evaluate `gpt-oss-120b` on the 128GB box
+- [ ] **Hardware Decision** — make it *after* Phase 1, using measurements from the harness (tokens/session, context high-water mark, tool-call success rate), not before:
+  - **Stay on Option A**: if a 24–32B model is clearing your reliability bar, buy nothing
+  - **Option A′**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE; the right buy if you need a bigger *model*
+  - **Option A″**: RTX 6000 Ada (48GB) + DIMM RAM (~$7k–8k) — only if you need raw throughput
+  - **Option B**: RunPod A100 (~$2/hr, pay-as-you-go) — the cheapest way to *test* whether a 70B/120B actually helps before committing to hardware
+- [ ] **Model**: evaluate `qwen3:32b` first (still fits a 64GB box); deploy `llama3.3:70b` or `gpt-oss-120b` only if the 32B tier measurably falls short
 - [ ] **Fine-tuning (optional, only if a knowledge gap shows up)**:
   - Collect cybersecurity datasets (CVE, MITRE ATT&CK, Exploit-DB)
   - LoRA-tune `mistral-small` on security-specific tasks — after the harness is proven, not before
@@ -467,7 +486,7 @@ Output:
 Avendesora has the **foundation** right — the Ollama + MCP + Kali architecture is a sound, extensible base. But the agent *brain* is the real work: don't mistake working plumbing for a finished agent. The remaining effort is the harness (loop, memory, safety gating, reporting), and getting a local open-weight model to drive it reliably.
 
 **Key Takeaways**:
-1. **Hardware**: the 128GB unified-memory APU (GMKtec EVO-X3, ~$3,800) is the cost-per-capacity winner — roughly half the price of a discrete-GPU 70B build for *more* model headroom. Buy 128GB or don't bother.
+1. **Hardware**: start on a 32GB machine you already own — RAM buys model *capacity*, not speed, and a 24B tool-caller runs the whole system today. When you outgrow it, the 128GB unified-memory APU (GMKtec EVO-X3, ~$3,800) is the cost-per-capacity winner — roughly half the price of a discrete-GPU 70B build for *more* headroom — and at that tier it's 128GB or don't bother. Buy it for the MoE model (`gpt-oss-120b`), not for the bandwidth-starved dense 70B.
 2. **Models**: there is no "Mistral 13B/70B" — use real, tool-calling open weights. Start with `mistral-small` (24B), graduate to `llama3.3:70b` or `gpt-oss-120b`. Fine-tune later, only if a knowledge gap appears.
 3. **Cloud**: RunPod/Lambda for burst inference; keep the **Kali Node local** (running offensive tools from a cloud IP is an AUP problem). Hetzner's cheap GPU tier is 20GB VRAM — too small for a 70B.
 4. **Agent**: the hard 80%. Focus on an **interleaved observe-decide-act loop** (one tool at a time), **context management**, **safety gating**, and **structured reporting**.

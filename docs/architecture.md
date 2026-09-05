@@ -14,7 +14,7 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 ├────────────────────────────┬────────────────────────────────┤
 │                            │                                │
 │       AVENDESORA CORE      │        AVENDESORA NODE         │
-│       (GMKtec EVO-X3)      │     (Kali Node / mini PC)      │
+│    (any 32GB+ Linux box)   │     (Kali Node / mini PC)      │
 │                            │                                │
 │  ┌───────────────────────┐ │ ┌───────────────────────────┐  │
 │  │ Ollama                │ │ │ Kali Linux                │  │
@@ -37,26 +37,88 @@ Avendesora is designed as a **modular, two-node architecture** to balance perfor
 
 ---
 
-### **1. Avendesora Core (GMKtec EVO-X3)**
+### **1. Avendesora Core**
 
 **Role:** LLM Inference Server
 
 
 | **Aspect**      | **Details**                                                      |
 | --------------- | ---------------------------------------------------------------- |
-| **Hardware**    | GMKtec EVO-X3 (Ryzen AI Max+ 395, 128GB RAM, 2TB SSD)            |
-| **Purpose**     | Runs the LLM (Mistral Small 3 / Llama 3.3 70B) and handles inference requests    |
-| **Software**    | Ollama, MCP Client                                               |
-| **Models**      | Mistral Small 3 (Q4_K_M, ~14GB), Llama 3.3 70B (Q4_K_M, ~40GB)          |
-| **Performance** | 10–20 tokens/sec for the 70B model, 20–40 tokens/sec for the 24B model |
+| **Hardware**    | Any Linux or macOS machine with **32GB+ RAM** — see *Sizing the Core* below |
+| **Purpose**     | Runs the LLM and handles inference requests                      |
+| **Software**    | Ollama, Avendesora CLI (MCP client)                              |
+| **Models**      | Mistral Small 3 (Q4_K_M, ~14GB) by default; larger models if the box has room |
+| **Storage**     | ~50GB for one model and its tooling; more if you keep several around |
 | **Network**     | Connects to Avendesora Node via MCP (port 3000)                  |
 
 
-**Why This Hardware?**
+---
 
-- **128GB RAM**: Allows running **70B models** with quantization.
-- **Ryzen AI Max+ 395**: High-performance CPU with **Radeon 8060S iGPU** for inference acceleration.
-- **2TB SSD**: Stores multiple LLM models and datasets.
+#### **Sizing the Core**
+
+> *Start with the box you already own. Buy hardware only once a measurement tells
+> you to.*
+
+The single most useful thing to understand here: **RAM on the Core buys capacity —
+which models fit — not speed.** Generation throughput is set by *memory bandwidth
+divided by the bytes read per generated token*. Two machines with the same memory
+bus run a 24B model at identical tokens/sec whether they hold 32GB or 128GB. The
+larger pool only unlocks models the smaller one cannot load at all.
+
+**What actually consumes the pool**
+
+1. **Weights** — fixed per model and quantisation.
+2. **KV cache** — grows linearly with context length. Security tool output is
+   *extremely* verbose (full-port nmap XML, Nikto runs, tshark dumps), so on long
+   agent sessions the cache, not the weights, is usually what runs you out of memory.
+
+| Model                 | Weights (Q4_K_M) | KV cache/token (fp16) | KV @ 32k ctx | Comfortable Core RAM |
+| --------------------- | ---------------- | --------------------- | ------------ | -------------------- |
+| Mistral Small 3 (24B) | ~14GB            | ~160 KB               | ~5GB         | 32GB                 |
+| Qwen3 32B             | ~20GB            | ~256 KB               | ~8GB         | 48–64GB              |
+| Llama 3.3 70B         | ~40GB            | ~320 KB               | ~10GB        | 64GB (128GB at long context) |
+| gpt-oss-120b (MoE)    | ~65GB (MXFP4)    | small (grouped attn)  | —            | 128GB                |
+
+<sub>KV figures are computed from published layer/head geometry (2 × layers × KV-heads
+× head-dim × 2 bytes) and assume fp16 cache; halve them with an 8-bit KV cache. Treat
+them as planning estimates, not benchmarks.</sub>
+
+**Three tiers, in the order you should consider them**
+
+| Tier | Hardware | Model | What it gets you |
+| ---- | -------- | ----- | ---------------- |
+| **1 — Start here** | Any box with 32GB RAM, or a Mac with 32GB+ unified memory. Cost: likely **$0** | `mistral-small` (24B) | Everything this repo does today, plus enough headroom to build and test the agent loop |
+| **2 — Comfortable** | 64GB desktop, 64GB unified-memory mini PC, or a 24GB discrete GPU (e.g. used RTX 3090) | `qwen3:32b`, or a 24B model *much* faster on the GPU | Longer contexts, a stronger tool-caller, snappier multi-step loops |
+| **3 — Ceiling** | 128GB unified-memory APU (GMKtec EVO-X3, Framework Desktop, HP Z2 Mini G1a). Cost: **~$3,800** | `gpt-oss:120b` or `llama3.3:70b` | The most capable models that still run on one box you own outright |
+
+Tier 3 is a genuinely good buy *for what it is* — around $4,000 it is close to the
+best single-box local-inference machine you can get, and it is the tier the rest of
+these docs treat as the aspirational target. It is **not** a prerequisite. Nothing in
+Avendesora requires it.
+
+**Dense vs. MoE: the reason 128GB is interesting**
+
+The usual justification for 128GB is "it runs a 70B model." That's the *weakest*
+argument for it. A Q4 70B is ~40GB of weights, every byte of which is read per token.
+On a Ryzen AI Max+ 395 (256-bit LPDDR5X, **~256 GB/s**) that caps you at roughly
+`256 ÷ 40 ≈ 6 tokens/sec` before any overhead — a dense 70B is *bandwidth-starved* on
+this class of machine.
+
+The real payoff is **Mixture-of-Experts**. `gpt-oss-120b` needs ~65GB resident (so it
+cannot fit in 64GB at all) but activates only ~5B parameters per token, so the
+per-token read is small and it runs many times faster than the dense 70B on the same
+hardware. Big pool, small active set. If you buy the 128GB box, buy it for the MoE
+model — not for Llama 70B.
+
+**Why This Hardware (when you do buy)?**
+
+- **Unified memory**: the whole pool is addressable by the iGPU, so model capacity
+  isn't capped by a discrete card's VRAM.
+- **Ryzen AI Max+ 395**: Radeon 8060S iGPU with enough bandwidth to make a
+  small-active-set MoE model comfortable.
+- **Cost per GB of model-capable memory**: substantially better than a discrete-GPU
+  build that can hold the same models (see
+  [the roadmap's deployment options](cybersecurity-agent-roadmap.md#cloud-vs-local-deployment-options)).
 
 **Why Ollama (and not raw llama.cpp)?**
 
@@ -229,13 +291,33 @@ avendesora --model llama3.3:70b 192.168.1.100
 ## **Performance Metrics**
 
 
-| **Task**              | **Avendesora Core (EVO-X3)** | **Avendesora Node (mini PC)**   | **End-to-End Latency** |
-| --------------------- | ---------------------------- | ------------------------------- | ---------------------- |
-| Mistral Small 3 (24B)  | 20–30 tokens/sec             | N/A                             | <1 sec                 |
-| Llama 3.3 70B         | 10–20 tokens/sec             | N/A                             | <2 sec                 |
-| Nmap Scan             | N/A                          | ~5–10 sec (depends on target)   | <15 sec                |
-| Searchsploit Query    | N/A                          | ~1–2 sec                        | <5 sec                 |
-| Metasploit Command    | N/A                          | ~3–5 sec                        | <10 sec                |
+**Inference throughput** is bandwidth-bound. The ceiling below is arithmetic —
+memory bandwidth ÷ bytes read per token — and the "expected" column knocks that down
+for real-world overhead. **None of these are measured on Avendesora hardware yet**;
+they are the numbers to check your own box against, not claims about it.
+
+| **Model** | **Bytes read/token** | **128GB APU (~256 GB/s)** | **RTX 3090 (~936 GB/s)** |
+| --------- | -------------------- | ------------------------- | ------------------------ |
+| Mistral Small 3 (24B) | ~14GB | ceiling ~18 → expect **10–15 tok/s** | ceiling ~66 → expect **35–50 tok/s** |
+| Qwen3 32B             | ~20GB | ceiling ~13 → expect **7–11 tok/s**  | does not fit in 24GB     |
+| Llama 3.3 70B (dense) | ~40GB | ceiling ~6 → expect **4–6 tok/s**    | does not fit in 24GB     |
+| gpt-oss-120b (MoE)    | ~3.5GB active | ceiling ~70 → expect **30–45 tok/s** | does not fit in 24GB |
+
+**Tool execution** on the Node, by contrast, dominates end-to-end latency for most
+real prompts:
+
+| **Task**           | **Avendesora Node (mini PC)** | **End-to-End Latency** |
+| ------------------ | ----------------------------- | ---------------------- |
+| Nmap Scan          | ~5–10 sec (depends on target) | <15 sec                |
+| Searchsploit Query | ~1–2 sec                      | <5 sec                 |
+| Metasploit Command | ~3–5 sec                      | <10 sec                |
+
+A full-port nmap against a live host takes minutes, not seconds — at which point the
+model's tokens/sec stops being the interesting number. This is a further argument for
+starting on modest hardware: for single-tool prompts you are waiting on Kali, not on
+the LLM. Model speed only becomes the bottleneck once the
+[agent loop](cybersecurity-agent-roadmap.md) is making many sequential LLM calls per
+session.
 
 
 ---
