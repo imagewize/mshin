@@ -100,6 +100,8 @@
 
 Contributions are welcome! Please read our [Contribution Guidelines](CONTRIBUTING.md).
 
+Release history is tracked in the [Changelog](CHANGELOG.md).
+
 ---
 
 ## License
