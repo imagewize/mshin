@@ -115,10 +115,10 @@ systemctl start avendesora-node
 
 # --- Assign Static IP (Optional) ---
 
-read -p "[?] Assign static IP to Avendesora Node? (y/n): " assign_ip
+read -r -p "[?] Assign static IP to Avendesora Node? (y/n): " assign_ip
 if [ "$assign_ip" = "y" ]; then
-    read -p "[?] Enter static IP (e.g., 192.168.1.100): " static_ip
-    read -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
+    read -r -p "[?] Enter static IP (e.g., 192.168.1.100): " static_ip
+    read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
 cat > /etc/netplan/00-avendesora-node.yaml <<EOF
 network:

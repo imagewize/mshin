@@ -28,7 +28,6 @@ ART
 # --- Configuration ---
 
 AVENDESORA_DIR="/opt/avendesora"
-DEFAULT_NODE_IP="192.168.1.100"
 
 # --- Check for Root (recommended) ---
 
@@ -83,7 +82,7 @@ ollama create avendesora -f "${AVENDESORA_DIR}/configs/ollama-modelfile"
 
 # --- Optional: Pull Llama 3.3 70B ---
 
-read -p "[?] Pull Llama 3.3 70B as well? (y/n): " pull_70b
+read -r -p "[?] Pull Llama 3.3 70B as well? (y/n): " pull_70b
 if [ "$pull_70b" = "y" ]; then
     echo "[+] Pulling Llama 3.3 70B (Q4_K_M)..."
     ollama pull llama3.3:70b
@@ -97,10 +96,10 @@ sudo npm install
 
 # --- Assign Static IP (Optional) ---
 
-read -p "[?] Assign static IP to Avendesora Core? (y/n): " assign_ip
+read -r -p "[?] Assign static IP to Avendesora Core? (y/n): " assign_ip
 if [ "$assign_ip" = "y" ]; then
-    read -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
-    read -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
+    read -r -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
+    read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
 sudo tee /etc/netplan/00-avendesora-core.yaml <<EOF
 network:
