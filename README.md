@@ -1,49 +1,27 @@
-# Avendesora 🌳
+<p align="center">
+  <svg width="120" height="120" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M19.025 3.587c-4.356 2.556-4.044 7.806-7.096 10.175-2.297 1.783-5.538.88-7.412.113 0 0-1.27 1.603-2.181 3.74-.305.717-1.644-.073-1.409-.68C3.905 9.25 14.037 5.416 14.037 5.416s-7.149-.303-11.927 5.94c-.128-1.426-.34-5.284 3.36-7.65 5.016-3.211 14.572-.715 13.555-.119z"></path></svg>
+</p>
+
+<div align="center">
+<h1>Avendesora</h1>
+</div>
 
 > *"The Avendesora tree stood unbroken through the Breaking of the World, its roots deep in the Pattern, its branches reaching toward the future. So too does this system stand resilient against the storms of cyber threats."*
 
 **Avendesora** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral 13B/70B) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
 
-```
-                .
-               /|\
-              / | \
-             |  |  |
-              \ | /
-       .       \|/       .
-      /|\       |       /|\
-     / | \      |      / | \
-    |  |  |     |     |  |  |
-     \ | /      |      \ | /
-      \|/       |       \|/
-       '---.    |    .---'
-            \   |   /
-             \  |  /
-              \ | /
-               \|/
-                |
-                |
-                |
-               _|_
-              /   \
-              \___/
+---
 
-        A V E N D E S O R A
-   ~ The Leaf that Opens the Ways ~
-```
+## Features
+
+- **Private & Offline**: No cloud dependencies—your data stays yours.
+- **Real-Time Tool Access**: LLM directly executes Kali Linux tools (Nmap, Metasploit, etc.) via MCP.
+- **Scalable Architecture**: Two-machine setup for optimal performance.
+- **Wheel of Time Themed**: Inspired by the unbreakable Avendesora tree—symbolizing resilience and wisdom.
 
 ---
 
-## ✨ Features
-
-- **🔒 Private & Offline**: No cloud dependencies—your data stays yours.
-- **🛡️ Real-Time Tool Access**: LLM directly executes Kali Linux tools (Nmap, Metasploit, etc.) via MCP.
-- **🚀 Scalable Architecture**: Two-machine setup for optimal performance.
-- **🌳 Wheel of Time Themed**: Inspired by the unbreakable Avendesora tree—symbolizing resilience and wisdom.
-
----
-
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────┐       ┌─────────────────────┐
@@ -64,7 +42,7 @@
 
 ---
 
-## 📦 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -94,16 +72,16 @@
 
 ---
 
-## 📚 Documentation
+## Documentation
 
-- [🌳 Master Guide](KALI-OPENLLM.md) – Complete single-file walkthrough (most comprehensive)
-- [📖 Architecture](docs/architecture.md) – System design and components
-- [🛠️ Setup Guide](docs/setup.md) – Step-by-step installation
-- [🔄 Workflows](docs/workflows.md) – Example cybersecurity tasks
+- [Master Guide](KALI-OPENLLM.md) – Complete single-file walkthrough (most comprehensive)
+- [Architecture](docs/architecture.md) – System design and components
+- [Setup Guide](docs/setup.md) – Step-by-step installation
+- [Workflows](docs/workflows.md) – Example cybersecurity tasks
 
 ---
 
-## 🌍 Wheel of Time Inspiration
+## Wheel of Time Inspiration
 
 **Avendesora** is named after the legendary tree in the *Wheel of Time* series:
 
@@ -115,19 +93,21 @@
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our [Contribution Guidelines](CONTRIBUTING.md).
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the **MIT License** – see the [LICENSE](LICENSE) file for details.
 
+The project logo uses the *Entypo* leaf pictogram by [Daniel Bruce](https://www.entypo.com/), licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Inspired by the *Wheel of Time* series by Robert Jordan
 - Built with [Ollama](https://ollama.com), [MCP](https://github.com/modelcontextprotocol), and [Kali Linux](https://www.kali.org/)
