@@ -2,7 +2,7 @@
 
 > *"The Two Rivers had its wisdom, and the Wisdom of the Two Rivers was this: as the leaf flows, so flows the river. A leaf on the wind, a leaf on the stream, a leaf on the current of the Pattern — and Avendesora flows with you, even on a single machine."*
 
-This guide describes how to run a **local, single-machine Avendesora development environment** on macOS using **Lima VMs**, **Ollama with Mistral 8B**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
+This guide describes how to run a **local, single-machine Avendesora development environment** on macOS using **Lima VMs**, **Ollama with a small local model**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
 
 ---
 
@@ -20,7 +20,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 | Cost | ~$150-350 (for the Node) | $0 (uses existing Mac) |
 | Performance | Full speed | Slower (VM overhead, shared resources) |
 | Scale | Production-ready | Learning / testing only |
-| Network | Physical LAN | Virtual network (localhost) |
+| Network | Physical LAN | Virtual (vmnet, `192.168.105.0/24`) |
 
 > **When to use this:** Learning the system, testing workflows, developing the MCP server, or experimenting with smaller models when you don't have a second x86_64 machine.
 
@@ -31,30 +31,29 @@ For **local development, testing, or constrained hardware**, you can consolidate
 ## Architecture: Lima Edition
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     macOS HOST (YOUR MAC)                       │
-│                                                                  │
-│  ┌──────────────────────┐    ┌──────────────────────┐      │
-│  │   Lima: Core VM       │    │   Lima: Kali Node VM  │      │
-│  │  (Ubuntu/Debian)      │    │   (Kali Linux)        │      │
-│  │                       │    │                       │      │
-│  │  ┌─────────────────┐ │    │  ┌─────────────────┐  │      │
-│  │  │  Ollama          │ │    │  │  MCP Server      │  │      │
-│  │  │  - mistral      │◄─┼───►│  │  - Kali tools    │  │      │
-│  │  │  (~4GB VRAM)     │ │    │  │  - Nmap, etc.    │  │      │
-│  │  └─────────────────┘ │    │  └─────────────────┘  │      │
-│  │  ┌─────────────────┐ │    │                       │      │
-│  │  │  Avendesora CLI  │ │    │                       │      │
-│  │  │  (MCP Client)    │ │    │                       │      │
-│  │  └─────────────────┘ │    │                       │      │
-│  └──────────────────────┘    └──────────────────────┘      │
-│                     └──────────────────────────────────┘      │
-│                              Virtual Network                    │
-│                         (192.168.100.0/24)                      │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                    macOS HOST (Apple Silicon)                  │
+│                                                                │
+│  ┌───────────────────────────┐   ┌──────────────────────────┐  │
+│  │   Lima: avendesora-core   │   │  Lima: avendesora-kali   │  │
+│  │   Ubuntu, aarch64         │   │  Debian + Kali tools     │  │
+│  │                           │   │                          │  │
+│  │  ┌─────────────────────┐  │   │  ┌────────────────────┐  │  │
+│  │  │ Ollama       :11434 │  │   │  │ MCP server   :3000 │  │  │
+│  │  │ mistral (7B, ~4GB)  │  │   │  │ nmap, nikto,       │  │  │
+│  │  └──────────▲──────────┘  │   │  │ whois, tshark      │  │  │
+│  │             │             │   │  └─────────▲──────────┘  │  │
+│  │  ┌──────────▼──────────┐  │   │            │             │  │
+│  │  │ Avendesora CLI      │──┼───┼──── SSE ───┘             │  │
+│  │  │ (MCP client)        │  │   │                          │  │
+│  │  └─────────────────────┘  │   │                          │  │
+│  └───────────────────────────┘   └──────────────────────────┘  │
+│                                                                │
+│        lima shared network (vmnet) — 192.168.105.0/24          │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-Both VMs run as **Lima instances** on your Mac, communicating over a **shared virtual network** (192.168.100.0/24 by convention). The Core VM runs Ollama with a smaller model (Mistral 8B fits in ~5GB), and the Kali Node VM runs the MCP server with Kali tools.
+Both VMs run as **Lima instances** on your Mac. They talk to each other over Lima's **shared vmnet network** (`192.168.105.0/24`, addresses assigned by DHCP), which is opt-in per instance — see [Shared networking](#shared-networking-required-for-two-vms) below. The Core VM runs Ollama with a smaller model (`mistral`, 7B, ~4GB), and the Kali Node VM runs the MCP server with Kali tools.
 
 ---
 
@@ -81,11 +80,29 @@ brew install lima
 brew install ollama
 
 # Verify installations
-lima --version    # Should show 0.20+
-ollama --version   # Should show 0.33+
+limactl --version    # Should show 2.0+
+ollama --version     # Should show 0.33+
 ```
 
-> **Note:** Lima uses **qemu** for x86_64 emulation on Apple Silicon. Performance will be slower than native, but functional.
+> **Note:** `limactl` is the CLI. The `lima` binary is a shortcut that runs a command *inside* the default instance, so `lima --version` does not report the Lima version.
+
+> **Note:** Lima uses **vz** (Apple Virtualization) for native-architecture guests and **qemu** for cross-architecture emulation. x86_64 guests on Apple Silicon are emulated and slow.
+
+### Shared networking (required for two VMs)
+
+Lima's default networking is **user-mode (SLIRP)**: every instance gets the same `192.168.5.15` address and **instances cannot reach each other**. VM-to-VM traffic needs the shared vmnet network, which is a one-time host setup:
+
+```bash
+# Install the vmnet helper
+brew install socket_vmnet
+
+# Grant Lima permission to run it (writes /etc/sudoers.d/lima)
+limactl sudoers | sudo tee /etc/sudoers.d/lima
+```
+
+Instances then opt in with `--network=lima:shared`, and each receives a DHCP address on `192.168.105.0/24` via a `lima0` interface. Addresses are **assigned, not chosen** — `limactl create` has no `--ip` flag.
+
+> **Single-VM setups** (see [Alternative: Single VM](#alternative-single-vm-all-in-one)) do not need any of this; everything talks over `localhost`.
 
 ---
 
@@ -95,38 +112,38 @@ ollama --version   # Should show 0.33+
 
 The Kali Node VM runs **Kali Linux** with the **Avendesora MCP server** and Kali tools.
 
-#### Option A: Kali Linux (x86_64, Recommended for Intel Macs)
+#### Option A: x86_64 base (Intel Macs)
 
-If you have an **Intel Mac**, you can run Kali Linux natively:
+On an **Intel Mac**, build the Node on an x86_64 Debian base so Kali tools run natively:
 
 ```bash
-# Create a Kali Linux VM
-limactl create --name=avendesora-kali \
-  --os=debian \
+# Create an x86_64 Debian VM on the shared network
+limactl create template:debian-13 \
+  --name=avendesora-kali \
   --arch=x86_64 \
   --cpus=4 \
-  --memory=8GiB \
-  --disk=50GiB \
-  --dns=8.8.8.8 \
-  --ip=192.168.100.100
+  --memory=8 \
+  --disk=50 \
+  --network=lima:shared
 ```
 
-Then, **after creation**, we'll transform it into a Kali environment.
+> **Flag notes:** the template is a **positional** argument (`template:<name>`; run `limactl create --list-templates` for the full list). `--memory` and `--disk` are plain numbers in GiB — `--memory=8GiB` fails to parse.
+
+Then, **after creation**, we install the Kali tooling on top.
 
 #### Option B: Debian with Kali Tools (Apple Silicon / Universal)
 
 For **Apple Silicon Macs**, use a Debian base and install Kali tools:
 
 ```bash
-# Create a Debian VM (works on both Apple Silicon and Intel)
-limactl create --name=avendesora-kali \
-  --os=debian \
+# Create an aarch64 Debian VM (native on Apple Silicon)
+limactl create template:debian-13 \
+  --name=avendesora-kali \
   --arch=aarch64 \
   --cpus=4 \
-  --memory=8GiB \
-  --disk=50GiB \
-  --dns=8.8.8.8 \
-  --ip=192.168.100.100
+  --memory=8 \
+  --disk=50 \
+  --network=lima:shared
 ```
 
 > **Note on Apple Silicon:** Running x86_64 Kali in qemu emulation on M1/M2 Macs is possible but **very slow**. The Debian + Kali tools approach (Option B) is much more practical.
@@ -151,49 +168,72 @@ sudo apt update && sudo apt upgrade -y
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git
 
-# Install Kali tools
-sudo apt install -y nmap nikto whois tshark sqlmap metasploit-framework searchsploit
+# Install the security tools Debian ships
+sudo apt install -y nmap nikto whois tshark sqlmap
 
 # Verify installation
 nmap --version
 nikto -Version
 ```
 
-> **For Option A (Intel Mac with Kali OS):** You can skip the `apt install` of Kali tools if you started from a Kali image. However, as of 2026, Lima doesn't have a built-in Kali OS template, so Option B (Debian + tools) is the practical path.
+> **Two tools are missing on purpose.** `searchsploit` (package `exploitdb`) and `metasploit-framework` live in **Kali's** repositories, not Debian's — `apt install` for either fails on this base, and grafting Kali's repo onto Debian is unsupported and can break the guest. Leave both out of the MCP server's `--tools` list here; if you need them, use the real Kali Node from the [full setup guide](setup.md).
+
+> **Both options install the same tooling.** Lima ships no Kali template (`limactl create --list-templates`), so neither option boots Kali itself — the difference is only the guest architecture. Option A runs the tools natively on Intel; Option B runs them natively on Apple Silicon.
 
 #### Set Up the MCP Server
 
 Inside the Kali Node VM:
 
 ```bash
-# Clone Avendesora (or copy from host)
-# Option 1: Clone directly (if VM has internet)
-git clone https://github.com/jasperfrumau/avendesora.git /opt/avendesora
+# Option 1: Clone directly (if the VM has internet)
+sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
+sudo chown -R "$(whoami)" /opt/avendesora
 
-# Option 2: Or copy from your Mac host (replace with actual path)
-# On your Mac: rsync -avz /Users/jasperfrumau/code/avendesora/ avendesora-kali:/opt/
+# Option 2: Or mount your Mac clone into the VM instead - see
+# Advanced: Custom Lima Templates below
 
 # Install MCP server dependencies
 cd /opt/avendesora/servers/src/kali
 npm install
-
-# Test the MCP server
-node index.js --tools nmap,nikto,whois,tshark,searchsploit &
-
-# Install as a systemd service (if systemd is available)
-# For Lima VMs without systemd, use a simple approach:
-cat > /home/$(whoami)/start-mcp.sh << 'EOF'
-#!/bin/bash
-cd /opt/avendesora/servers/src/kali
-node index.js --tools nmap,nikto,whois,tshark,searchsploit
-EOF
-chmod +x /home/$(whoami)/start-mcp.sh
-
-# Add to .bashrc for auto-start
-echo "nohup /home/$(whoami)/start-mcp.sh > /tmp/mcp.log 2>&1 &" >> ~/.bashrc
 ```
 
-> **Note:** Lima VMs typically use **containerd init** rather than systemd. The `.bashrc` approach above ensures the MCP server starts when you shell in.
+The server shells out as `sudo -n <tool>` whenever it is not running as root (`servers/src/kali/tools.js:53-57`), so it needs a passwordless allowlist or **every tool call fails** with `sudo: a password is required`:
+
+```bash
+# Mirror the allowlist that scripts/setup_mcp_server.sh installs,
+# limited to the tools available on this base
+sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+EOF
+sudo chmod 440 /etc/sudoers.d/avendesora
+```
+
+Test it in the foreground before daemonising:
+
+```bash
+node index.js --tools nmap,nikto,whois,tshark
+# Expect: [INFO] Avendesora Node listening on http://0.0.0.0:3000
+# Ctrl-C to stop
+```
+
+Then install the unit the repo already ships:
+
+```bash
+sudo cp /opt/avendesora/configs/mcp-kali.service /etc/systemd/system/avendesora-node.service
+
+# The shipped unit runs as a dedicated 'avendesora' user and enables all six
+# tools. In a throwaway Lima VM, run as your own login user and drop the two
+# tools Debian does not provide.
+sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/avendesora-node.service
+sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora /home/$(whoami)|" /etc/systemd/system/avendesora-node.service
+sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" /etc/systemd/system/avendesora-node.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now avendesora-node
+systemctl status avendesora-node --no-pager
+```
+
+> **Note:** Lima's Debian and Ubuntu guests boot standard cloud images and run **systemd**, so the packaged unit works as-is. Follow the logs with `journalctl -u avendesora-node -f`.
 
 ---
 
@@ -203,14 +243,13 @@ The Core VM runs **Ollama** with your LLM and the **Avendesora CLI client**.
 
 ```bash
 # Create the Core VM
-limactl create --name=avendesora-core \
-  --os=ubuntu \
+limactl create template:ubuntu \
+  --name=avendesora-core \
   --arch=aarch64 \
   --cpus=4 \
-  --memory=16GiB \
-  --disk=50GiB \
-  --dns=8.8.8.8 \
-  --ip=192.168.100.200
+  --memory=16 \
+  --disk=50 \
+  --network=lima:shared
 
 # Start the VM
 limactl start avendesora-core
@@ -232,7 +271,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Pull a model that fits in the VM's RAM
 # Options that work well in Lima VMs:
 # - mistral (7B, ~4GB) - Official Mistral AI 7B model
-# - qwen2:7b (7B, ~4GB) - Fast and capable
+# - qwen2.5:7b (7B, ~4GB) - Fast and capable
 # - phi3:3.8b (3.8B, ~2GB) - Very lightweight
 ollama pull mistral
 
@@ -244,7 +283,8 @@ ollama list
 
 ```bash
 # Clone Avendesora repo (if not already present)
-git clone https://github.com/jasperfrumau/avendesora.git /opt/avendesora
+sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
+sudo chown -R "$(whoami)" /opt/avendesora
 
 # Create the model
 ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
@@ -264,14 +304,24 @@ npm install
 
 ### Step 3: Configure Networking
 
-Lima automatically creates a **shared virtual network** for all VMs. Verify connectivity:
+Both VMs must have been created with `--network=lima:shared` (see [Shared networking](#shared-networking-required-for-two-vms)). Their addresses are assigned by DHCP, so read them rather than assuming them.
+
+From the **Mac host**:
 
 ```bash
-# From the Core VM, ping the Kali Node VM
-ping 192.168.100.100
+# Read each VM's address on the shared network
+limactl shell avendesora-kali -- ip -4 -br addr show lima0
+limactl shell avendesora-core -- ip -4 -br addr show lima0
+```
 
-# From the Core VM, test MCP server connection
-curl http://192.168.100.100:3000/health
+Note the Kali Node address (something in `192.168.105.0/24`) — it is `<KALI_IP>` throughout the rest of this guide. Then, from the **Core VM**:
+
+```bash
+# Reach the Kali Node VM
+ping -c 3 <KALI_IP>
+
+# Test the MCP server
+curl http://<KALI_IP>:3000/health
 ```
 
 If the connection fails:
@@ -281,13 +331,11 @@ If the connection fails:
    limactl list
    ```
 
-2. **Check IP addresses:**
+2. **Check the shared interface exists:**
    ```bash
-   # On Core VM
-   ip a
-   
-   # On Kali Node VM
-   ip a
+   # In each VM - a missing lima0 means the instance was created
+   # without --network=lima:shared
+   ip -4 -br addr show lima0
    ```
 
 3. **Test MCP server manually:**
@@ -305,15 +353,7 @@ From the **Core VM**, run the Avendesora CLI:
 
 ```bash
 # Start an interactive session
-/opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.100.100:3000 --model avendesora
-```
-
-Or, for a simpler test:
-
-```bash
-# Run a direct Ollama session with MCP context
-export MCP_NODE_URL=http://192.168.100.100:3000
-ollama run avendesora
+/opt/avendesora/clients/avendesora-cli/index.js --node http://<KALI_IP>:3000 --model avendesora
 ```
 
 Then, try a command:
@@ -323,6 +363,18 @@ Then, try a command:
 ```
 
 > **Note:** The first run may take a moment as the MCP server connects and validates available tools.
+
+To check the two halves separately when something misbehaves:
+
+```bash
+# Is the Node reachable and serving tools?
+curl http://<KALI_IP>:3000/health
+
+# Is the model loaded and answering?
+ollama run avendesora
+```
+
+> **`ollama run` has no tools.** It is a plain chat session — Ollama is not an MCP client and reads no Node URL from the environment. The persona will happily *describe* an Nmap scan, but nothing executes. Only the Avendesora CLI bridges the model to the Node.
 
 ---
 
@@ -339,7 +391,7 @@ limactl start avendesora-core
 limactl shell avendesora-core
 
 # Start the Avendesora CLI
-/opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.100.100:3000 --model avendesora
+/opt/avendesora/clients/avendesora-cli/index.js --node http://<KALI_IP>:3000 --model avendesora
 ```
 
 ### Stopping the Environment
@@ -359,7 +411,7 @@ To try different models in the Core VM:
 ollama list
 
 # Pull a different model (if you have the RAM)
-ollama pull qwen2:7b
+ollama pull qwen2.5:7b
 
 # Recreate the avendesora persona with a different base
 ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
@@ -370,10 +422,11 @@ ollama rm mistral
 
 > **Model recommendations for Lima:**
 > - `mistral` (7B, ~4GB) - Official Mistral AI model, good balance
-> - `qwen2:7b` (7B, ~4GB) - Fast and capable
+> - `qwen2.5:7b` (7B, ~4GB) - Fast and capable
 > - `phi3:3.8b` (3.8B, ~2GB) - Very light, fast
 > - `llama3.2:3b` (3B, ~2GB) - Good for testing
-> - `ministral-3:8b` (8B, ~6GB) - Community Mistral variant (if already pulled)
+>
+> Check a tag exists with `ollama show <tag>` before building the persona on it. The full setup's **Mistral Small 3 (24B)** needs ~15GB and is out of reach for a Lima guest.
 
 ---
 
@@ -382,14 +435,13 @@ ollama rm mistral
 For **maximum simplicity** (at the cost of isolation), you can run everything in **one Lima VM**:
 
 ```bash
-# Create a single VM
-limactl create --name=avendesora-allinone \
-  --os=ubuntu \
+# Create a single VM (no shared network needed - everything is on localhost)
+limactl create template:ubuntu \
+  --name=avendesora-allinone \
   --arch=aarch64 \
   --cpus=8 \
-  --memory=16GiB \
-  --disk=80GiB \
-  --dns=8.8.8.8
+  --memory=16 \
+  --disk=80
 
 limactl start avendesora-allinone
 limactl shell avendesora-allinone
@@ -410,10 +462,17 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull mistral
 
 # Clone Avendesora
-git clone https://github.com/jasperfrumau/avendesora.git /opt/avendesora
+sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
+sudo chown -R "$(whoami)" /opt/avendesora
 
 # Create avendesora model
 ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
+
+# Allow the tools to run without a password prompt
+sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+EOF
+sudo chmod 440 /etc/sudoers.d/avendesora
 
 # Start MCP server in background
 cd /opt/avendesora/servers/src/kali
@@ -445,26 +504,16 @@ node index.js --tools nmap,nikto,whois,tshark &
 ### Apple Silicon Notes
 
 1. **x86_64 emulation:** Running x86_64 Kali in qemu on M1/M2 Macs works but is **slow** (~10-20x slower than native).
-2. **aarch64 Kali:** As of 2026, Kali Linux has **official ARM64 support**. You can build a custom Lima template:
-   ```bash
-   # Create a custom Lima template for Kali ARM64
-   lima-ctl create --name=avendesora-kali-arm \
-     --os=https://cdimage.kali.org/kali-2026.2/kali-linux-2026.2-installer-arm64.iso \
-     --arch=aarch64 \
-     --cpus=4 \
-     --memory=8GiB \
-     --disk=50GiB
-   ```
-   > **Note:** ISO-based Lima VMs require more setup. Check the [Lima documentation](https://github.com/lima-vm/lima) for details.
+2. **aarch64 Kali:** Kali Linux publishes ARM64 builds, but Lima ships **no Kali template** (`limactl create --list-templates`) and `limactl create` boots **cloud images**, not installer ISOs. Kali's ARM64 releases are installer ISOs and pre-built VM disks rather than cloud-init images, so there is no drop-in Lima equivalent. The practical ARM64 path stays Option B — a Debian base with Kali tooling installed on top, optionally by adding the Kali package repository. See the [Lima templates documentation](https://lima-vm.io/docs/templates/) if you want to try wiring up a custom image.
 
 ### GPU Acceleration
 
-Lima does **not** currently pass through Mac GPU to VMs (as of 2026). Ollama in the VM will use **CPU-only inference**, which is slower but functional for 8B models.
+Lima does **not** currently pass through Mac GPU to VMs (as of 2026). Ollama in the VM will use **CPU-only inference**, which is slower but functional for 7B models.
 
 For better performance:
-- Use **smaller models** (8B or smaller)
+- Use **smaller models** (7B or smaller)
 - Use **quantized models** (Q4_K_M is the default, Q2_K is smaller/faster)
-- Accept **slower token generation** (~2-5 tokens/sec for 8B on CPU)
+- Accept **slower token generation** (~2-5 tokens/sec for 7B on CPU)
 
 ---
 
@@ -473,10 +522,12 @@ For better performance:
 | Issue | Diagnosis | Solution |
 | ----- | --------- | -------- |
 | VM won't start | `limactl list` shows error | `limactl delete <name>` and recreate |
-| MCP connection refused | `curl http://192.168.100.100:3000/health` fails | Check MCP server is running in Kali VM |
+| MCP connection refused | `curl http://<KALI_IP>:3000/health` fails | Check the MCP server is running in the Kali VM |
 | Ollama model won't load | `ollama list` shows model, but `ollama run` fails | Check VRAM: `free -h`; model may be too large |
 | Slow performance | VMs are responsive but slow | Reduce CPU/memory allocation or use smaller model |
-| `limactl create` fails | Permission or disk space | Run `brew update && brew upgrade lima` |
+| `limactl create` rejects a flag | `unknown flag: --os` / `--ip` | Those flags do not exist; pass a template positionally and use `--network=lima:shared` |
+| `limactl create` rejects memory | `invalid argument "8GiB"` | `--memory` and `--disk` take plain GiB numbers: `--memory=8` |
+| VMs cannot ping each other | No `lima0` interface in the VM | Instance was created without `--network=lima:shared`; recreate it, and check `socket_vmnet` is installed |
 | Kali tools not found | `nmap` command not found | Reinstall tools: `sudo apt install -y nmap` |
 
 ### Common Commands
@@ -530,7 +581,7 @@ rm -rf ~/.ollama
 | **Performance** | Slow (VM overhead, CPU-only) | Full speed (native, optional GPU) |
 | **RAM for models** | Limited by Mac RAM | Dedicated Core machine (32GB+) |
 | **Tool execution** | In VM (emulated) | Native x86_64 (fast) |
-| **Network** | Virtual (localhost) | Physical LAN |
+| **Network** | Virtual vmnet (`192.168.105.0/24`) | Physical LAN |
 | **Isolation** | Good (separate VMs) | Excellent (separate machines) |
 | **Portability** | Easy (VMs are files) | Hardware-dependent |
 | **Use case** | Learning, testing, dev | Production, real scans |
@@ -541,32 +592,39 @@ rm -rf ~/.ollama
 
 For repeated use, create a **custom Lima template** for the Kali Node:
 
+Write the template anywhere and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
+
 ```yaml
-# ~/.lima/avendesora-kali.yaml
+# ~/avendesora-kali.yaml
+minimumLimaVersion: 2.0.0
+
+# Inherit the stock image list rather than hardcoding a cloud image URL
+base:
+  - template:_images/debian-13
+  - template:_default/mounts
+
 arch: "aarch64"
-images:
-  - location: "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-arm64.img"
-    arch: "aarch64"
 cpus: 4
 memory: "8GiB"
 disk: "50GiB"
 mounts:
-  - location: "/Users/jasperfrumau/code/avendesora"
+  - location: "~/code/avendesora"   # your clone on the Mac
     writable: true
     mountPoint: "/opt/avendesora"
 ssh:
-  localPort: 56471
   loadDotSSHPubKeys: true
-network:
+networks:
   - lima: shared
-  - interface: "avendesora-net"
-    gateway: "192.168.100.1"
-    cidr: "192.168.100.0/24"
-    dns: ["8.8.8.8", "8.8.4.4"]
-
-# Then create with:
-limactl create --name=avendesora-kali --template=avendesora-kali
 ```
+
+```bash
+# Check it before you build it
+limactl template validate ~/avendesora-kali.yaml
+
+limactl create --name=avendesora-kali ~/avendesora-kali.yaml
+```
+
+> **Note:** the key is `networks` (plural), and its only supported forms are `lima: <name>` or `socket: <path>` — a template cannot invent its own gateway or CIDR. Unlike the CLI flags, the YAML `memory` and `disk` fields **do** take unit suffixes.
 
 ---
 
@@ -597,6 +655,7 @@ limactl create --name=avendesora-kali --template=avendesora-kali
 | Date | Change | Author |
 | ---- | ------ | ------ |
 | 2026-09-06 | Initial version: Lima local development guide | Jasper Frumau |
+| 2026-09-06 | Correct `limactl` syntax, document shared vmnet networking, systemd unit and sudoers allowlist | Jasper Frumau |
 
 ---
 

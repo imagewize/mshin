@@ -23,19 +23,22 @@ Everything here describes splitting LLM inference from security-tool execution a
 
 Data flow: `User prompt → Core (LLM) → Avendesora CLI → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona and tool list are defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`).
 
-When changing the tool set, four places must stay in sync:
-1. The `--tools` flag in `scripts/setup_mcp_server.sh`.
+When changing the tool set, five places must stay in sync:
+1. The `--tools` flag in `scripts/setup_mcp_server.sh` (and the apt package list there).
 2. The same flag in `configs/mcp-kali.service`.
 3. The `sudoers` allowlist for the `avendesora` user in the setup script.
 4. The tool list in `servers/src/kali/tools.js` (and any tool metadata there).
+5. The Modelfile's documented tool list in `configs/ollama-modelfile`.
 
-The Modelfile's documented tool list should match too.
+The sudoers entry is the easiest to miss: `servers/src/kali/tools.js` runs each binary as `sudo -n` whenever the process is not root, so a tool absent from the allowlist fails at call time, not at startup.
+
+`AGENTS.md` carries the working rules for AI agents (how to verify changes, git and shell conventions, communication style). This file stays the source of truth for repo facts; where the two disagree, this file wins.
 
 ## Where things live
 
 The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 
-- `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`, `cybersecurity-agent-roadmap.md`.
+- `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`, `cybersecurity-agent-roadmap.md`, `lima-local-dev.md`.
 - `scripts/` holds both provisioning scripts: `setup_mcp_server.sh` (Node) and `setup_ollama.sh` (Core).
 - `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
 - `servers/src/kali/` holds the custom Kali MCP server (`index.js`, `tools.js`, `package.json`).
