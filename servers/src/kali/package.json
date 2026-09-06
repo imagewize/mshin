@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --check index.js && node --check tools.js"
+    "check": "node --check index.js && node --check tools.js",
+    "test": "node --check index.js && node --check tools.js && node --test --test-timeout=15000"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
