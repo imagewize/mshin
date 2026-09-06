@@ -136,6 +136,15 @@ async function main() {
         onToolCall: (name, args) => {
           console.log(`  [tool] ${name}(${JSON.stringify(args)})`);
         },
+        onNarratedToolCall: (name) => {
+          // Worth showing: the model wrote the call out instead of emitting
+          // it, which usually means the persona was built with a sampling
+          // temperature above 0. The loop recovered, but the model is a step
+          // away from inventing results instead.
+          console.log(
+            `  [recovered] '${name}' was written as text, not called. Running it anyway.`
+          );
+        },
         onToolResult: (name, text) => {
           // Keep the UI tidy; full results live in memory.
           const preview = text.split("\n").slice(0, 3).join("\n");

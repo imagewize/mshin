@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`clients/mshin-cli/agent.js` no longer overrides the modelfile temperature.**
+  The API request hard-coded `options.temperature: 0.7`, which overrode the
+  `PARAMETER temperature 0` set in `configs/ollama-modelfile`. It now sends
+  `temperature: 0`, matching the persona configuration that keeps native tool
+  calling reliable.
+- **Narrated tool-call recovery handles `functions.name(args)` syntax.**
+  `extractTextToolCall` previously matched only JSON payloads; some models emit
+  calls as text like `functions.nmap(target="127.0.0.1", flags=["-sS"])`. The
+  extractor now parses both JSON and function-syntax calls, then runs the real
+  tool and strips the invented output from the transcript.
+- **Backstop blocks fabricated tool output when no tool ran.** If a turn ends
+  with no tool ever executed and the assistant content looks like a tool report
+  (fenced `Result:` or port-style output), the loop drops the fabricated turn
+  and returns a plain warning instead of printing the hallucination as an answer.
+
 ### Verified
 
 - **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
