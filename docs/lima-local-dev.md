@@ -484,6 +484,8 @@ ollama rm mistral
 > - `llama3.2:3b` (3B, ~2GB) - Good for testing
 >
 > Check a tag exists with `ollama show <tag>` before building the persona on it. The full setup's **Mistral Small 3 (24B)** needs ~15GB and is out of reach for a Lima guest.
+>
+> **The agent loop needs a tool-calling model.** Avendesora drives tools through Ollama's `tool_calls`; a model not trained for tool use will describe commands in prose instead of emitting a call, and the loop never fires a tool. Not every small model qualifies — `phi3` and `gemma` variants, for instance, are read-only. A companion repo, [`imagewize/ollama-opencode-setup`](https://github.com/imagewize/ollama-opencode-setup) (`~/code/ollama-opencode-setup` locally), carries tool-calling results measured on this hardware — on **M1 16GB**, `ministral-3:8b` and `qwen3:8b`/`qwen3:4b` tool-call reliably; on **Mac Mini M4 Pro 24GB**, `mistral-small3.2:24b` (the persona's base) runs 100% on GPU at 32k with tool use confirmed. Verify any candidate with that repo's `scripts/tool-call-test.sh` before building the persona on it.
 
 ---
 
