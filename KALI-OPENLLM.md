@@ -34,7 +34,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 
 ```
 ┌──────────────────────┐        ┌──────────────────────┐
-│ Machin Shin Core      │        │ Kali Node (mini PC)  │
+│ Machin Shin Core     │        │ Kali Node (mini PC)  │
 │ (32GB+ RAM, any box) │ <────> │ (Kali Linux + MCP)   │
 │ - Runs Mistral Small │        │ - Runs Kali tools    │
 │   24B (or larger)    │        │ - MCP Server         │

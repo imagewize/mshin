@@ -35,7 +35,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │                    macOS HOST (Apple Silicon)                  │
 │                                                                │
 │  ┌───────────────────────────┐   ┌──────────────────────────┐  │
-│  │   Lima: mshin-core   │   │  Lima: mshin-kali   │  │
+│  │   Lima: mshin-core        │   │  Lima: mshin-kali        │  │
 │  │   Ubuntu, aarch64         │   │  Debian + Kali tools     │  │
 │  │                           │   │                          │  │
 │  │  ┌─────────────────────┐  │   │  ┌────────────────────┐  │  │
@@ -44,7 +44,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │  │  └──────────▲──────────┘  │   │  │ whois, tshark      │  │  │
 │  │             │             │   │  └─────────▲──────────┘  │  │
 │  │  ┌──────────▼──────────┐  │   │            │             │  │
-│  │  │ Machin Shin CLI      │──┼───┼──── SSE ───┘             │  │
+│  │  │ Machin Shin CLI     │──┼───┼──── SSE ───┘             │  │
 │  │  │ (MCP client)        │  │   │                          │  │
 │  │  └─────────────────────┘  │   │                          │  │
 │  └───────────────────────────┘   └──────────────────────────┘  │

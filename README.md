@@ -28,9 +28,9 @@
 
 ```
 ┌──────────────────────┐          ┌─────────────────────┐
-│ Machin Shin Core      │          │ Kali Node (mini PC) │
+│ Machin Shin Core     │          │ Kali Node (mini PC) │
 │ (32GB+ RAM, any box) │          │ (Kali Linux + MCP)  │
-│ - Ollama + CLI       │ <──────> │ - Machin Shin Node   │
+│ - Ollama + CLI       │ <──────> │ - Machin Shin Node  │
 │ - Runs Mistral Small │          │ - Runs Kali tools   │
 │   24B (or larger)    │          │ - MCP Server        │
 └──────────────────────┘          └─────────────────────┘

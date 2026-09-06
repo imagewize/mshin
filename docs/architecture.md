@@ -10,10 +10,10 @@ Machin Shin is designed as a **modular, two-node architecture** to balance perfo
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      MSHIN SYSTEM                      │
+│                     MACHIN SHIN SYSTEM                      │
 ├────────────────────────────┬────────────────────────────────┤
 │                            │                                │
-│       MSHIN CORE      │        MSHIN NODE         │
+│      MACHIN SHIN CORE      │        MACHIN SHIN NODE        │
 │    (any 32GB+ Linux box)   │     (Kali Node / mini PC)      │
 │                            │                                │
 │  ┌───────────────────────┐ │ ┌───────────────────────────┐  │
