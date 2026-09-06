@@ -5,7 +5,71 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-06
+
+Lima-local verification release. Running the agent loop against `nikto` and
+`tshark` on the Ubuntu Core guest surfaced two real bugs — one in the persona
+that prevented native tool calling for these tools, and one in how `tshark` was
+invoked — and verified the fixes end to end. The single-VM path now enables
+Ubuntu `multiverse` up front so `nikto` installs cleanly. The Kali-only tools
+(`metasploit`, `searchsploit`) and the two-machine Core→Node hop remain for
+dedicated hardware.
+
+### Fixed
+
+- **The `avendesora` persona did not reliably tool-call `nikto` and `tshark`.**
+  `configs/ollama-modelfile` relied on a system prompt alone to steer the 7B
+  model. On the Lima Core guest the model emitted the tool invocation as text
+  (or hallucinated results) instead of Ollama's structured `tool_calls`. Adding
+  the tool-calling `TEMPLATE` from the base Mistral model — plus a concise
+  instruction to call tools through the function-calling interface — restored
+  correct native tool calling for both tools.
+- **`tshark` failed to read user-owned PCAP files.** `servers/src/kali/tools.js`
+  ran every binary as `sudo -n` when the server was not root. `tshark` enforces
+  a file-owner check that rejects root-owned or foreign-owned capture files, so
+  the tool call returned a permission error. `tshark` now runs without `sudo`;
+  it does not need privileges to analyze existing captures. The sudoers
+  allowlists in `scripts/setup_mcp_server.sh`, `docs/setup.md`,
+  `KALI-OPENLLM.md`, `lima/avendesora-kali.yaml`, and `docs/lima-local-dev.md`
+  were updated to drop `/usr/bin/tshark`.
+
+### Changed
+
+- **`docs/lima-local-dev.md`** — the single-VM Ubuntu instructions now run
+  `sudo add-apt-repository -y multiverse` before `apt install`, eliminating the
+  `E: Unable to locate package nikto` failure. Added a **Verifying the tools**
+  subsection with a loopback-PCAP capture (including `chown` so `tshark` can
+  read it) and example CLI prompts for `nikto` and `tshark`.
+- **`docs/setup.md`** — added **Step 1.9: Verify the Node Tools** with example
+  CLI prompts for all six tools on a real Kali Node.
+- **`KALI-OPENLLM.md`** — added a **Verify Every MCP Tool** subsection with the
+  same six prompts and notes on the `metasploit` approval gate and `tshark`
+  PCAP ownership.
+- **`configs/ollama-modelfile`** — added the Mistral tool-calling `TEMPLATE` and
+  tightened the system prompt so the model uses Ollama's native function calls
+  rather than narrating commands.
+- **`servers/src/kali/tools.js`** — `runTool` now accepts a `useSudo` option;
+  `tshark` uses `{ useSudo: false }`.
+- **`configs/mcp-kali.service`** — updated the security comment to note that
+  `tshark` is the one tool that does not run under `sudo`.
+
+### Verified
+
+Run against the Lima Core guest (`avendesora-core`), not asserted:
+
+- Clean `nikto` install on the Ubuntu 26.04 guest after enabling `multiverse`.
+- Agent loop with the rebuilt `avendesora` persona drives a real `nikto` scan
+  against `http://127.0.0.1` via MCP, receives the actual scan output, and
+  summarises it correctly.
+- Agent loop drives `tshark` against a user-owned `/tmp/localhost.pcap`,
+  receives the real packet summary, and summarises it correctly.
+
+### Still not verified
+
+- Real execution of `metasploit` and `searchsploit` on a dedicated Kali Node.
+  Verification prompts are now documented in `docs/setup.md` and
+  `KALI-OPENLLM.md`; the actual agent-loop runs still need a real Kali Node.
+- The two-machine path on real hardware (Core → Node across the shared network).
 
 ## [0.5.0] - 2026-09-06
 
@@ -465,7 +529,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/imagewize/avendesora/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/imagewize/avendesora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/imagewize/avendesora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/imagewize/avendesora/compare/v0.2.1...v0.3.0
