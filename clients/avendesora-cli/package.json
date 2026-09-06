@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --check index.js && node --check agent.js"
+    "check": "node --check index.js && node --check agent.js",
+    "test": "node --check index.js && node --check agent.js && node --test --test-timeout=15000"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"

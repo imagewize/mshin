@@ -484,6 +484,8 @@ ollama rm mistral
 > - `llama3.2:3b` (3B, ~2GB) - Good for testing
 >
 > Check a tag exists with `ollama show <tag>` before building the persona on it. The full setup's **Mistral Small 3 (24B)** needs ~15GB and is out of reach for a Lima guest.
+>
+> **The agent loop needs a tool-calling model.** Avendesora drives tools through Ollama's `tool_calls`; a model not trained for tool use will describe commands in prose instead of emitting a call, and the loop never fires a tool. Not every small model qualifies — `phi3` and `gemma` variants, for instance, are read-only. A companion repo, [`imagewize/ollama-opencode-setup`](https://github.com/imagewize/ollama-opencode-setup) (`~/code/ollama-opencode-setup` locally), carries tool-calling results measured on this hardware — on **M1 16GB**, `ministral-3:8b` and `qwen3:8b`/`qwen3:4b` tool-call reliably; on **Mac Mini M4 Pro 24GB**, `mistral-small3.2:24b` (the persona's base) runs 100% on GPU at 32k with tool use confirmed. Verify any candidate with that repo's `scripts/tool-call-test.sh` before building the persona on it.
 
 ---
 
@@ -542,7 +544,7 @@ node index.js --tools nmap,nikto,whois,tshark &
 /opt/avendesora/clients/avendesora-cli/index.js --node http://localhost:3000 --model avendesora
 ```
 
-> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and `universe` on Ubuntu; Ubuntu enables `universe` by default, Debian's cloud image does not enable `non-free`. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
+> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and **`multiverse`** on Ubuntu (verified against `packages.ubuntu.com` for jammy 22.04 and noble 24.04: `nikto 1:2.1.5-3.1 [multiverse]`) — not `universe`. If the install fails on the Lima `template:ubuntu` guest, enable multiverse with `sudo add-apt-repository -y multiverse && sudo apt update`, then reinstall. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
 
 > **Pros:** Simplest setup, single VM to manage
 > **Cons:** Less isolation, tools and LLM share resources, MCP server runs on localhost
