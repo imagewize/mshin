@@ -1,8 +1,8 @@
-# Avendesora Setup Guide
+# Machin Shin Setup Guide
 
-> *"The Way of the Leaf is not for all, but the Way of the Blade must be mastered. So too must you master the setup of Avendesora, that it may serve you as the Aiel serve the Dragon."*
+> *"The Way of the Leaf is not for all, but the Way of the Blade must be mastered. So too must you master the setup of Machin Shin, that it may serve you as the Aiel serve the Dragon."*
 
-This guide will walk you through setting up **Avendesora**, the **Wheel of Time-inspired cybersecurity AI system**. Follow the steps below to configure both the **Avendesora Core** (LLM inference server) and the **Avendesora Node** (Kali Linux + MCP server).
+This guide will walk you through setting up **Machin Shin**, the **Wheel of Time-inspired cybersecurity AI system**. Follow the steps below to configure both the **Machin Shin Core** (LLM inference server) and the **Machin Shin Node** (Kali Linux + MCP server).
 
 ---
 
@@ -13,8 +13,8 @@ This guide will walk you through setting up **Avendesora**, the **Wheel of Time-
 
 | Component           | Role                    | Minimum (start here)            | Optional ceiling                    |
 | ------------------- | ----------------------- | ------------------------------- | ----------------------------------- |
-| **Avendesora Core** | LLM Inference Server    | 32GB RAM, ~50GB free disk, modern CPU | 128GB unified-memory APU (e.g. GMKtec EVO-X3) |
-| **Avendesora Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | Any x86_64 mini PC / SFF            |
+| **Machin Shin Core** | LLM Inference Server    | 32GB RAM, ~50GB free disk, modern CPU | 128GB unified-memory APU (e.g. GMKtec EVO-X3) |
+| **Machin Shin Node** | Kali Linux + MCP Server | 16GB RAM, 500GB SSD, x86_64 CPU | Any x86_64 mini PC / SFF            |
 
 The 32GB minimum is a real minimum, not a polite one — it runs the default
 `mistral-small` (24B) model and every workflow in this guide. **Use a machine you
@@ -30,8 +30,8 @@ already own before buying anything.** More RAM buys larger models, not faster on
 
 ### **Software Dependencies**
 
-- **Avendesora Node:** Kali Linux (minimal install), Node.js v20+, Git
-- **Avendesora Core:** Ubuntu/Debian, Ollama, Node.js v20+
+- **Machin Shin Node:** Kali Linux (minimal install), Node.js v20+, Git
+- **Machin Shin Core:** Ubuntu/Debian, Ollama, Node.js v20+
 
 ---
 
@@ -41,9 +41,9 @@ already own before buying anything.** More RAM buys larger models, not faster on
 
 To ensure both devices can always communicate, assign static IPs.
 
-#### **On Avendesora Node:**
+#### **On Machin Shin Node:**
 
-Create `/etc/netplan/00-avendesora-node.yaml`:
+Create `/etc/netplan/00-mshin-node.yaml`:
 
 ```yaml
 network:
@@ -68,9 +68,9 @@ Apply the changes:
 sudo netplan apply
 ```
 
-#### **On Avendesora Core:**
+#### **On Machin Shin Core:**
 
-Create `/etc/netplan/00-avendesora-core.yaml`:
+Create `/etc/netplan/00-mshin-core.yaml`:
 
 ```yaml
 network:
@@ -97,7 +97,7 @@ sudo netplan apply
 
 ### **2. Verify Connectivity**
 
-From **Avendesora Core**, test the connection to **Avendesora Node**:
+From **Machin Shin Core**, test the connection to **Machin Shin Node**:
 
 ```bash
 ping 192.168.1.100
@@ -111,7 +111,7 @@ If successful, you should see responses like:
 
 ---
 
-## **Step 1: Set Up Avendesora Node (Kali Linux + MCP Server)**
+## **Step 1: Set Up Machin Shin Node (Kali Linux + MCP Server)**
 
 ### **1.1 Install Kali Linux**
 
@@ -148,11 +148,11 @@ node --version  # Should output v20.x.x
 
 ### **1.4 Set Up the MCP Server**
 
-Avendesora ships its own Kali MCP server at `servers/src/kali`.
+Machin Shin ships its own Kali MCP server at `servers/src/kali`.
 
-1. Change to the server directory (adjust the path if you did not use `/opt/avendesora`):
+1. Change to the server directory (adjust the path if you did not use `/opt/mshin`):
   ```bash
-   cd /opt/avendesora/servers/src/kali
+   cd /opt/mshin/servers/src/kali
   ```
 2. Install dependencies:
   ```bash
@@ -169,20 +169,20 @@ Avendesora ships its own Kali MCP server at `servers/src/kali`.
   ```
    You should see a JSON response listing the enabled tools.
 
-### **1.5 Create a Dedicated User for Avendesora**
+### **1.5 Create a Dedicated User for Machin Shin**
 
-For security, create a dedicated user (`avendesora`) to run the MCP server:
+For security, create a dedicated user (`mshin`) to run the MCP server:
 
 ```bash
-sudo adduser avendesora
-sudo usermod -aG sudo avendesora
+sudo adduser mshin
+sudo usermod -aG sudo mshin
 ```
 
 ### **1.6 Set Up SSH Access (Optional but Recommended)**
 
-1. Switch to the `avendesora` user:
+1. Switch to the `mshin` user:
   ```bash
-   su - avendesora
+   su - mshin
   ```
 2. Generate SSH keys (if you want to access the node remotely):
   ```bash
@@ -201,17 +201,17 @@ To ensure the MCP server starts automatically on boot:
 
 1. Create a service file:
   ```bash
-   sudo nano /etc/systemd/system/avendesora-node.service
+   sudo nano /etc/systemd/system/mshin-node.service
   ```
 2. Add the following configuration:
   ```ini
    [Unit]
-   Description=Avendesora Node: MCP Server for Kali Tools
+   Description=Machin Shin Node: MCP Server for Kali Tools
    After=network.target
 
    [Service]
-   User=avendesora
-   WorkingDirectory=/opt/avendesora/servers/src/kali
+   User=mshin
+   WorkingDirectory=/opt/mshin/servers/src/kali
    ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
    Restart=always
    RestartSec=5s
@@ -222,25 +222,25 @@ To ensure the MCP server starts automatically on boot:
    PrivateTmp=true
    ProtectSystem=strict
    ProtectHome=read-only
-   ReadWritePaths=/opt/avendesora /home/avendesora
+   ReadWritePaths=/opt/mshin /home/mshin
 
    [Install]
    WantedBy=multi-user.target
   ```
 3. Enable and start the service:
   ```bash
-   sudo systemctl enable avendesora-node
-   sudo systemctl start avendesora-node
-   sudo systemctl status avendesora-node  # Verify it's running
+   sudo systemctl enable mshin-node
+   sudo systemctl start mshin-node
+   sudo systemctl status mshin-node  # Verify it's running
   ```
 4. Check the logs if there are issues:
   ```bash
-   sudo journalctl -u avendesora-node -f
+   sudo journalctl -u mshin-node -f
   ```
 
-### **1.8 Restrict `avendesora` User Permissions**
+### **1.8 Restrict `mshin` User Permissions**
 
-To limit the `avendesora` user to only necessary tools, edit the sudoers file:
+To limit the `mshin` user to only necessary tools, edit the sudoers file:
 
 ```bash
 sudo visudo
@@ -251,7 +251,7 @@ Add the following line:
 ```
 # tshark is omitted: it does not need root to read user-owned PCAP files, and
 # running it as root triggers Wireshark's file-owner check.
-avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
 ```
 
 ### **1.9 Verify the Node Tools**
@@ -263,15 +263,15 @@ Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.10
 "Whois example.com."
 "Search searchsploit for openssh 8.9."
 "Run nikto against http://127.0.0.1 and report any findings."
-"Use tshark to read /home/avendesora/capture.pcap and summarize the traffic."
+"Use tshark to read /home/mshin/capture.pcap and summarize the traffic."
 "Run the metasploit auxiliary scanner http/http_version against 127.0.0.1."
 ```
 
-> **PCAP ownership matters.** Capture files must be readable by the `avendesora` user; `tshark` is run without `sudo` because Wireshark's file-owner check rejects root-owned captures.
+> **PCAP ownership matters.** Capture files must be readable by the `mshin` user; `tshark` is run without `sudo` because Wireshark's file-owner check rejects root-owned captures.
 
 ---
 
-## **Step 2: Set Up Avendesora Core (LLM Inference Server)**
+## **Step 2: Set Up Machin Shin Core (LLM Inference Server)**
 
 ### **2.1 Install Ubuntu/Debian**
 
@@ -323,44 +323,44 @@ ollama pull llama3.3:70b   # ~40GB, needs ~64GB+ RAM
 ollama pull gpt-oss:120b   # ~65GB, needs 128GB — fastest of the three (MoE)
 ```
 
-### **2.5 Create the Avendesora Persona Model**
+### **2.5 Create the Machin Shin Persona Model**
 
 ```bash
-ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
+ollama create mshin -f /opt/mshin/configs/ollama-modelfile
 ```
 
-### **2.6 Install the Avendesora CLI Client**
+### **2.6 Install the Machin Shin CLI Client**
 
 ```bash
-cd /opt/avendesora/clients/avendesora-cli
+cd /opt/mshin/clients/mshin-cli
 npm install
 ```
 
-### **2.7 Connect to Avendesora Node**
+### **2.7 Connect to Machin Shin Node**
 
-Run the client, pointing it to the Avendesora Node’s MCP server:
+Run the client, pointing it to the Machin Shin Node’s MCP server:
 
 ```bash
 # Wrapper installed by setup_ollama.sh:
-avendesora 192.168.1.100
+mshin 192.168.1.100
 
 # Or directly:
-/opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.1.100:3000 --model avendesora
+/opt/mshin/clients/mshin-cli/index.js --node http://192.168.1.100:3000 --model mshin
 ```
 
-Replace `192.168.1.100` with the **IP of your Avendesora Node**.
+Replace `192.168.1.100` with the **IP of your Machin Shin Node**.
 
 ### **2.8 Test the Connection**
 
 Once connected, test the system with a prompt:
 
 ```
-"Avendesora, run an Nmap scan on 192.168.1.1 and analyze the results."
+"Machin Shin, run an Nmap scan on 192.168.1.1 and analyze the results."
 ```
 
-If everything is set up correctly, Avendesora should:
+If everything is set up correctly, Machin Shin should:
 
-1. Call the `nmap` tool on the Avendesora Node.
+1. Call the `nmap` tool on the Machin Shin Node.
 2. Return the scan results.
 3. Analyze the results and provide recommendations.
 
@@ -372,15 +372,15 @@ If everything is set up correctly, Avendesora should:
 
 - **Check the service status:**
   ```bash
-  sudo systemctl status avendesora-node
+  sudo systemctl status mshin-node
   ```
 - **Check the logs:**
   ```bash
-  sudo journalctl -u avendesora-node -f
+  sudo journalctl -u mshin-node -f
   ```
 - **Manual start:**
   ```bash
-  cd /opt/avendesora/servers/src/kali
+  cd /opt/mshin/servers/src/kali
   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
   ```
 
@@ -392,7 +392,7 @@ If everything is set up correctly, Avendesora should:
   ```
 - **Check firewall rules:**
   ```bash
-  sudo ufw status  # On Avendesora Node
+  sudo ufw status  # On Machin Shin Node
   ```
 - **Temporarily disable the firewall for testing:**
   ```bash
@@ -418,7 +418,7 @@ If everything is set up correctly, Avendesora should:
 
 - **Verify the CLI client can connect:**
   ```bash
-  /opt/avendesora/clients/avendesora-cli/index.js --node http://192.168.1.100:3000 --model avendesora
+  /opt/mshin/clients/mshin-cli/index.js --node http://192.168.1.100:3000 --model mshin
   ```
 - **Check the MCP server logs for errors.**
 
@@ -426,11 +426,11 @@ If everything is set up correctly, Avendesora should:
 
 ## **Next Steps**
 
-Once Avendesora is set up, explore the following:
+Once Machin Shin is set up, explore the following:
 
-1. **Try the example workflows** in [docs/workflows.md](avendesora-workflows).
+1. **Try the example workflows** in [docs/workflows.md](mshin-workflows).
 2. **Add more tools** to the MCP server (edit the `--tools` flag in the service file).
-3. **Customize prompts** for your LLM (see [configs/ollama-modelfile](avendesora-ollama-modelfile)).
+3. **Customize prompts** for your LLM (see [configs/ollama-modelfile](mshin-ollama-modelfile)).
 
 ---
 
@@ -442,4 +442,4 @@ Once Avendesora is set up, explore the following:
 
 ---
 
-*"The Flame of Tar Valon burns bright, but the light of Avendesora guides your path through the shadows of the Ways."*
+*"The Flame of Tar Valon burns bright, but the light of Machin Shin guides your path through the shadows of the Ways."*

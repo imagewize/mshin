@@ -2,7 +2,7 @@
 
 > *"The Wheel weaves as the Wheel wills, and agents must weave with it. Know your place in the Pattern, and do not break the threads."*
 
-Working rules for AI agents contributing to **Avendesora**.
+Working rules for AI agents contributing to **Machin Shin**.
 
 ---
 
@@ -35,7 +35,7 @@ Documentation map:
 
 Before changing a file, read:
 - The file itself, end to end
-- Whatever calls it (`servers/src/kali/index.js` for tools, `clients/avendesora-cli/index.js` for the agent loop)
+- Whatever calls it (`servers/src/kali/index.js` for tools, `clients/mshin-cli/index.js` for the agent loop)
 - The docs that describe the behaviour you are changing
 
 **Never edit a file you have not read in the current session.**
@@ -52,7 +52,7 @@ Before changing a file, read:
 You are **not done** when the edit lands, the syntax parses, or the code looks right. You are done when the acceptance criterion is met and you can point at the evidence.
 
 For this repo that usually means:
-- `npm test` in `servers/src/kali/` and `clients/avendesora-cli/` (see [Testing](#testing) for what that does and does not cover)
+- `npm test` in `servers/src/kali/` and `clients/mshin-cli/` (see [Testing](#testing) for what that does and does not cover)
 - A documented command actually run, or explicitly flagged as unverified
 - For MCP changes: the server starts, `curl :3000/health` answers, and the tool appears in `tools/list`
 
@@ -97,7 +97,7 @@ Adding, removing, or renaming an MCP tool means updating **all** of these, or th
 
 1. `servers/src/kali/tools.js` — the definition, its `TOOL_PATHS` entry, and its handler
 2. `scripts/setup_mcp_server.sh` — the `--tools` flag **and** the apt package list
-3. `scripts/setup_mcp_server.sh` — the `NOPASSWD` sudoers allowlist for the `avendesora` user
+3. `scripts/setup_mcp_server.sh` — the `NOPASSWD` sudoers allowlist for the `mshin` user
 4. `configs/mcp-kali.service` — the `--tools` flag in `ExecStart`
 5. `configs/ollama-modelfile` — the documented tool list in the system prompt
 
@@ -199,7 +199,7 @@ Ask first: `rm -rf`, `git reset --hard`, `git clean -fd`, dropping a VM, overwri
 
 ## Testing
 
-There is no test suite. `npm test` in `servers/src/kali/` and `clients/avendesora-cli/` runs `node --check` on the source files — a syntax check, nothing more. It catches a typo; it does not tell you the code works.
+There is no test suite. `npm test` in `servers/src/kali/` and `clients/mshin-cli/` runs `node --check` on the source files — a syntax check, nothing more. It catches a typo; it does not tell you the code works.
 
 So:
 - Run `npm test` before committing any change under `servers/` or `clients/`

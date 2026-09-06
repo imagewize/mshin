@@ -1,21 +1,21 @@
-# Avendesora Workflows
+# Machin Shin Workflows
 
-> *"The Wheel weaves the Pattern of the Age, and the threads of every life are part of the design. So too does Avendesora weave the threads of your cybersecurity workflows into a tapestry of defense."*
+> *"The Wheel weaves the Pattern of the Age, and the threads of every life are part of the design. So too does Machin Shin weave the threads of your cybersecurity workflows into a tapestry of defense."*
 
-This document provides **practical examples** of how to use Avendesora for common cybersecurity tasks. Each workflow demonstrates how the LLM can **call Kali Linux tools via MCP** to perform real-time analysis, scanning, and response.
+This document provides **practical examples** of how to use Machin Shin for common cybersecurity tasks. Each workflow demonstrates how the LLM can **call Kali Linux tools via MCP** to perform real-time analysis, scanning, and response.
 
 ---
 
-## **General Tips for Prompting Avendesora**
+## **General Tips for Prompting Machin Shin**
 
 1. **Be Specific:** Include **IPs, domains, or parameters** in your prompts.
   - "Scan a network."
-  - "Avendesora, run an Nmap scan on 192.168.1.1/24 and list all open ports."
-2. **Chain Commands:** Avendesora can **execute multiple tools in sequence**.
+  - "Machin Shin, run an Nmap scan on 192.168.1.1/24 and list all open ports."
+2. **Chain Commands:** Machin Shin can **execute multiple tools in sequence**.
   - "Run Nmap on 192.168.1.1, then use Searchsploit to find exploits for any vulnerable services."
 3. **Ask for Analysis:** The LLM can **interpret tool outputs** and provide recommendations.
   - "Analyze this Nmap scan for critical vulnerabilities and suggest mitigation steps."
-4. **Use the Name:** Addressing the system as **"Avendesora"** helps it recognize the context.
+4. **Use the Name:** Addressing the system as **"Machin Shin"** helps it recognize the context.
 
 ---
 
@@ -28,13 +28,13 @@ Identify open ports and vulnerable services on a target system, then suggest exp
 ### **Prompt:**
 
 ```
-Avendesora, perform the following steps on 192.168.1.1:
+Machin Shin, perform the following steps on 192.168.1.1:
 1. Run an Nmap scan with service detection (-sV).
 2. For each open service, use Searchsploit to find known exploits.
 3. Provide a summary of critical vulnerabilities and recommended actions.
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. Calls MCP `nmap` tool:
   ```bash
@@ -49,7 +49,7 @@ Avendesora, perform the following steps on 192.168.1.1:
    **Example Output:**
 3. **Generates a Summary:**
   ```
-   [AVENDESORA VULNERABILITY REPORT]
+   [MSHIN VULNERABILITY REPORT]
    Target: 192.168.1.1
 
    CRITICAL:
@@ -78,12 +78,12 @@ Investigate a suspicious IP address for malicious activity.
 ### **Prompt:**
 
 ```
-Avendesora, analyze the following suspicious IP: 203.0.113.45.
+Machin Shin, analyze the following suspicious IP: 203.0.113.45.
 1. Run a WHOIS lookup to identify the owner.
 2. Provide a risk assessment and recommended actions.
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. Calls MCP `whois` tool:
   ```bash
@@ -92,7 +92,7 @@ Avendesora, analyze the following suspicious IP: 203.0.113.45.
    **Example Output:**
 2. **Generates a Risk Assessment:**
   ```
-   [AVENDESORA THREAT INTEL]
+   [MSHIN THREAT INTEL]
    IP: 203.0.113.45
    Owner: Malicious Hosting Inc. (RU)
 
@@ -117,11 +117,11 @@ Generate a Metasploit command to exploit a known vulnerability.
 ### **Prompt:**
 
 ```
-Avendesora, generate a Metasploit command to exploit CVE-2026-1234 on the target 192.168.1.1.
+Machin Shin, generate a Metasploit command to exploit CVE-2026-1234 on the target 192.168.1.1.
 Include the full command with all necessary parameters.
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. Calls MCP `metasploit` tool to validate the exploit module:
   ```bash
@@ -130,7 +130,7 @@ Include the full command with all necessary parameters.
    **Example Output:**
 2. **Generates the Metasploit Command:**
   ```
-   [AVENDESORA EXPLOIT COMMAND]
+   [MSHIN EXPLOIT COMMAND]
 
    Copy and run the following in Metasploit:
    ```bash
@@ -156,11 +156,11 @@ Scan a web application for vulnerabilities using Nikto and suggest fixes.
 ### **Prompt:**
 
 ```
-Avendesora, perform a Nikto scan on http://192.168.1.100 and analyze the results for vulnerabilities.
+Machin Shin, perform a Nikto scan on http://192.168.1.100 and analyze the results for vulnerabilities.
 Provide a prioritized list of issues and remediation steps.
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. Calls MCP `nikto` tool:
   ```bash
@@ -169,7 +169,7 @@ Provide a prioritized list of issues and remediation steps.
    **Example Output:**
 2. **Generates a Vulnerability Report:**
   ```
-   [AVENDESORA WEB SCAN REPORT]
+   [MSHIN WEB SCAN REPORT]
    Target: http://192.168.1.100
 
    HIGH RISK:
@@ -205,14 +205,14 @@ Analyze a PCAP file for suspicious activity.
 ### **Prompt:**
 
 ```
-Avendesora, analyze the PCAP file at /path/to/capture.pcap for suspicious activity.
+Machin Shin, analyze the PCAP file at /path/to/capture.pcap for suspicious activity.
 Focus on:
 1. Unusual ports or protocols
 2. Connections to known malicious IPs
 3. Evidence of data exfiltration
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. Calls MCP `tshark` tool to extract key information:
   ```bash
@@ -222,7 +222,7 @@ Focus on:
    **Example Output:**
 2. **Generates an Analysis Report:**
   ```
-   [AVENDESORA PCAP ANALYSIS]
+   [MSHIN PCAP ANALYSIS]
 
    SUSPICIOUS ACTIVITY DETECTED:
    - 192.168.1.5 (internal) ↔ 203.0.113.45 (external, known malicious)
@@ -253,7 +253,7 @@ Analyze a suspicious email for phishing indicators.
 ### **Prompt:**
 
 ```
-Avendesora, analyze the following email headers for phishing indicators:
+Machin Shin, analyze the following email headers for phishing indicators:
 
 From: "IT Support" <support@company.com>
 To: user@company.com
@@ -266,7 +266,7 @@ Body:
 "Your account will be locked in 24 hours. Click here to verify: http://malicious-domain.com/login"
 ```
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. **Analyzes Headers and Body:**
   - **From Address:** `support@company.com` (spoofed?)
@@ -275,7 +275,7 @@ Body:
   - **Link:** `http://malicious-domain.com/login` (not official domain)
 2. **Generates a Phishing Assessment:**
   ```
-   [AVENDESORA PHISHING ANALYSIS]
+   [MSHIN PHISHING ANALYSIS]
 
    RED FLAGS:
   ```
@@ -305,12 +305,12 @@ Body:
 
 ### **Objective:**
 
-Use a custom tool (e.g., a Python script) to extend Avendesora’s capabilities.
+Use a custom tool (e.g., a Python script) to extend Machin Shin’s capabilities.
 
 ### **Prompt:**
 
 ```
-Avendesora, run the custom script /scripts/scan_subnets.py on the Avendesora Node.
+Machin Shin, run the custom script /scripts/scan_subnets.py on the Machin Shin Node.
 The script takes a subnet as an argument (e.g., 192.168.1.0/24).
 ```
 
@@ -318,9 +318,9 @@ The script takes a subnet as an argument (e.g., 192.168.1.0/24).
 
 1. Add your custom tool to `servers/src/kali/tools.js` by implementing a new entry with a name, schema, and handler.
 2. Add the tool name to the `--tools` list in the systemd service file.
-3. If the tool needs elevated privileges, add its absolute path to `/etc/sudoers.d/avendesora`.
+3. If the tool needs elevated privileges, add its absolute path to `/etc/sudoers.d/mshin`.
 
-### **Avendesora Actions:**
+### **Machin Shin Actions:**
 
 1. The LLM calls the new MCP tool with the provided arguments.
 2. The server executes the handler and returns the output, which the LLM then analyzes.
@@ -334,7 +334,7 @@ The script takes a subnet as an argument (e.g., 192.168.1.0/24).
 Combine multiple tools into a **single command**:
 
 ```
-Avendesora, perform a full penetration test on 192.168.1.1:
+Machin Shin, perform a full penetration test on 192.168.1.1:
 1. Run Nmap with aggressive scan (-A).
 2. Use Nikto on any open HTTP/HTTPS ports.
 3. Use Searchsploit for all detected services.
@@ -344,7 +344,7 @@ Avendesora, perform a full penetration test on 192.168.1.1:
 ### **Workflow 9: Threat Hunting**
 
 ```
-Avendesora, hunt for threats in the last 24 hours of logs:
+Machin Shin, hunt for threats in the last 24 hours of logs:
 1. Grep the last 24 hours of /var/log/auth.log for failed SSH attempts.
 2. Extract the IPs of attackers.
 3. Run WHOIS on each IP.
@@ -355,7 +355,7 @@ Avendesora, hunt for threats in the last 24 hours of logs:
 ### **Workflow 10: Compliance Auditing**
 
 ```
-Avendesora, audit 192.168.1.1 for PCI DSS compliance:
+Machin Shin, audit 192.168.1.1 for PCI DSS compliance:
 1. Check for open ports that violate PCI DSS (e.g., Telnet, FTP).
 2. Verify TLS versions on all HTTPS services.
 3. Check for default credentials on any services.
@@ -369,7 +369,7 @@ Avendesora, audit 192.168.1.1 for PCI DSS compliance:
 1. **Start Small:** Test with **single tools** before chaining multiple commands.
 2. **Validate Outputs:** Always **verify tool outputs** before acting on them.
 3. **Use Safe Targets:** Only scan systems you **own or have permission** to test.
-4. **Log Everything:** Keep logs of all **Avendesora interactions** for auditing.
+4. **Log Everything:** Keep logs of all **Machin Shin interactions** for auditing.
 5. **Iterate:** Refine your prompts based on the LLM’s responses.
 
 ---
@@ -378,19 +378,19 @@ Avendesora, audit 192.168.1.1 for PCI DSS compliance:
 
 ### **Slack/Teams Bot**
 
-Use Avendesora as a **chatbot** in Slack or Teams by:
+Use Machin Shin as a **chatbot** in Slack or Teams by:
 
-1. Setting up a **local API** that accepts prompts and returns Avendesora’s responses.
+1. Setting up a **local API** that accepts prompts and returns Machin Shin’s responses.
 2. Connecting the API to your chat platform via webhooks.
 
 ### **SIEM Integration**
 
-Forward Avendesora’s **analysis reports** to your SIEM (e.g., Splunk, ELK) for centralized logging.
+Forward Machin Shin’s **analysis reports** to your SIEM (e.g., Splunk, ELK) for centralized logging.
 
 ### **Automated Scripts**
 
-Use Avendesora to **generate scripts** for automated tasks (e.g., daily vulnerability scans).
+Use Machin Shin to **generate scripts** for automated tasks (e.g., daily vulnerability scans).
 
 ---
 
-*"The Wheel weaves as the Wheel wills, but with Avendesora, you hold the thread."*
+*"The Wheel weaves as the Wheel wills, but with Machin Shin, you hold the thread."*

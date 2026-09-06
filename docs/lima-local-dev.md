@@ -1,16 +1,16 @@
-# Avendesora Local Development with Lima
+# Machin Shin Local Development with Lima
 
-> *"The Two Rivers had its wisdom, and the Wisdom of the Two Rivers was this: as the leaf flows, so flows the river. A leaf on the wind, a leaf on the stream, a leaf on the current of the Pattern — and Avendesora flows with you, even on a single machine."*
+> *"The Two Rivers had its wisdom, and the Wisdom of the Two Rivers was this: as the leaf flows, so flows the river. A leaf on the wind, a leaf on the stream, a leaf on the current of the Pattern — and Machin Shin flows with you, even on a single machine."*
 
-This guide describes how to run a **local, single-machine Avendesora development environment** on macOS using **Lima VMs**, **Ollama with a small local model**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
+This guide describes how to run a **local, single-machine Machin Shin development environment** on macOS using **Lima VMs**, **Ollama with a small local model**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
 
 ---
 
 ## Overview
 
-The standard [Avendesora architecture](architecture.md) uses two physical machines:
-- **Avendesora Core**: LLM inference server (32GB+ RAM)
-- **Avendesora Node**: Kali Linux + MCP server (x86_64 mini PC)
+The standard [Machin Shin architecture](architecture.md) uses two physical machines:
+- **Machin Shin Core**: LLM inference server (32GB+ RAM)
+- **Machin Shin Node**: Kali Linux + MCP server (x86_64 mini PC)
 
 For **local development, testing, or constrained hardware**, you can consolidate both roles into **Lima VMs running on a single macOS host**. This approach:
 
@@ -35,7 +35,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │                    macOS HOST (Apple Silicon)                  │
 │                                                                │
 │  ┌───────────────────────────┐   ┌──────────────────────────┐  │
-│  │   Lima: avendesora-core   │   │  Lima: avendesora-kali   │  │
+│  │   Lima: mshin-core   │   │  Lima: mshin-kali   │  │
 │  │   Ubuntu, aarch64         │   │  Debian + Kali tools     │  │
 │  │                           │   │                          │  │
 │  │  ┌─────────────────────┐  │   │  ┌────────────────────┐  │  │
@@ -44,7 +44,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │  │  └──────────▲──────────┘  │   │  │ whois, tshark      │  │  │
 │  │             │             │   │  └─────────▲──────────┘  │  │
 │  │  ┌──────────▼──────────┐  │   │            │             │  │
-│  │  │ Avendesora CLI      │──┼───┼──── SSE ───┘             │  │
+│  │  │ Machin Shin CLI      │──┼───┼──── SSE ───┘             │  │
 │  │  │ (MCP client)        │  │   │                          │  │
 │  │  └─────────────────────┘  │   │                          │  │
 │  └───────────────────────────┘   └──────────────────────────┘  │
@@ -125,14 +125,14 @@ There are two ways to build these guests, and the guide covers both.
 
 | | **Path A — Template files** | **Path B — `limactl` flags** |
 | - | --------------------------- | ---------------------------- |
-| Command | `limactl create --name=… lima/avendesora-kali.yaml` | `limactl create template:debian-13 --cpus=4 …` |
+| Command | `limactl create --name=… lima/mshin-kali.yaml` | `limactl create template:debian-13 --cpus=4 …` |
 | Provisioning | Automatic, on first boot | You type every step inside the guest |
 | Architecture | Host default — one file for Intel and Apple Silicon | You pass `--arch` yourself |
 | Mounts, port forwards, probes | Available | No flags exist for them |
 | Repeatable | Yes — the file is versioned in this repo | Only as far as you re-type it correctly |
 | Good for | Anything you will rebuild | A one-off you plan to throw away |
 
-**Path A is the shorter road**, and it is the one this repo maintains: `lima/avendesora-kali.yaml` and `lima/avendesora-core.yaml` carry the resources, the shared network, and a `provision:` block that runs the same commands Path B asks you to type. Path B is kept in full because it shows what those blocks actually do — read it if you want to understand the guest, or if you are debugging a provisioning failure.
+**Path A is the shorter road**, and it is the one this repo maintains: `lima/mshin-kali.yaml` and `lima/mshin-core.yaml` carry the resources, the shared network, and a `provision:` block that runs the same commands Path B asks you to type. Path B is kept in full because it shows what those blocks actually do — read it if you want to understand the guest, or if you are debugging a provisioning failure.
 
 Both paths need the [shared networking](#shared-networking-required-for-two-vms) host setup first.
 
@@ -140,7 +140,7 @@ Both paths need the [shared networking](#shared-networking-required-for-two-vms)
 
 ### Step 1: Create the Kali Node VM
 
-The Kali Node VM runs **Debian with Kali tools** and the **Avendesora MCP server**.
+The Kali Node VM runs **Debian with Kali tools** and the **Machin Shin MCP server**.
 
 > **Lima ships no Kali template** (`limactl create --list-templates`), and `limactl create` boots **cloud images**, not installer ISOs — so neither path boots Kali itself. Both install the tools Debian packages on top of a Debian base.
 
@@ -148,16 +148,16 @@ The Kali Node VM runs **Debian with Kali tools** and the **Avendesora MCP server
 
 ```bash
 # From your clone of this repo
-limactl create --name=avendesora-kali lima/avendesora-kali.yaml
-limactl start avendesora-kali
+limactl create --name=mshin-kali lima/mshin-kali.yaml
+limactl start mshin-kali
 ```
 
 That is the whole step. On first boot the template:
 
 1. Installs `nmap`, `nikto`, `whois`, `tshark`, `git` and Node.js 20.
-2. Clones this repo to `/opt/avendesora` and runs `npm install` for the MCP server.
+2. Clones this repo to `/opt/mshin` and runs `npm install` for the MCP server.
 3. Writes the `NOPASSWD` sudoers allowlist those four tools need.
-4. Installs `configs/mcp-kali.service` as `avendesora-node`, rewritten for the Lima login user and the four available tools.
+4. Installs `configs/mcp-kali.service` as `mshin-node`, rewritten for the Lima login user and the four available tools.
 
 Lima then waits on a probe until `curl :3000/health` answers, so `limactl start` returning means the MCP server is up. It prints the command that reads the guest's address on the shared network.
 
@@ -165,7 +165,7 @@ Lima then waits on a probe until `curl :3000/health` answers, so `limactl start`
 
 To point the guest at your working clone instead of a fresh GitHub checkout, uncomment the `mounts:` block at the top of the template and set `location` to your clone's path.
 
-> **When provisioning fails**, `limactl start` reports a failed probe rather than the underlying error. The error is in the guest: `limactl shell avendesora-kali -- sudo journalctl -u avendesora-node -n 50`, and `/var/log/cloud-init-output.log` for the provisioning scripts themselves. `limactl start --debug` is louder still.
+> **When provisioning fails**, `limactl start` reports a failed probe rather than the underlying error. The error is in the guest: `limactl shell mshin-kali -- sudo journalctl -u mshin-node -n 50`, and `/var/log/cloud-init-output.log` for the provisioning scripts themselves. `limactl start --debug` is louder still.
 
 #### Path B: From `limactl` flags, provisioned by hand
 
@@ -175,7 +175,7 @@ On an **Intel Mac**, build on an x86_64 base:
 
 ```bash
 limactl create template:debian-13 \
-  --name=avendesora-kali \
+  --name=mshin-kali \
   --arch=x86_64 \
   --cpus=4 \
   --memory=8 \
@@ -187,7 +187,7 @@ On **Apple Silicon**, build on an aarch64 base:
 
 ```bash
 limactl create template:debian-13 \
-  --name=avendesora-kali \
+  --name=mshin-kali \
   --arch=aarch64 \
   --cpus=4 \
   --memory=8 \
@@ -198,8 +198,8 @@ limactl create template:debian-13 \
 > **Flag notes:** the template is a **positional** argument (`template:<name>`; run `limactl create --list-templates` for the full list). `--memory` and `--disk` are plain numbers in GiB — `--memory=8GiB` fails to parse. There is no flag for mounts, port forwards, or provisioning; those need a template file.
 
 ```bash
-limactl start avendesora-kali
-limactl shell avendesora-kali
+limactl start mshin-kali
+limactl shell mshin-kali
 ```
 
 ##### Install the tools
@@ -236,14 +236,14 @@ nikto -Version
 
 ```bash
 # Option 1: Clone directly (if the VM has internet)
-sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
-sudo chown -R "$(whoami)" /opt/avendesora
+sudo git clone https://github.com/imagewize/mshin.git /opt/mshin
+sudo chown -R "$(whoami)" /opt/mshin
 
 # Option 2: Or mount your Mac clone into the VM instead — that needs a
 # template file, so see Path A above
 
 # Install MCP server dependencies
-cd /opt/avendesora/servers/src/kali
+cd /opt/mshin/servers/src/kali
 npm install
 ```
 
@@ -254,77 +254,77 @@ The server shells out as `sudo -n <tool>` whenever it is not running as root (`s
 # limited to the tools available on this base. tshark is omitted because
 # reading user-owned PCAP files as root triggers Wireshark's file-owner
 # check; tshark needs no privileges to analyze existing captures.
-sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
+sudo tee /etc/sudoers.d/mshin >/dev/null <<EOF
 $(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
 EOF
-sudo chmod 440 /etc/sudoers.d/avendesora
+sudo chmod 440 /etc/sudoers.d/mshin
 ```
 
 Test it in the foreground before daemonising:
 
 ```bash
 node index.js --tools nmap,nikto,whois,tshark
-# Expect: [INFO] Avendesora Node listening on http://0.0.0.0:3000
+# Expect: [INFO] Machin Shin Node listening on http://0.0.0.0:3000
 # Ctrl-C to stop
 ```
 
 Then install the unit the repo already ships:
 
 ```bash
-sudo cp /opt/avendesora/configs/mcp-kali.service /etc/systemd/system/avendesora-node.service
+sudo cp /opt/mshin/configs/mcp-kali.service /etc/systemd/system/mshin-node.service
 
-# The shipped unit runs as a dedicated 'avendesora' user and enables all six
+# The shipped unit runs as a dedicated 'mshin' user and enables all six
 # tools. In a throwaway Lima VM, run as your own login user and drop the two
 # tools Debian does not provide.
-sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/avendesora-node.service
-sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora $HOME|" /etc/systemd/system/avendesora-node.service
-sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" /etc/systemd/system/avendesora-node.service
+sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/mshin-node.service
+sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin $HOME|" /etc/systemd/system/mshin-node.service
+sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" /etc/systemd/system/mshin-node.service
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now avendesora-node
-systemctl status avendesora-node --no-pager
+sudo systemctl enable --now mshin-node
+systemctl status mshin-node --no-pager
 ```
 
 > **Use `$HOME`, not `/home/$(whoami)`.** Lima's guest home carries a suffix — `/home/<user>.linux` — so a hand-written `/home/<user>` path leaves `ReadWritePaths` pointing at a directory that does not exist.
 
-> **Note:** Lima's Debian and Ubuntu guests boot standard cloud images and run **systemd**, so the packaged unit works as-is. Follow the logs with `journalctl -u avendesora-node -f`.
+> **Note:** Lima's Debian and Ubuntu guests boot standard cloud images and run **systemd**, so the packaged unit works as-is. Follow the logs with `journalctl -u mshin-node -f`.
 
 ---
 
 ### Step 2: Create the Core VM
 
-The Core VM runs **Ollama** with your LLM and the **Avendesora CLI client**.
+The Core VM runs **Ollama** with your LLM and the **Machin Shin CLI client**.
 
 #### Path A: From the template file
 
 ```bash
-limactl create --name=avendesora-core lima/avendesora-core.yaml
-limactl start avendesora-core
+limactl create --name=mshin-core lima/mshin-core.yaml
+limactl start mshin-core
 ```
 
-On first boot the template installs Node.js 20 and Ollama, pulls the base model, clones this repo to `/opt/avendesora`, installs the CLI's dependencies, symlinks it to `/usr/local/bin/avendesora`, and builds the `avendesora` persona. Expect the first start to take a while — most of it is the model download.
+On first boot the template installs Node.js 20 and Ollama, pulls the base model, clones this repo to `/opt/mshin`, installs the CLI's dependencies, symlinks it to `/usr/local/bin/mshin`, and builds the `mshin` persona. Expect the first start to take a while — most of it is the model download.
 
 To build the persona on a different base model:
 
 ```bash
-limactl create --name=avendesora-core --param model=qwen2.5:7b lima/avendesora-core.yaml
+limactl create --name=mshin-core --param model=qwen2.5:7b lima/mshin-core.yaml
 ```
 
-> **The template rewrites the Modelfile's `FROM` line.** `configs/ollama-modelfile` is `FROM mistral-small` (24B, ~15GB), sized for a real Core machine and far too large for a Lima guest. The template renders a copy with `FROM <param model>` into `/var/lib/avendesora/Modelfile` and builds from that, leaving the repo copy untouched. **Path B must do the same** — see below.
+> **The template rewrites the Modelfile's `FROM` line.** `configs/ollama-modelfile` is `FROM mistral-small` (24B, ~15GB), sized for a real Core machine and far too large for a Lima guest. The template renders a copy with `FROM <param model>` into `/var/lib/mshin/Modelfile` and builds from that, leaving the repo copy untouched. **Path B must do the same** — see below.
 
 #### Path B: From `limactl` flags, provisioned by hand
 
 ```bash
 limactl create template:ubuntu \
-  --name=avendesora-core \
+  --name=mshin-core \
   --arch=aarch64 \
   --cpus=4 \
   --memory=16 \
   --disk=50 \
   --network=lima:shared
 
-limactl start avendesora-core
-limactl shell avendesora-core
+limactl start mshin-core
+limactl shell mshin-core
 ```
 
 Inside the Core VM:
@@ -353,26 +353,26 @@ ollama pull mistral
 ollama list
 ```
 
-##### Create the Avendesora persona model
+##### Create the Machin Shin persona model
 
 ```bash
-# Clone Avendesora repo (if not already present)
-sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
-sudo chown -R "$(whoami)" /opt/avendesora
+# Clone Machin Shin repo (if not already present)
+sudo git clone https://github.com/imagewize/mshin.git /opt/mshin
+sudo chown -R "$(whoami)" /opt/mshin
 
 # configs/ollama-modelfile is FROM mistral-small (24B, ~15GB) and will pull
 # that model if you build it as-is. Render a copy on the small model instead.
-sed 's|^FROM .*|FROM mistral|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
-ollama create avendesora -f ~/Modelfile.lima
+sed 's|^FROM .*|FROM mistral|' /opt/mshin/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create mshin -f ~/Modelfile.lima
 
 # Verify
 ollama list
 ```
 
-##### Install the Avendesora CLI client
+##### Install the Machin Shin CLI client
 
 ```bash
-cd /opt/avendesora/clients/avendesora-cli
+cd /opt/mshin/clients/mshin-cli
 npm install
 ```
 
@@ -386,8 +386,8 @@ From the **Mac host**:
 
 ```bash
 # Read each VM's address on the shared network
-limactl shell avendesora-kali -- ip -4 -br addr show lima0
-limactl shell avendesora-core -- ip -4 -br addr show lima0
+limactl shell mshin-kali -- ip -4 -br addr show lima0
+limactl shell mshin-core -- ip -4 -br addr show lima0
 ```
 
 Note the Kali Node address (something in `192.168.105.0/24`) — it is `<KALI_IP>` throughout the rest of this guide. Then, from the **Core VM**:
@@ -417,7 +417,7 @@ If the connection fails:
 3. **Test MCP server manually:**
    ```bash
    # On Kali Node VM, start the server manually
-   cd /opt/avendesora/servers/src/kali
+   cd /opt/mshin/servers/src/kali
    node index.js --tools nmap,nikto,whois
    ```
 
@@ -425,17 +425,17 @@ If the connection fails:
 
 ### Step 4: Connect and Test
 
-From the **Core VM**, run the Avendesora CLI:
+From the **Core VM**, run the Machin Shin CLI:
 
 ```bash
 # Start an interactive session
-/opt/avendesora/clients/avendesora-cli/index.js --node http://<KALI_IP>:3000 --model avendesora
+/opt/mshin/clients/mshin-cli/index.js --node http://<KALI_IP>:3000 --model mshin
 ```
 
 Then, try a command:
 
 ```
-"Avendesora, run an Nmap scan on 127.0.0.1 and show me the results."
+"Machin Shin, run an Nmap scan on 127.0.0.1 and show me the results."
 ```
 
 > **Note:** The first run may take a moment as the MCP server connects and validates available tools.
@@ -447,10 +447,10 @@ To check the two halves separately when something misbehaves:
 curl http://<KALI_IP>:3000/health
 
 # Is the model loaded and answering?
-ollama run avendesora
+ollama run mshin
 ```
 
-> **`ollama run` has no tools.** It is a plain chat session — Ollama is not an MCP client and reads no Node URL from the environment. The persona will happily *describe* an Nmap scan, but nothing executes. Only the Avendesora CLI bridges the model to the Node.
+> **`ollama run` has no tools.** It is a plain chat session — Ollama is not an MCP client and reads no Node URL from the environment. The persona will happily *describe* an Nmap scan, but nothing executes. Only the Machin Shin CLI bridges the model to the Node.
 
 ---
 
@@ -460,22 +460,22 @@ ollama run avendesora
 
 ```bash
 # Start both VMs
-limactl start avendesora-kali
-limactl start avendesora-core
+limactl start mshin-kali
+limactl start mshin-core
 
 # Shell into Core VM
-limactl shell avendesora-core
+limactl shell mshin-core
 
-# Start the Avendesora CLI
-/opt/avendesora/clients/avendesora-cli/index.js --node http://<KALI_IP>:3000 --model avendesora
+# Start the Machin Shin CLI
+/opt/mshin/clients/mshin-cli/index.js --node http://<KALI_IP>:3000 --model mshin
 ```
 
 ### Stopping the Environment
 
 ```bash
 # Stop both VMs
-limactl stop avendesora-kali
-limactl stop avendesora-core
+limactl stop mshin-kali
+limactl stop mshin-core
 ```
 
 ### Managing Models
@@ -489,9 +489,9 @@ ollama list
 # Pull a different model (if you have the RAM)
 ollama pull qwen2.5:7b
 
-# Recreate the avendesora persona with a different base
-sed 's|^FROM .*|FROM qwen2.5:7b|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
-ollama create avendesora -f ~/Modelfile.lima
+# Recreate the mshin persona with a different base
+sed 's|^FROM .*|FROM qwen2.5:7b|' /opt/mshin/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create mshin -f ~/Modelfile.lima
 
 # Remove old models to free space
 ollama rm mistral
@@ -505,7 +505,7 @@ ollama rm mistral
 >
 > Check a tag exists with `ollama show <tag>` before building the persona on it. The full setup's **Mistral Small 3 (24B)** needs ~15GB and is out of reach for a Lima guest.
 >
-> **The agent loop needs a tool-calling model.** Avendesora drives tools through Ollama's `tool_calls`; a model not trained for tool use will describe commands in prose instead of emitting a call, and the loop never fires a tool. Not every small model qualifies — `phi3` and `gemma` variants, for instance, are read-only. A companion repo, [`imagewize/ollama-opencode-setup`](https://github.com/imagewize/ollama-opencode-setup) (`~/code/ollama-opencode-setup` locally), carries tool-calling results measured on this hardware — on **M1 16GB**, `ministral-3:8b` and `qwen3:8b`/`qwen3:4b` tool-call reliably; on **Mac Mini M4 Pro 24GB**, `mistral-small3.2:24b` (the persona's base) runs 100% on GPU at 32k with tool use confirmed. Verify any candidate with that repo's `scripts/tool-call-test.sh` before building the persona on it.
+> **The agent loop needs a tool-calling model.** Machin Shin drives tools through Ollama's `tool_calls`; a model not trained for tool use will describe commands in prose instead of emitting a call, and the loop never fires a tool. Not every small model qualifies — `phi3` and `gemma` variants, for instance, are read-only. A companion repo, [`imagewize/ollama-opencode-setup`](https://github.com/imagewize/ollama-opencode-setup) (`~/code/ollama-opencode-setup` locally), carries tool-calling results measured on this hardware — on **M1 16GB**, `ministral-3:8b` and `qwen3:8b`/`qwen3:4b` tool-call reliably; on **Mac Mini M4 Pro 24GB**, `mistral-small3.2:24b` (the persona's base) runs 100% on GPU at 32k with tool use confirmed. Verify any candidate with that repo's `scripts/tool-call-test.sh` before building the persona on it.
 
 ---
 
@@ -516,14 +516,14 @@ For **maximum simplicity** (at the cost of isolation), you can run everything in
 ```bash
 # Create a single VM (no shared network needed - everything is on localhost)
 limactl create template:ubuntu \
-  --name=avendesora-allinone \
+  --name=mshin-allinone \
   --arch=aarch64 \
   --cpus=8 \
   --memory=16 \
   --disk=80
 
-limactl start avendesora-allinone
-limactl shell avendesora-allinone
+limactl start mshin-allinone
+limactl shell mshin-allinone
 ```
 
 Inside the VM:
@@ -546,30 +546,30 @@ sudo systemctl enable --now ollama
 # Pull model
 ollama pull mistral
 
-# Clone Avendesora
-sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
-sudo chown -R "$(whoami)" /opt/avendesora
+# Clone Machin Shin
+sudo git clone https://github.com/imagewize/mshin.git /opt/mshin
+sudo chown -R "$(whoami)" /opt/mshin
 
-# Create avendesora model. configs/ollama-modelfile is FROM mistral-small
+# Create mshin model. configs/ollama-modelfile is FROM mistral-small
 # (24B, ~15GB); render a copy on the small model instead of building it as-is.
-sed 's|^FROM .*|FROM mistral|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
-ollama create avendesora -f ~/Modelfile.lima
+sed 's|^FROM .*|FROM mistral|' /opt/mshin/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create mshin -f ~/Modelfile.lima
 
 # Allow the tools to run without a password prompt. tshark is omitted
 # because reading user-owned PCAP files as root triggers Wireshark's
 # file-owner check; tshark needs no privileges to analyze captures.
-sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
+sudo tee /etc/sudoers.d/mshin >/dev/null <<EOF
 $(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
 EOF
-sudo chmod 440 /etc/sudoers.d/avendesora
+sudo chmod 440 /etc/sudoers.d/mshin
 
 # Start MCP server in background
-cd /opt/avendesora/servers/src/kali
+cd /opt/mshin/servers/src/kali
 npm install
 node index.js --tools nmap,nikto,whois,tshark &
 
-# Start Avendesora CLI in another session
-/opt/avendesora/clients/avendesora-cli/index.js --node http://localhost:3000 --model avendesora
+# Start Machin Shin CLI in another session
+/opt/mshin/clients/mshin-cli/index.js --node http://localhost:3000 --model mshin
 ```
 
 ### Verifying the tools
@@ -648,7 +648,7 @@ For better performance:
 | Kali tools not found | `nmap` command not found | Reinstall tools: `sudo apt install -y nmap` |
 | `E: Unable to locate package nikto` | Debian cloud image enables only `main` | `nikto` is in `non-free`; add it to `Components:` in `/etc/apt/sources.list.d/debian.sources`, then `apt update` |
 | Template edit has no effect | Guest still behaves the old way after editing `lima/*.yaml` | `limactl create` snapshotted the template; edit `~/.lima/<name>/lima.yaml` with `limactl edit`, or delete and recreate |
-| `limactl start` fails on a probe | "avendesora-node did not come up" / "the avendesora model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u avendesora-node -n 50` and `/var/log/cloud-init-output.log` |
+| `limactl start` fails on a probe | "mshin-node did not come up" / "the mshin model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u mshin-node -n 50` and `/var/log/cloud-init-output.log` |
 | Persona pulls a 15GB model | `ollama create` on the repo Modelfile as-is | `configs/ollama-modelfile` is `FROM mistral-small`; render a copy with `FROM mistral` first |
 | Model pull times out during provisioning | `provision.system` step fails right after the API wait; `systemctl status ollama` shows `disabled`/`inactive` | The installer did not start the daemon (seen on the Ubuntu 26.04 cloud image). `sudo systemctl enable --now ollama`. The Core template now does this automatically |
 | Both VMs sluggish or swapping on a 16GB Mac | Core inference crawls while the Node is also running | CPU-only inference plus two guests exceeds 16GB. Run one guest at a time, or size Core down (`--memory=10`) and keep the Node stopped while testing Core |
@@ -686,8 +686,8 @@ To free up disk space:
 
 ```bash
 # Remove stopped VMs
-limactl delete avendesora-kali
-limactl delete avendesora-core
+limactl delete mshin-kali
+limactl delete mshin-core
 
 # Remove all Lima data
 limactl prune
@@ -719,13 +719,13 @@ The two templates live in this repo:
 
 | File | Guest |
 | ---- | ----- |
-| `lima/avendesora-kali.yaml` | Debian 13 + Kali tools + `avendesora-node` MCP server |
-| `lima/avendesora-core.yaml` | Ubuntu LTS + Ollama + the `avendesora` persona and CLI |
+| `lima/mshin-kali.yaml` | Debian 13 + Kali tools + `mshin-node` MCP server |
+| `lima/mshin-core.yaml` | Ubuntu LTS + Ollama + the `mshin` persona and CLI |
 
 Copy one, edit it, and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
 
 ```bash
-cp lima/avendesora-kali.yaml ~/my-kali.yaml
+cp lima/mshin-kali.yaml ~/my-kali.yaml
 $EDITOR ~/my-kali.yaml
 
 # Check it before you build it
@@ -739,7 +739,7 @@ limactl create --name=my-kali ~/my-kali.yaml
 
 What is worth changing:
 
-- **`mounts:`** — uncomment the block to bind your Mac clone to `/opt/avendesora`, so edits to `servers/src/kali` take effect without a `git pull` in the guest. The provisioning skips its `chown` when the path is a mount.
+- **`mounts:`** — uncomment the block to bind your Mac clone to `/opt/mshin`, so edits to `servers/src/kali` take effect without a `git pull` in the guest. The provisioning skips its `chown` when the path is a mount.
 - **`param.model`** (Core only) — the base model the persona is built on, overridable per-instance with `limactl create --param model=…`.
 - **`cpus` / `memory` / `disk`** — see [Resource Allocation](#resource-allocation). Unlike the CLI flags, these YAML fields **do** take unit suffixes.
 - **`arch`** — unset on purpose, so the guest matches the host. Set it only if you deliberately want emulation.
@@ -751,8 +751,8 @@ What is worth changing:
 > **`limactl create` snapshots the template.** The instance keeps its own copy at `~/.lima/<name>/lima.yaml`, and that copy is what generates the cidata the guest reads — so **editing the file in this repo does nothing to a VM that already exists**. To pick up a template change, either edit the instance in place (`limactl edit <name>`, or `limactl edit <name> --set '<yq expression>'` for a single field), or delete and recreate:
 >
 > ```bash
-> limactl delete avendesora-kali
-> limactl create --name=avendesora-kali lima/avendesora-kali.yaml
+> limactl delete mshin-kali
+> limactl create --name=mshin-kali lima/mshin-kali.yaml
 > ```
 >
 > Recreating is cheap after the first run — the cloud image stays in `~/Library/Caches/lima`, so only provisioning repeats. Check which one you are actually running with `grep <something-you-changed> ~/.lima/<name>/lima.yaml`.
@@ -763,8 +763,8 @@ What is worth changing:
 
 - [Lima Documentation](https://github.com/lima-vm/lima)
 - [Ollama Documentation](https://github.com/jmorganca/ollama)
-- [Avendesora Architecture](architecture.md)
-- [Avendesora Setup Guide](setup.md)
+- [Machin Shin Architecture](architecture.md)
+- [Machin Shin Setup Guide](setup.md)
 - [Kali Linux Tools](https://www.kali.org/tools/)
 
 ---
@@ -792,8 +792,8 @@ What is worth changing:
 
 ---
 
-## The Avendesora Philosophy (Local Edition)
+## The Machin Shin Philosophy (Local Edition)
 
-> *"Even the smallest cutting of Avendesora can root and grow. So too can this system take root on a single machine, that you might learn its ways before planting the full tree in your garden."*
+> *"Even in a single dark corridor, the Black Wind is still the Black Wind. So too can this system run on a single machine, that you might learn its ways before loosing it across the full two-host Pattern."*
 
 The Wheel weaves as the Wheel wills. With Lima, you weave a smaller Pattern — but a Pattern nonetheless.

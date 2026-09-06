@@ -1,20 +1,20 @@
-# Cybersecurity Agent Roadmap: Extending Avendesora to a Claude Code-like Experience
+# Cybersecurity Agent Roadmap: Extending Machin Shin to a Claude Code-like Experience
 
-> *"The Wheel weaves as the Wheel wills. With Avendesora, you weave the threads of security into an unbreakable pattern."*
+> *"The Wheel weaves as the Wheel wills. With Machin Shin, you weave the threads of security into an unbreakable pattern."*
 
 ---
 
 ## Overview
 
-This document outlines the path to transforming Avendesora from a **local LLM + Kali tool integration** system into a **full-fledged cybersecurity agent** akin to Claude Code but specialized for penetration testing, threat analysis, and incident response.
+This document outlines the path to transforming Machin Shin from a **local LLM + Kali tool integration** system into a **full-fledged cybersecurity agent** akin to Claude Code but specialized for penetration testing, threat analysis, and incident response.
 
-The existing Avendesora architecture (two-machine setup with Ollama + MCP + Kali Linux) gets the **plumbing** right: secure, local tool execution wired to an LLM. But be honest about what's done. The plumbing is maybe 80% there; the **value** of a Claude Code–style agent lives in the *harness* — the agent loop, context management, safety gating, and reporting — and that's the 80% still to build. Getting an open-weight model to tool-call reliably through long, noisy security sessions is the hard part, not the wiring.
+The existing Machin Shin architecture (two-machine setup with Ollama + MCP + Kali Linux) gets the **plumbing** right: secure, local tool execution wired to an LLM. But be honest about what's done. The plumbing is maybe 80% there; the **value** of a Claude Code–style agent lives in the *harness* — the agent loop, context management, safety gating, and reporting — and that's the 80% still to build. Getting an open-weight model to tool-call reliably through long, noisy security sessions is the hard part, not the wiring.
 
 ---
 
 ## Current State vs. Target State
 
-| **Aspect**               | **Current (Avendesora)**                          | **Target (Cybersecurity Agent)**                     |
+| **Aspect**               | **Current (Machin Shin)**                          | **Target (Cybersecurity Agent)**                     |
 |--------------------------|--------------------------------------------------|----------------------------------------------------|
 | **Architecture**         | Two-machine (Core + Node)                        | Same, with optional cloud/hybrid                    |
 | **LLM Integration**      | Ollama + MCP Client                              | Enhanced with agent loops                           |
@@ -172,7 +172,7 @@ For an **agent**, the thing that matters most is *reliable, repeated tool-callin
 
 ## Agent Architecture: What’s Missing
 
-To transform Avendesora into a true cybersecurity agent, implement the following components:
+To transform Machin Shin into a true cybersecurity agent, implement the following components:
 
 ### 1. Agent Loop (Core Component)
 
@@ -267,9 +267,9 @@ version: '3.8'
 services:
   kali-sandbox:
     image: kalilinux/kali-rolling
-    container_name: avendesora-sandbox
+    container_name: mshin-sandbox
     networks:
-      - avendesora-net
+      - mshin-net
     cap_drop:
       - ALL
     cap_add:
@@ -381,7 +381,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 
 ### Workflow 1: Automated Vulnerability Assessment
 ```
-User Input: "Avendesora, perform a full vulnerability assessment on 192.168.1.0/24."
+User Input: "Machin Shin, perform a full vulnerability assessment on 192.168.1.0/24."
 
 Agent Plan:
 1. Run nmap -sV --script vuln 192.168.1.0/24
@@ -399,7 +399,7 @@ Output:
 
 ### Workflow 2: Incident Response
 ```
-User Input: "Avendesora, investigate this suspicious IP: 203.0.113.45."
+User Input: "Machin Shin, investigate this suspicious IP: 203.0.113.45."
 
 Agent Plan:
 1. Run whois 203.0.113.45
@@ -416,7 +416,7 @@ Output:
 
 ### Workflow 3: Exploit Development
 ```
-User Input: "Avendesora, help me develop an exploit for CVE-2026-1234."
+User Input: "Machin Shin, help me develop an exploit for CVE-2026-1234."
 
 Agent Plan:
 1. Look up CVE-2026-1234 in local database
@@ -483,7 +483,7 @@ Output:
 
 ## Conclusion
 
-Avendesora has the **foundation** right — the Ollama + MCP + Kali architecture is a sound, extensible base. But the agent *brain* is the real work: don't mistake working plumbing for a finished agent. The remaining effort is the harness (loop, memory, safety gating, reporting), and getting a local open-weight model to drive it reliably.
+Machin Shin has the **foundation** right — the Ollama + MCP + Kali architecture is a sound, extensible base. But the agent *brain* is the real work: don't mistake working plumbing for a finished agent. The remaining effort is the harness (loop, memory, safety gating, reporting), and getting a local open-weight model to drive it reliably.
 
 **Key Takeaways**:
 1. **Hardware**: start on a 32GB machine you already own — RAM buys model *capacity*, not speed, and a 24B tool-caller runs the whole system today. When you outgrow it, the 128GB unified-memory APU (GMKtec EVO-X3, ~$3,800) is the cost-per-capacity winner — roughly half the price of a discrete-GPU 70B build for *more* headroom — and at that tier it's 128GB or don't bother. Buy it for the MoE model (`gpt-oss-120b`), not for the bandwidth-starved dense 70B.
@@ -491,7 +491,7 @@ Avendesora has the **foundation** right — the Ollama + MCP + Kali architecture
 3. **Cloud**: RunPod/Lambda for burst inference; keep the **Kali Node local** (running offensive tools from a cloud IP is an AUP problem). Hetzner's cheap GPU tier is 20GB VRAM — too small for a 70B.
 4. **Agent**: the hard 80%. Focus on an **interleaved observe-decide-act loop** (one tool at a time), **context management**, **safety gating**, and **structured reporting**.
 
-> *"The Avendesora tree grew from a single seed. So too does this system grow from a solid foundation into a mighty force for security."*
+> *"Even the Black Wind began as a whisper in the dark. So too does this system grow from a solid foundation into a relentless force for security."*
 
 ---
 
