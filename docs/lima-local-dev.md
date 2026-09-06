@@ -92,13 +92,26 @@ ollama --version     # Should show 0.33+
 
 Lima's default networking is **user-mode (SLIRP)**: every instance gets the same `192.168.5.15` address and **instances cannot reach each other**. VM-to-VM traffic needs the shared vmnet network, which is a one-time host setup:
 
+Lima requires the `socket_vmnet` binary to be **owned by root** and installed at the default path `/opt/socket_vmnet/bin/socket_vmnet`, with no user-writable parent directory. A Homebrew install alone does not satisfy this: it lands under `/opt/homebrew` owned by your user, and `limactl sudoers` then aborts with `` file `/opt/homebrew/opt/socket_vmnet/bin/socket_vmnet` is not owned by `root` `` (or, if you repoint `networks.yaml` at it, the same complaint about the user-owned path). The Lima project [documents from-source as the supported method](https://lima-vm.io/docs/config/network/vmnet/) and calls the Homebrew path insecure. Install it root-owned at the default location:
+
 ```bash
-# Install the vmnet helper
-brew install socket_vmnet
+# Build and install from source, root-owned, to the default /opt/socket_vmnet
+git clone https://github.com/lima-vm/socket_vmnet
+cd socket_vmnet && git checkout v1.2.2 && make
+sudo make PREFIX=/opt/socket_vmnet install.bin
 
 # Grant Lima permission to run it (writes /etc/sudoers.d/lima)
 limactl sudoers | sudo tee /etc/sudoers.d/lima
 ```
+
+> **Already ran `brew install socket_vmnet`?** You can reuse that binary instead of building — copy it to the root-owned default path rather than repointing `networks.yaml` at the Homebrew prefix (which Lima rejects):
+>
+> ```bash
+> sudo install -o root -g wheel -m 0755 -d /opt/socket_vmnet/bin
+> sudo install -o root -g wheel -m 0755 \
+>   /opt/homebrew/opt/socket_vmnet/bin/socket_vmnet /opt/socket_vmnet/bin/socket_vmnet
+> limactl sudoers | sudo tee /etc/sudoers.d/lima
+> ```
 
 Instances then opt in with `--network=lima:shared`, and each receives a DHCP address on `192.168.105.0/24` via a `lima0` interface. Addresses are **assigned, not chosen** — `limactl create` has no `--ip` flag.
 
@@ -322,6 +335,11 @@ sudo apt install -y curl git
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
+# The installer registers the systemd unit but does not reliably start it on a
+# cloud image (on the Ubuntu 26.04 LTS guest the unit is left disabled/inactive),
+# so start it explicitly — otherwise `ollama pull` below fails to reach the API.
+sudo systemctl enable --now ollama
+
 # Pull a model that fits in the VM's RAM
 # Options that work well in Lima VMs:
 # - mistral (7B, ~4GB) - Official Mistral AI 7B model
@@ -517,6 +535,10 @@ sudo apt install -y nodejs git curl nmap nikto whois tshark
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
+# Start the daemon — the installer leaves the unit disabled/inactive on the
+# Ubuntu cloud image, so the pull below would otherwise not reach the API.
+sudo systemctl enable --now ollama
+
 # Pull model
 ollama pull mistral
 
@@ -562,7 +584,7 @@ node index.js --tools nmap,nikto,whois,tshark &
 
 **Total:** 8-12 CPUs, 16-24GB RAM, 80-120GB disk
 
-> **Adjust based on your Mac:** If you have 32GB RAM, allocate 12GB to Core and 4GB to Kali Node. If you have 16GB, use 8GB+8GB split.
+> **Adjust based on your Mac:** If you have 32GB RAM, allocate 12GB to Core and 4GB to Kali Node and run both at once. On a **16GB Mac**, running both guests concurrently while the Core does CPU-only inference exceeds physical RAM and swaps hard — an 8GB+8GB split leaves nothing for the host. Test one guest at a time instead (e.g. `--memory=10` on Core with the Node stopped), or run the all-in-one single VM.
 
 ### Apple Silicon Notes
 
@@ -596,6 +618,10 @@ For better performance:
 | Template edit has no effect | Guest still behaves the old way after editing `lima/*.yaml` | `limactl create` snapshotted the template; edit `~/.lima/<name>/lima.yaml` with `limactl edit`, or delete and recreate |
 | `limactl start` fails on a probe | "avendesora-node did not come up" / "the avendesora model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u avendesora-node -n 50` and `/var/log/cloud-init-output.log` |
 | Persona pulls a 15GB model | `ollama create` on the repo Modelfile as-is | `configs/ollama-modelfile` is `FROM mistral-small`; render a copy with `FROM mistral` first |
+| Model pull times out during provisioning | `provision.system` step fails right after the API wait; `systemctl status ollama` shows `disabled`/`inactive` | The installer did not start the daemon (seen on the Ubuntu 26.04 cloud image). `sudo systemctl enable --now ollama`. The Core template now does this automatically |
+| Both VMs sluggish or swapping on a 16GB Mac | Core inference crawls while the Node is also running | CPU-only inference plus two guests exceeds 16GB. Run one guest at a time, or size Core down (`--memory=10`) and keep the Node stopped while testing Core |
+| `limactl start` exits `did not receive an event with the running status` | The guest is still `Running` and cloud-init is mid-provision | On a loaded host the hostagent can time out while the guest is fine. Check inside with `limactl shell <name> -- sudo tail -f /var/log/cloud-init-output.log`; the pull/persona finish on their own. `limactl shell` reconnects once it is up |
+| `failed to listen tcp: 127.0.0.1:11434 ... address already in use` | Ollama is running on the **host** (e.g. `brew` install) on the same port | Harmless — only the host-side port-forward fails; the guest's own Ollama is unaffected. Stop host Ollama (`brew services stop ollama`) if you want the forward |
 
 ### Common Commands
 
