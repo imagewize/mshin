@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-06
+
+The release that booted `lima/avendesora-core.yaml`. It had never been started;
+doing so — hands-off from a clean `limactl create` on an Ubuntu 26.04 guest —
+surfaced two provisioning defects that aborted every boot, and then a third
+defect in the persona itself that silently broke the agent loop. All three are
+fixed and the end-to-end path is now verified against a real model: an Ollama
+persona driving `agent.js`, through MCP, into a real `whois`, with the result
+fed back and summarised correctly.
+
+### Fixed
+
+- **The Core never finished provisioning: Ollama's daemon was not running.**
+  `lima/avendesora-core.yaml` assumed `ollama.com/install.sh` starts the systemd
+  unit. On the Ubuntu 26.04 cloud image the installer leaves it
+  `disabled`/`inactive`, so the template's 120s API-wait timed out and
+  `set -eux` aborted the whole boot before any model was pulled. The provision
+  script now runs `systemctl enable --now ollama` before waiting.
+- **`ollama pull` crashed with `panic: $HOME is not defined`.** cloud-init runs
+  provision scripts as root with no `HOME`, and the Ollama CLI panics resolving
+  its models path. (This is why a manual `ollama pull` over `limactl shell` — which
+  sets `HOME` — worked while the identical provision step did not.) The script
+  now `export HOME=/root` before any `ollama` call.
+- **The `avendesora` persona broke native tool calling.** `configs/ollama-modelfile`'s
+  system prompt hand-enumerated the tools with shell-command examples ("Available
+  Tools: - nmap … (e.g., `nmap -sV <target>`)" plus an example workflow). On a 7B
+  model this trains the model to emit the tool call as **text in its reply**
+  instead of Ollama's structured `tool_calls`, so the agent loop never fires the
+  tool and the model hallucinates a result. Verified on the Core guest: base
+  `mistral` tool-called correctly (`whois example.com` → real registrar), while
+  the persona built on it did not, inventing a wrong registrar and date.
+  Removed the textual roster; the system prompt now directs the model to use the
+  function-calling interface, and the tool list reaches it via the MCP `tools`
+  array the CLI already passes. Rebuilding the persona without the list restored
+  correct tool calling.
+
+### Changed
+
+- **`docs/lima-local-dev.md`** — `socket_vmnet` must be **root-owned** at
+  `/opt/socket_vmnet` (a Homebrew-only install fails Lima v1.0+'s ownership
+  check, with the exact error and a reuse-the-brew-binary shortcut);
+  `systemctl enable --now ollama` after the installer in both setup paths; four
+  new troubleshooting rows (inactive Ollama unit / pull timeout, `limactl start`
+  "did not receive an event with the running status" while the guest is still
+  provisioning, the host-side `:11434` port-forward conflict, and the 16GB-Mac
+  two-guest RAM reality); corrected the "8GB+8GB split" resource advice.
+- **`configs/ollama-modelfile`** — see the persona fix above, with a comment
+  recording why the tool list must not come back.
+- **`CLAUDE.md`** — the tool-set sync rule is now four locations, not five: the
+  Modelfile is explicitly **off** the list, since enumerating tools there breaks
+  the loop.
+
+### Verified
+
+Run against the Core guest, not asserted:
+
+- `lima/avendesora-core.yaml` boots and provisions **hands-off** from a clean
+  `limactl create` (Ubuntu 26.04): Node.js 20, Ollama auto-started, `mistral`
+  pulled, the `avendesora` persona built (`ollama show` reports `num_ctx 16384`),
+  the CLI symlinked to `/usr/local/bin/avendesora`, and a `lima0` shared-vmnet
+  address (`192.168.105.2/24`).
+- **The agent loop works against a real LLM.** Driving `agent.js` with the live
+  Ollama persona and a real MCP server returned a genuine `tool_calls` for
+  `whois`, ran it, fed the output back, and produced an accurate answer — the
+  tool-call formatting between Ollama and `agent.js` that 0.4.0 could only
+  mock-test.
+- The shared-vmnet setup on Apple Silicon: `socket_vmnet` root-owned at
+  `/opt/socket_vmnet`, `/etc/sudoers.d/lima` in sync, the daemon starting under
+  `limactl start`.
+
+### Still not verified
+
+- The two-machine path on real hardware. The real-LLM loop above ran with the
+  MCP server on the **Core guest itself** over localhost (a 16GB Mac cannot run
+  both guests plus CPU inference at once), so the Core→Node hop across the shared
+  network between two guests is still unexercised.
+- Real execution of `metasploit`, `searchsploit`, `nikto`, `tshark` — the loop
+  test exercised `whois` (and thus the full `runTool` path); the others were not
+  each run, and `metasploit`/`searchsploit` remain Kali-only.
+- A clean `nikto` install on the Ubuntu guest (component confirmed as
+  `multiverse`; the Core test installed `nmap`/`whois`, not `nikto`).
+
 ## [0.4.0] - 2026-09-06
 
 First release with an actual test suite. 0.3.0 shipped `npm test` as
@@ -383,7 +465,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/imagewize/avendesora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/imagewize/avendesora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/imagewize/avendesora/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/imagewize/avendesora/compare/v0.2.0...v0.2.1
