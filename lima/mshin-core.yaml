@@ -1,10 +1,10 @@
-# Avendesora Core — Lima template
+# Machin Shin Core — Lima template
 #
-#   limactl create --name=avendesora-core lima/avendesora-core.yaml
-#   limactl start avendesora-core
+#   limactl create --name=mshin-core lima/mshin-core.yaml
+#   limactl start mshin-core
 #
-# Ubuntu LTS with Ollama, a small local model, the avendesora persona and the
-# Avendesora CLI client. See docs/lima-local-dev.md.
+# Ubuntu LTS with Ollama, a small local model, the mshin persona and the
+# Machin Shin CLI client. See docs/lima-local-dev.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so the
 # guest is native on both Intel and Apple Silicon Macs.
@@ -31,24 +31,24 @@ networks:
   - lima: shared
 
 param:
-  # The base model the avendesora persona is built on. Lima guests get no GPU
+  # The base model the mshin persona is built on. Lima guests get no GPU
   # passthrough and run CPU-only inference, so stay at 7B or smaller here:
   # mistral, qwen2.5:7b, phi3:3.8b, llama3.2:3b. The full setup's default,
   # mistral-small (24B, ~15GB), does not fit.
-  #   limactl create --param model=qwen2.5:7b ... lima/avendesora-core.yaml
+  #   limactl create --param model=qwen2.5:7b ... lima/mshin-core.yaml
   model: "mistral"
 
 # The repo is private until v1.0, so the guest cannot clone it anonymously.
 # Mount your host clone instead — either uncomment and set `location` below, or
 # pass it at create time without editing this file, from your clone's root:
 #
-#   limactl create --name=avendesora-core \
-#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
-#     lima/avendesora-core.yaml
+#   limactl create --name=mshin-core \
+#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
+#     lima/mshin-core.yaml
 #
 # mounts:
 #   - location: "<path to your clone>"
-#     mountPoint: "/opt/avendesora"
+#     mountPoint: "/opt/mshin"
 #     writable: true
 
 provision:
@@ -70,21 +70,21 @@ provision:
     script: |
       #!/bin/bash
       set -eux -o pipefail
-      REPO_DIR=/opt/avendesora
-      MARKER=clients/avendesora-cli/index.js
+      REPO_DIR=/opt/mshin
+      MARKER=clients/mshin-cli/index.js
       if [ ! -e "${REPO_DIR}/${MARKER}" ]; then
           # Nothing mounted there, so fall back to a clone. GIT_TERMINAL_PROMPT=0
           # turns a credential prompt into an immediate error instead of a hang.
           export GIT_TERMINAL_PROMPT=0
-          if ! git clone https://github.com/imagewize/avendesora.git "${REPO_DIR}"; then
+          if ! git clone https://github.com/imagewize/mshin.git "${REPO_DIR}"; then
               cat >&2 <<'ERR'
-      [ERROR] /opt/avendesora has no checkout and the clone failed.
+      [ERROR] /opt/mshin has no checkout and the clone failed.
       The repository is private until v1.0, so an anonymous clone cannot work.
       Mount your host clone into the guest instead — from the root of your clone:
         limactl delete <name>
         limactl create --name=<name> \
-          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
-          lima/avendesora-core.yaml
+          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
+          lima/mshin-core.yaml
       ERR
               exit 1
           fi
@@ -92,9 +92,9 @@ provision:
       if ! mountpoint -q "${REPO_DIR}"; then
           chown -R "{{.User}}" "${REPO_DIR}"
       fi
-      sudo -u "{{.User}}" npm install --prefix "${REPO_DIR}/clients/avendesora-cli"
-      chmod +x "${REPO_DIR}/clients/avendesora-cli/index.js"
-      ln -sf "${REPO_DIR}/clients/avendesora-cli/index.js" /usr/local/bin/avendesora
+      sudo -u "{{.User}}" npm install --prefix "${REPO_DIR}/clients/mshin-cli"
+      chmod +x "${REPO_DIR}/clients/mshin-cli/index.js"
+      ln -sf "${REPO_DIR}/clients/mshin-cli/index.js" /usr/local/bin/mshin
 
   - mode: system
     script: |
@@ -114,18 +114,18 @@ provision:
       # configs/ollama-modelfile is FROM mistral-small, which needs ~15GB and
       # does not fit in this guest. Build the persona on the small model instead,
       # without editing the repo copy (it may be a read-only host mount).
-      install -d /var/lib/avendesora
-      sed "s|^FROM .*|FROM {{.Param.model}}|" /opt/avendesora/configs/ollama-modelfile \
-          >/var/lib/avendesora/Modelfile
-      ollama create avendesora -f /var/lib/avendesora/Modelfile
+      install -d /var/lib/mshin
+      sed "s|^FROM .*|FROM {{.Param.model}}|" /opt/mshin/configs/ollama-modelfile \
+          >/var/lib/mshin/Modelfile
+      ollama create mshin -f /var/lib/mshin/Modelfile
 
 probes:
-  - description: "ollama serving the avendesora persona"
+  - description: "ollama serving the mshin persona"
     script: |
       #!/bin/bash
       set -eu -o pipefail
-      if ! timeout 900s bash -c "until ollama list 2>/dev/null | grep -q '^avendesora'; do sleep 5; done"; then
-          echo >&2 "the avendesora model was never created"
+      if ! timeout 900s bash -c "until ollama list 2>/dev/null | grep -q '^mshin'; do sleep 5; done"; then
+          echo >&2 "the mshin model was never created"
           exit 1
       fi
     hint: |
@@ -135,10 +135,10 @@ probes:
       run is usually the model download.
 
 message: |
-  The Avendesora Core is up. Point the CLI at your Node guest:
+  The Machin Shin Core is up. Point the CLI at your Node guest:
   ------
-  limactl shell avendesora-kali -- ip -4 -br addr show lima0   # find <KALI_IP>
-  limactl shell {{.Name}} -- avendesora --node http://<KALI_IP>:3000
+  limactl shell mshin-kali -- ip -4 -br addr show lima0   # find <KALI_IP>
+  limactl shell {{.Name}} -- mshin --node http://<KALI_IP>:3000
   ------
-  `ollama run avendesora` is a plain chat session with no tools — only the CLI
+  `ollama run mshin` is a plain chat session with no tools — only the CLI
   bridges the model to the Node.

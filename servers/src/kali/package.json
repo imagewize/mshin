@@ -1,7 +1,7 @@
 {
-  "name": "avendesora-kali-mcp-server",
+  "name": "mshin-kali-mcp-server",
   "version": "0.1.1",
-  "description": "MCP server exposing a curated set of Kali Linux security tools for Avendesora.",
+  "description": "MCP server exposing a curated set of Kali Linux security tools for Machin Shin.",
   "type": "module",
   "main": "index.js",
   "scripts": {

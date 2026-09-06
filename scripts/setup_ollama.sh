@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Avendesora Core Setup Script
+# Machin Shin Core Setup Script
 #
-# Description: Automates the setup of Ollama + the Avendesora CLI harness.
+# Description: Automates the setup of Ollama + the Machin Shin CLI harness.
 #
 # Usage: bash setup_ollama.sh
 
 set -e
 
-# --- Avendesora ASCII Art ---
+# --- Machin Shin ASCII Art ---
 
 cat <<'ART'
 
@@ -21,17 +21,17 @@ cat <<'ART'
          |
          |
 
-       Setting up Avendesora Core...
+       Setting up Machin Shin Core...
 
 ART
 
 # --- Configuration ---
 
-AVENDESORA_DIR="/opt/avendesora"
+MSHIN_DIR="/opt/mshin"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
 # Needed while the repository is private; the HTTPS default is correct once it
 # is public.
-AVENDESORA_REPO="${AVENDESORA_REPO:-https://github.com/imagewize/avendesora.git}"
+MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
 
 # --- Check for Root (recommended) ---
 
@@ -58,35 +58,35 @@ fi
 node --version
 npm --version
 
-# --- Clone / Refresh Avendesora Repository ---
+# --- Clone / Refresh Machin Shin Repository ---
 
-echo "[+] Installing Avendesora Core code to ${AVENDESORA_DIR}..."
-if [ -d "${AVENDESORA_DIR}/.git" ]; then
-    cd "${AVENDESORA_DIR}"
+echo "[+] Installing Machin Shin Core code to ${MSHIN_DIR}..."
+if [ -d "${MSHIN_DIR}/.git" ]; then
+    cd "${MSHIN_DIR}"
     sudo git pull
 else
     # Clone into a staging directory first. Removing the destination up front
     # would destroy a working install whenever the clone fails.
     STAGE_DIR="$(mktemp -d)"
-    if ! GIT_TERMINAL_PROMPT=0 git clone "${AVENDESORA_REPO}" "${STAGE_DIR}/avendesora"; then
+    if ! GIT_TERMINAL_PROMPT=0 git clone "${MSHIN_REPO}" "${STAGE_DIR}/mshin"; then
         rm -rf "${STAGE_DIR}"
         cat >&2 <<EOF
-[ERROR] Could not clone ${AVENDESORA_REPO}
+[ERROR] Could not clone ${MSHIN_REPO}
 
 The repository is private until v1.0, so an anonymous HTTPS clone fails with
 "could not read Username for 'https://github.com'". Point the script at a
 source this host can actually reach:
 
   # SSH, with your key loaded in an agent
-  AVENDESORA_REPO=git@github.com:imagewize/avendesora.git bash "\$0"
+  MSHIN_REPO=git@github.com:imagewize/mshin.git bash "\$0"
 
   # A copy you transferred yourself (rsync, scp, USB)
-  AVENDESORA_REPO=\$HOME/avendesora bash "\$0"
+  MSHIN_REPO=\$HOME/mshin bash "\$0"
 EOF
         exit 1
     fi
-    sudo rm -rf "${AVENDESORA_DIR}"
-    sudo mv "${STAGE_DIR}/avendesora" "${AVENDESORA_DIR}"
+    sudo rm -rf "${MSHIN_DIR}"
+    sudo mv "${STAGE_DIR}/mshin" "${MSHIN_DIR}"
     rm -rf "${STAGE_DIR}"
 fi
 
@@ -100,10 +100,10 @@ curl -fsSL https://ollama.com/install.sh | sh
 echo "[+] Pulling Mistral Small 3 24B (Q4_K_M)..."
 ollama pull mistral-small
 
-# --- Create Avendesora Persona Model ---
+# --- Create Machin Shin Persona Model ---
 
-echo "[+] Creating Avendesora Ollama model from Modelfile..."
-ollama create avendesora -f "${AVENDESORA_DIR}/configs/ollama-modelfile"
+echo "[+] Creating Machin Shin Ollama model from Modelfile..."
+ollama create mshin -f "${MSHIN_DIR}/configs/ollama-modelfile"
 
 # --- Optional: Pull Llama 3.3 70B ---
 
@@ -113,20 +113,20 @@ if [ "$pull_70b" = "y" ]; then
     ollama pull llama3.3:70b
 fi
 
-# --- Install Avendesora CLI Client ---
+# --- Install Machin Shin CLI Client ---
 
-echo "[+] Installing Avendesora CLI client..."
-cd "${AVENDESORA_DIR}/clients/avendesora-cli"
+echo "[+] Installing Machin Shin CLI client..."
+cd "${MSHIN_DIR}/clients/mshin-cli"
 sudo npm install
 
 # --- Assign Static IP (Optional) ---
 
-read -r -p "[?] Assign static IP to Avendesora Core? (y/n): " assign_ip
+read -r -p "[?] Assign static IP to Machin Shin Core? (y/n): " assign_ip
 if [ "$assign_ip" = "y" ]; then
     read -r -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
     read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
-sudo tee /etc/netplan/00-avendesora-core.yaml <<EOF
+sudo tee /etc/netplan/00-mshin-core.yaml <<EOF
 network:
   version: 2
   ethernets:
@@ -147,19 +147,19 @@ sudo netplan apply
 echo "[+] Static IP assigned: ${static_ip}"
 fi
 
-# --- Create a Wrapper Script for Avendesora ---
+# --- Create a Wrapper Script for Machin Shin ---
 
-sudo tee /usr/local/bin/avendesora <<'EOF'
+sudo tee /usr/local/bin/mshin <<'EOF'
 #!/bin/bash
 #
-# Avendesora Core Wrapper Script
+# Machin Shin Core Wrapper Script
 #
 # Usage:
-#   avendesora [NODE_IP_OR_URL]
-#   avendesora --node http://192.168.1.100:3000 --model avendesora
+#   mshin [NODE_IP_OR_URL]
+#   mshin --node http://192.168.1.100:3000 --model mshin
 
 NODE_URL=""
-MODEL="avendesora"
+MODEL="mshin"
 POSITIONAL=""
 
 while [[ $# -gt 0 ]]; do
@@ -173,7 +173,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help|-h)
-            echo "Usage: avendesora [NODE_IP_OR_URL] [--node URL] [--model MODEL]"
+            echo "Usage: mshin [NODE_IP_OR_URL] [--node URL] [--model MODEL]"
             exit 0
             ;;
         --*)
@@ -198,36 +198,36 @@ if [ -z "$NODE_URL" ]; then
     fi
 fi
 
-echo "Starting Avendesora Core..."
-echo "Connecting to Avendesora Node at ${NODE_URL}..."
+echo "Starting Machin Shin Core..."
+echo "Connecting to Machin Shin Node at ${NODE_URL}..."
 echo ""
 
-exec /opt/avendesora/clients/avendesora-cli/index.js --node "${NODE_URL}" --model "${MODEL}"
+exec /opt/mshin/clients/mshin-cli/index.js --node "${NODE_URL}" --model "${MODEL}"
 EOF
 
-sudo chmod +x /usr/local/bin/avendesora
-if [ ! -e /usr/bin/avendesora ]; then
-    sudo ln -s /usr/local/bin/avendesora /usr/bin/avendesora
+sudo chmod +x /usr/local/bin/mshin
+if [ ! -e /usr/bin/mshin ]; then
+    sudo ln -s /usr/local/bin/mshin /usr/bin/mshin
 fi
 
 # --- Display Setup Summary ---
 
 echo ""
-echo "[+] Avendesora Core setup complete!"
+echo "[+] Machin Shin Core setup complete!"
 echo ""
 echo "   Ollama: Installed"
-echo "   Models: mistral-small, avendesora (custom persona)"
+echo "   Models: mistral-small, mshin (custom persona)"
 if [ "$pull_70b" = "y" ]; then
     echo "          llama3.3:70b"
 fi
-echo "   CLI Client: Installed at /opt/avendesora/clients/avendesora-cli"
+echo "   CLI Client: Installed at /opt/mshin/clients/mshin-cli"
 echo ""
-echo "   To start Avendesora:"
-echo "   avendesora [AVENDESORA_NODE_IP]"
+echo "   To start Machin Shin:"
+echo "   mshin [MSHIN_NODE_IP]"
 echo ""
 echo "   Example:"
-echo "   avendesora 192.168.1.100"
+echo "   mshin 192.168.1.100"
 echo ""
 echo "   Then enter prompts like:"
-echo "   Avendesora, run an Nmap scan on 192.168.1.1."
+echo "   Machin Shin, run an Nmap scan on 192.168.1.1."
 echo ""

@@ -1,11 +1,11 @@
 {
-  "name": "avendesora-cli",
+  "name": "mshin-cli",
   "version": "0.2.0",
-  "description": "Interactive CLI harness that connects Ollama to the Avendesora Kali MCP server.",
+  "description": "Interactive CLI harness that connects Ollama to the Machin Shin Kali MCP server.",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "avendesora": "./index.js"
+    "mshin": "./index.js"
   },
   "scripts": {
     "start": "node index.js",

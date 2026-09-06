@@ -6,7 +6,7 @@ import { Agent, AgentMemory, askYesNo } from "./agent.js";
 
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-const DEFAULT_MODEL = "avendesora";
+const DEFAULT_MODEL = "mshin";
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -27,10 +27,10 @@ function parseArgs() {
         break;
       case "--help":
       case "-h":
-        console.log(`Usage: avendesora [OPTIONS] [NODE_IP]
+        console.log(`Usage: mshin [OPTIONS] [NODE_IP]
 
 Options:
-  --node URL      Avendesora Node MCP URL (default: ${DEFAULT_NODE_URL})
+  --node URL      Machin Shin Node MCP URL (default: ${DEFAULT_NODE_URL})
   --ollama URL    Ollama base URL (default: ${DEFAULT_OLLAMA_URL})
   --model NAME    Ollama model name (default: ${DEFAULT_MODEL})
 
@@ -63,7 +63,7 @@ function mcpToolsToOllama(tools) {
 async function main() {
   const { nodeUrl, ollamaUrl, model } = parseArgs();
 
-  console.log("Starting Avendesora Core...");
+  console.log("Starting Machin Shin Core...");
   console.log(`  Ollama:  ${ollamaUrl}`);
   console.log(`  Model:   ${model}`);
   console.log(`  Node:    ${nodeUrl}`);
@@ -79,9 +79,9 @@ async function main() {
     process.exit(1);
   }
 
-  // Connect to the Avendesora Node MCP server via SSE.
+  // Connect to the Machin Shin Node MCP server via SSE.
   const client = new Client(
-    { name: "avendesora-cli", version: "1.0.0" },
+    { name: "mshin-cli", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 
@@ -109,7 +109,7 @@ async function main() {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: "Avendesora> ",
+    prompt: "Machin Shin> ",
   });
 
   rl.prompt();
