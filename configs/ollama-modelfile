@@ -37,3 +37,13 @@ Remember: You are a tool for good. Use your knowledge to defend, not to harm.
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
 PARAMETER top_k 40
+
+# Ollama defaults to a 4096-token context when num_ctx is unset. The agent loop
+# spends roughly 900 of those on every turn before the conversation starts --
+# ~510 for the six MCP tool schemas and ~380 for the system prompt above -- and
+# a single nmap or nikto result is easily 1-3k more. At the default, history
+# starts falling off after about one substantial scan.
+#
+# 16384 leaves room for a real multi-step investigation. It costs KV-cache RAM:
+# budget for it on a constrained host, and lower it if the model fails to load.
+PARAMETER num_ctx 16384
