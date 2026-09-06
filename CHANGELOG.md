@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The CLI session now has a single owner of stdin.**
+  `clients/mshin-cli/agent.js`'s `askYesNo` opened a second readline
+  interface on the same stdin while `index.js`'s main interface was still
+  live, leaving two `data` listeners racing for the reply: the approval
+  answer reached both, so it was consumed as a new prompt while the question
+  it was meant for never resolved. `askYesNo` now takes a reader from the
+  caller. Only `metasploit` is in `ACTIVE_TOOLS` and the Lima node does not
+  expose it, so this was latent rather than firing -- but it sat on the
+  tool-approval gate.
+- **A prompt typed mid-scan no longer starts a second concurrent run.**
+  readline does not await an async `line` handler, so the CLI began another
+  `agent.run()` against the same `Agent` and session memory. A busy guard
+  now refuses input until the run finishes.
+- **Closing stdin no longer kills an in-flight run.** `rl.on("close")`
+  called `process.exit(0)` outright, which fires on every piped prompt since
+  stdin ends as soon as it is read -- `printf 'prompt\nexit\n' | mshin`
+  exited before answering. Close now waits for the run, and denies a pending
+  approval first so EOF cannot hang the exit and no answer is never read as
+  a yes.
+
 ### Verified
 
 - **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
@@ -25,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inference on the Mac's GPU instead of an emulated CPU.
 - Both guests boot and provision cleanly at the 0.7.1 memory defaults
   (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
+- **Re-checked on the merged 0.7.2 agent loop**, with the persona rebuilt
+  from the current modelfile on `qwen3:8b` (the installed `mshin` predated
+  it). Same whois on `example.com` through the CLI against host Ollama and
+  the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
+  registry output, IANA named correctly.
 
 ### Still not verified
 
