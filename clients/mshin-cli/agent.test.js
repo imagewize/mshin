@@ -137,12 +137,12 @@ async function setup(t, { mcpHandler = () => textContent("ok"), agentOptions = {
   const ollama = new MockOllama();
   await ollama.start();
   const mcp = new MockMcpClient(mcpHandler);
-  const dir = mkdtempSync(join(tmpdir(), "avendesora-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
   const memory = new AgentMemory(dir);
   const agent = new Agent({
     mcpClient: mcp,
     ollamaUrl: ollama.url,
-    model: "avendesora",
+    model: "mshin",
     tools: OLLAMA_TOOLS,
     memory,
     ...agentOptions,
@@ -165,7 +165,7 @@ test("sends model, tools and stream:false in the /api/chat body", async (t) => {
 
   const req = ollama.requests[0];
   assert.equal(req.url, "/api/chat");
-  assert.equal(req.body.model, "avendesora");
+  assert.equal(req.body.model, "mshin");
   assert.equal(req.body.stream, false);
   assert.deepEqual(req.body.tools, OLLAMA_TOOLS);
   assert.equal(req.body.messages[0].role, "system");

@@ -1,8 +1,8 @@
-# Contributing to Avendesora
+# Contributing to Machin Shin
 
 > *"The Aiel say, 'The way of the leaf is the way of the coward.' But in the world of code, the way of the leaf is the way of collaboration. Together, we weave a stronger Pattern."*
 
-We welcome contributions to **Avendesora**! Whether you're fixing bugs, adding new tools, or improving documentation, your help is valuable. Here's how to get started.
+We welcome contributions to **Machin Shin**! Whether you're fixing bugs, adding new tools, or improving documentation, your help is valuable. Here's how to get started.
 
 ---
 
@@ -16,14 +16,14 @@ By participating in this project, you agree to abide by the **[Contributor Coven
 
 ### **1. Reporting Bugs**
 
-If you find a bug, please [open an issue](https://github.com/imagewize/avendesora/issues) with:
+If you find a bug, please [open an issue](https://github.com/imagewize/mshin/issues) with:
 
 - A **clear title** describing the issue.
 - A **detailed description** of the problem, including:
   - Steps to reproduce.
   - Expected vs. actual behavior.
   - Screenshots or logs (if applicable).
-- Your **environment** (OS, hardware, versions of Avendesora components).
+- Your **environment** (OS, hardware, versions of Machin Shin components).
 
 ### **2. Suggesting Features**
 
@@ -53,18 +53,18 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 ### **Prerequisites**
 
-- **Avendesora Node:** Any x86_64 mini PC or SFF with Kali Linux.
-- **Avendesora Core:** any Linux/macOS machine with 32GB+ RAM (a GMKtec EVO-X3 or similar 128GB box is optional headroom, not a requirement).
+- **Machin Shin Node:** Any x86_64 mini PC or SFF with Kali Linux.
+- **Machin Shin Core:** any Linux/macOS machine with 32GB+ RAM (a GMKtec EVO-X3 or similar 128GB box is optional headroom, not a requirement).
 - **Basic knowledge** of Linux, networking, and Git.
 
 ### **Setting Up a Development Environment**
 
 1. Clone the repository:
   ```bash
-   git clone https://github.com/imagewize/avendesora.git
-   cd avendesora
+   git clone https://github.com/imagewize/mshin.git
+   cd mshin
   ```
-2. Set up the **Avendesora Node** and **Avendesora Core** as described in the [Setup Guide](docs/setup.md).
+2. Set up the **Machin Shin Node** and **Machin Shin Core** as described in the [Setup Guide](docs/setup.md).
 3. Test your changes locally before submitting a pull request.
 
 ---
@@ -72,7 +72,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
 ## **Project Structure**
 
 ```
-avendesora/
+mshin/
 ├── README.md                  # Project overview
 ├── LICENSE                    # MIT License
 ├── CONTRIBUTING.md            # This file
@@ -91,15 +91,15 @@ avendesora/
 │   ├── mcp-kali.service       # systemd service for MCP server
 │   └── ollama-modelfile       # Custom Ollama model configuration
 ├── lima/
-│   ├── avendesora-kali.yaml   # Lima template: Node guest (Debian + Kali tools)
-│   └── avendesora-core.yaml   # Lima template: Core guest (Ollama + CLI)
+│   ├── mshin-kali.yaml   # Lima template: Node guest (Debian + Kali tools)
+│   └── mshin-core.yaml   # Lima template: Core guest (Ollama + CLI)
 ├── servers/
 │   └── src/kali/              # Custom Kali MCP server
 │       ├── package.json
 │       ├── index.js
 │       └── tools.js
 ├── clients/
-│   └── avendesora-cli/        # Ollama + MCP client harness
+│   └── mshin-cli/        # Ollama + MCP client harness
 │       ├── package.json
 │       └── index.js
 └── assets/
@@ -154,14 +154,14 @@ avendesora/
 
 ## **Acknowledgments**
 
-Thank you to all contributors who help make **Avendesora** better! Your efforts are woven into the Pattern of this project.
+Thank you to all contributors who help make **Machin Shin** better! Your efforts are woven into the Pattern of this project.
 
 ---
 
 ## **License**
 
-By contributing to Avendesora, you agree that your contributions will be licensed under the **MIT License** (see [LICENSE](LICENSE)).
+By contributing to Machin Shin, you agree that your contributions will be licensed under the **MIT License** (see [LICENSE](LICENSE)).
 
 ---
 
-*"The Flame of Tar Valon burns bright, but the light of Avendesora is fueled by its community."*
+*"The Flame of Tar Valon burns bright, but the light of Machin Shin is fueled by its community."*

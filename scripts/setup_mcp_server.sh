@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Avendesora Node Setup Script
+# Machin Shin Node Setup Script
 #
-# Description: Automates the setup of Kali Linux + the Avendesora Kali MCP server.
+# Description: Automates the setup of Kali Linux + the Machin Shin Kali MCP server.
 #
 # Usage: sudo bash setup_mcp_server.sh
 
 set -e
 
-# --- Avendesora ASCII Art ---
+# --- Machin Shin ASCII Art ---
 
 cat <<'ART'
 
@@ -21,7 +21,7 @@ cat <<'ART'
          |
          |
 
-       Setting up Avendesora Node...
+       Setting up Machin Shin Node...
 
 ART
 
@@ -34,13 +34,13 @@ fi
 
 # --- Configuration ---
 
-AVENDESORA_DIR="/opt/avendesora"
-AVENDESORA_USER="avendesora"
+MSHIN_DIR="/opt/mshin"
+MSHIN_USER="mshin"
 TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
 # Needed while the repository is private; the HTTPS default is correct once it
-# is public. Pass it through sudo with -E: AVENDESORA_REPO=... sudo -E bash "$0"
-AVENDESORA_REPO="${AVENDESORA_REPO:-https://github.com/imagewize/avendesora.git}"
+# is public. Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
+MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
 
 # --- Install Dependencies ---
 
@@ -69,87 +69,87 @@ fi
 node --version
 npm --version
 
-# --- Clone / Refresh Avendesora Repository ---
+# --- Clone / Refresh Machin Shin Repository ---
 
-echo "[+] Installing Avendesora Node code to ${AVENDESORA_DIR}..."
-if [ -d "${AVENDESORA_DIR}/.git" ]; then
-    cd "${AVENDESORA_DIR}"
+echo "[+] Installing Machin Shin Node code to ${MSHIN_DIR}..."
+if [ -d "${MSHIN_DIR}/.git" ]; then
+    cd "${MSHIN_DIR}"
     git pull
 else
     # Clone into a staging directory first. Removing the destination up front
     # would destroy a working install whenever the clone fails.
     STAGE_DIR="$(mktemp -d)"
     export GIT_TERMINAL_PROMPT=0
-    if ! git clone "${AVENDESORA_REPO}" "${STAGE_DIR}/avendesora"; then
+    if ! git clone "${MSHIN_REPO}" "${STAGE_DIR}/mshin"; then
         rm -rf "${STAGE_DIR}"
         cat >&2 <<EOF
-[ERROR] Could not clone ${AVENDESORA_REPO}
+[ERROR] Could not clone ${MSHIN_REPO}
 
 The repository is private until v1.0, so an anonymous HTTPS clone fails with
 "could not read Username for 'https://github.com'". Point the script at a
 source this host can actually reach:
 
   # SSH, with a deploy key installed on this host
-  AVENDESORA_REPO=git@github.com:imagewize/avendesora.git sudo -E bash "\$0"
+  MSHIN_REPO=git@github.com:imagewize/mshin.git sudo -E bash "\$0"
 
   # A copy you transferred yourself (rsync, scp, USB)
-  AVENDESORA_REPO=/root/avendesora sudo -E bash "\$0"
+  MSHIN_REPO=/root/mshin sudo -E bash "\$0"
 EOF
         exit 1
     fi
-    rm -rf "${AVENDESORA_DIR}"
-    mv "${STAGE_DIR}/avendesora" "${AVENDESORA_DIR}"
+    rm -rf "${MSHIN_DIR}"
+    mv "${STAGE_DIR}/mshin" "${MSHIN_DIR}"
     rm -rf "${STAGE_DIR}"
 fi
 
 # --- Install MCP Server Dependencies ---
 
 echo "[+] Installing MCP server dependencies..."
-cd "${AVENDESORA_DIR}/servers/src/kali"
+cd "${MSHIN_DIR}/servers/src/kali"
 npm install
 
-# --- Set Up Avendesora User ---
+# --- Set Up Machin Shin User ---
 
-echo "[+] Creating '${AVENDESORA_USER}' user..."
-if id "${AVENDESORA_USER}" &>/dev/null; then
-    echo "[INFO] User '${AVENDESORA_USER}' already exists. Leaving its password unchanged."
-    AVENDESORA_PASSWORD=""
+echo "[+] Creating '${MSHIN_USER}' user..."
+if id "${MSHIN_USER}" &>/dev/null; then
+    echo "[INFO] User '${MSHIN_USER}' already exists. Leaving its password unchanged."
+    MSHIN_PASSWORD=""
 else
-    # Generate a random password (24 url-safe chars) for the 'avendesora' user.
-    AVENDESORA_PASSWORD="$(openssl rand -base64 18 | tr -d '\n')"
-    useradd -m -s /bin/bash "${AVENDESORA_USER}"
-    echo "${AVENDESORA_USER}:${AVENDESORA_PASSWORD}" | chpasswd
-    usermod -aG sudo "${AVENDESORA_USER}"
+    # Generate a random password (24 url-safe chars) for the 'mshin' user.
+    MSHIN_PASSWORD="$(openssl rand -base64 18 | tr -d '\n')"
+    useradd -m -s /bin/bash "${MSHIN_USER}"
+    echo "${MSHIN_USER}:${MSHIN_PASSWORD}" | chpasswd
+    usermod -aG sudo "${MSHIN_USER}"
 fi
 
-# --- Configure Sudoers for Avendesora User ---
+# --- Configure Sudoers for Machin Shin User ---
 
-echo "[+] Configuring sudoers for '${AVENDESORA_USER}'..."
+echo "[+] Configuring sudoers for '${MSHIN_USER}'..."
 # tshark is intentionally omitted: reading user-owned PCAP files as root
 # triggers Wireshark's file-owner check, and tshark needs no privileges to
 # analyze existing captures.
-cat > /etc/sudoers.d/avendesora <<EOF
-${AVENDESORA_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
+cat > /etc/sudoers.d/mshin <<EOF
+${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
 EOF
-chmod 440 /etc/sudoers.d/avendesora
+chmod 440 /etc/sudoers.d/mshin
 
 # --- Set Up MCP Server as a Systemd Service ---
 
 echo "[+] Setting up MCP server as a systemd service..."
-cp "${AVENDESORA_DIR}/configs/mcp-kali.service" /etc/systemd/system/avendesora-node.service
+cp "${MSHIN_DIR}/configs/mcp-kali.service" /etc/systemd/system/mshin-node.service
 
 systemctl daemon-reload
-systemctl enable avendesora-node
-systemctl start avendesora-node
+systemctl enable mshin-node
+systemctl start mshin-node
 
 # --- Assign Static IP (Optional) ---
 
-read -r -p "[?] Assign static IP to Avendesora Node? (y/n): " assign_ip
+read -r -p "[?] Assign static IP to Machin Shin Node? (y/n): " assign_ip
 if [ "$assign_ip" = "y" ]; then
     read -r -p "[?] Enter static IP (e.g., 192.168.1.100): " static_ip
     read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
-cat > /etc/netplan/00-avendesora-node.yaml <<EOF
+cat > /etc/netplan/00-mshin-node.yaml <<EOF
 network:
   version: 2
   ethernets:
@@ -173,22 +173,22 @@ fi
 # --- Display Setup Summary ---
 
 echo ""
-echo "[+] Avendesora Node setup complete!"
+echo "[+] Machin Shin Node setup complete!"
 echo ""
 echo "   MCP Server: Running on port 3000"
-if [ -n "$AVENDESORA_PASSWORD" ]; then
-    echo "   User: ${AVENDESORA_USER} (Password: ${AVENDESORA_PASSWORD})"
+if [ -n "$MSHIN_PASSWORD" ]; then
+    echo "   User: ${MSHIN_USER} (Password: ${MSHIN_PASSWORD})"
     echo "         ^ Record this now — it is not stored anywhere and won't be shown again."
 else
-    echo "   User: ${AVENDESORA_USER} (existing user; password unchanged)"
+    echo "   User: ${MSHIN_USER} (existing user; password unchanged)"
 fi
-echo "   Service: avendesora-node (enabled and started)"
+echo "   Service: mshin-node (enabled and started)"
 echo "   Tools: ${TOOLS_LIST}"
 echo ""
 echo "   To test the MCP server:"
 echo "   curl http://localhost:3000/health"
 echo ""
 echo "   Next steps:"
-echo "   1. Note the IP of this machine (Avendesora Node)."
-echo "   2. Set up Avendesora Core with this IP."
+echo "   1. Note the IP of this machine (Machin Shin Node)."
+echo "   2. Set up Machin Shin Core with this IP."
 echo ""

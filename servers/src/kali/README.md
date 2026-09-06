@@ -1,4 +1,4 @@
-# Avendesora Kali MCP Server
+# Machin Shin Kali MCP Server
 
 A small [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes a curated set of Kali Linux security tools.
 
@@ -14,7 +14,7 @@ A small [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server t
 ## Install
 
 ```bash
-cd /opt/avendesora/servers/src/kali
+cd /opt/mshin/servers/src/kali
 npm install
 ```
 
@@ -24,7 +24,7 @@ npm install
 node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
 ```
 
-The server listens on port `3000` by default (override with `AVENDESORA_NODE_PORT`).
+The server listens on port `3000` by default (override with `MSHIN_NODE_PORT`).
 
 ## Test
 
@@ -36,5 +36,5 @@ curl http://localhost:3000/health
 
 1. Add a new entry to `tools.js` with `name`, `description`, `inputSchema`, and `handler`.
 2. Add the tool name to the `--tools` flag in the systemd service and setup script.
-3. If the tool needs `sudo`, add its absolute path to `/etc/sudoers.d/avendesora`.
+3. If the tool needs `sudo`, add its absolute path to `/etc/sudoers.d/mshin`.
 4. Document it in `configs/ollama-modelfile`.

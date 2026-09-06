@@ -1,10 +1,10 @@
 [Unit]
-Description=Avendesora Node: MCP Server for Kali Tools
+Description=Machin Shin Node: MCP Server for Kali Tools
 After=network.target
 
 [Service]
-User=avendesora
-WorkingDirectory=/opt/avendesora/servers/src/kali
+User=mshin
+WorkingDirectory=/opt/mshin/servers/src/kali
 ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
 Restart=always
 RestartSec=5s
@@ -13,7 +13,7 @@ Environment=NODE_ENV=production
 # Security settings
 # NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as
 # `sudo -n <bin>` whenever the server is not root (see the NOPASSWD allowlist in
-# /etc/sudoers.d/avendesora), and NoNewPrivileges=true blocks exactly that:
+# /etc/sudoers.d/mshin), and NoNewPrivileges=true blocks exactly that:
 # every tool call fails with "sudo: The "no new privileges" flag is set".
 # tshark is the exception: it runs as the service user because reading PCAP
 # files as root triggers Wireshark's file-owner check. The sudoers allowlist is
@@ -21,7 +21,7 @@ Environment=NODE_ENV=production
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/avendesora /home/avendesora
+ReadWritePaths=/opt/mshin /home/mshin
 
 [Install]
 WantedBy=multi-user.target

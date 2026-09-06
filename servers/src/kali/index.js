@@ -8,8 +8,8 @@ import {
 import express from "express";
 import { tools } from "./tools.js";
 
-const PORT = process.env.AVENDESORA_NODE_PORT
-  ? parseInt(process.env.AVENDESORA_NODE_PORT, 10)
+const PORT = process.env.MSHIN_NODE_PORT
+  ? parseInt(process.env.MSHIN_NODE_PORT, 10)
   : 3000;
 
 function parseEnabledTools() {
@@ -28,7 +28,7 @@ if (enabledTools.length === 0) {
   process.exit(1);
 }
 
-console.error(`[INFO] Avendesora Node starting on port ${PORT}`);
+console.error(`[INFO] Machin Shin Node starting on port ${PORT}`);
 console.error(`[INFO] Enabled tools: ${enabledTools.map((t) => t.name).join(", ")}`);
 
 // Build a fresh Server instance for each client connection. A single Server
@@ -36,7 +36,7 @@ console.error(`[INFO] Enabled tools: ${enabledTools.map((t) => t.name).join(", "
 // (or across reconnects) would clobber the previous session.
 function createServer() {
   const server = new Server(
-    { name: "avendesora-kali-node", version: "1.0.0" },
+    { name: "mshin-kali-node", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 
@@ -112,5 +112,5 @@ app.get("/health", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.error(`[INFO] Avendesora Node listening on http://0.0.0.0:${PORT}`);
+  console.error(`[INFO] Machin Shin Node listening on http://0.0.0.0:${PORT}`);
 });

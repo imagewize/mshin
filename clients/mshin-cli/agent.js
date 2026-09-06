@@ -23,14 +23,14 @@ function estimateMessageTokens(message) {
 }
 
 /**
- * Persistent session memory for the Avendesora agent.
+ * Persistent session memory for the Machin Shin agent.
  *
  * Sessions are stored as JSON so the operator can review, delete, or migrate
  * them easily. The storage path can be swapped for SQLite later if multi-user
  * or concurrent access is needed.
  */
 class AgentMemory {
-  constructor(dataDir = join(homedir(), ".avendesora")) {
+  constructor(dataDir = join(homedir(), ".mshin")) {
     this.dataDir = dataDir;
     this.storePath = join(dataDir, "memory.json");
     if (!existsSync(dataDir)) {
@@ -72,7 +72,7 @@ class AgentMemory {
 
 /**
  * Cybersecurity agent that drives the observe-decide-act loop between Ollama
- * and the Avendesora Node MCP server.
+ * and the Machin Shin Node MCP server.
  */
 class Agent {
   constructor({
@@ -99,7 +99,7 @@ class Agent {
     let messages = this.memory.getSession(sessionId).messages.slice();
 
     const systemPrompt =
-      "You are Avendesora, a careful cybersecurity assistant. " +
+      "You are Machin Shin, a careful cybersecurity assistant. " +
       "Use the provided tools one at a time. After each tool result, " +
       "decide the single next best action or finish with a concise answer. " +
       "Never assume results; base every decision on actual tool output.";

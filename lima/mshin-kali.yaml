@@ -1,10 +1,10 @@
-# Avendesora Node — Lima template
+# Machin Shin Node — Lima template
 #
-#   limactl create --name=avendesora-kali lima/avendesora-kali.yaml
-#   limactl start avendesora-kali
+#   limactl create --name=mshin-kali lima/mshin-kali.yaml
+#   limactl start mshin-kali
 #
-# Debian 13 with the Kali tools Debian ships, the Avendesora MCP server, and the
-# avendesora-node systemd unit. See docs/lima-local-dev.md.
+# Debian 13 with the Kali tools Debian ships, the Machin Shin MCP server, and the
+# mshin-node systemd unit. See docs/lima-local-dev.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so this
 # one file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an
@@ -36,14 +36,14 @@ networks:
 # Mount your host clone instead — either uncomment and set `location` below, or
 # pass it at create time without editing this file, from your clone's root:
 #
-#   limactl create --name=avendesora-kali \
-#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
-#     lima/avendesora-kali.yaml
+#   limactl create --name=mshin-kali \
+#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
+#     lima/mshin-kali.yaml
 #
 # npm then writes node_modules back to the Mac clone (it is gitignored).
 # mounts:
 #   - location: "<path to your clone>"
-#     mountPoint: "/opt/avendesora"
+#     mountPoint: "/opt/mshin"
 #     writable: true
 
 provision:
@@ -76,21 +76,21 @@ provision:
     script: |
       #!/bin/bash
       set -eux -o pipefail
-      REPO_DIR=/opt/avendesora
+      REPO_DIR=/opt/mshin
       MARKER=servers/src/kali/index.js
       if [ ! -e "${REPO_DIR}/${MARKER}" ]; then
           # Nothing mounted there, so fall back to a clone. GIT_TERMINAL_PROMPT=0
           # turns a credential prompt into an immediate error instead of a hang.
           export GIT_TERMINAL_PROMPT=0
-          if ! git clone https://github.com/imagewize/avendesora.git "${REPO_DIR}"; then
+          if ! git clone https://github.com/imagewize/mshin.git "${REPO_DIR}"; then
               cat >&2 <<'ERR'
-      [ERROR] /opt/avendesora has no checkout and the clone failed.
+      [ERROR] /opt/mshin has no checkout and the clone failed.
       The repository is private until v1.0, so an anonymous clone cannot work.
       Mount your host clone into the guest instead — from the root of your clone:
         limactl delete <name>
         limactl create --name=<name> \
-          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
-          lima/avendesora-kali.yaml
+          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
+          lima/mshin-kali.yaml
       ERR
               exit 1
           fi
@@ -110,44 +110,44 @@ provision:
       # tshark is omitted: reading user-owned PCAP files as root triggers
       # Wireshark's file-owner check, and tshark needs no privileges to read
       # capture files.
-      cat >/etc/sudoers.d/avendesora <<'EOF'
+      cat >/etc/sudoers.d/mshin <<'EOF'
       {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
       EOF
-      chmod 440 /etc/sudoers.d/avendesora
-      visudo -cf /etc/sudoers.d/avendesora
+      chmod 440 /etc/sudoers.d/mshin
+      visudo -cf /etc/sudoers.d/mshin
 
   - mode: system
     script: |
       #!/bin/bash
       set -eux -o pipefail
-      UNIT=/etc/systemd/system/avendesora-node.service
-      install -m 644 /opt/avendesora/configs/mcp-kali.service "${UNIT}"
-      # The shipped unit runs as a dedicated 'avendesora' user with all six
+      UNIT=/etc/systemd/system/mshin-node.service
+      install -m 644 /opt/mshin/configs/mcp-kali.service "${UNIT}"
+      # The shipped unit runs as a dedicated 'mshin' user with all six
       # tools. In a throwaway guest, run as the Lima login user and drop the two
       # tools Debian does not provide.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
-      sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora {{.Home}}|" "${UNIT}"
+      sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
       sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" "${UNIT}"
       systemctl daemon-reload
-      systemctl enable avendesora-node
-      systemctl restart avendesora-node
+      systemctl enable mshin-node
+      systemctl restart mshin-node
 
 probes:
-  - description: "avendesora-node answering on :3000"
+  - description: "mshin-node answering on :3000"
     script: |
       #!/bin/bash
       set -eu -o pipefail
       if ! timeout 300s bash -c "until curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; do sleep 3; done"; then
-          echo >&2 "avendesora-node did not come up"
+          echo >&2 "mshin-node did not come up"
           exit 1
       fi
     hint: |
       The MCP server is not answering. Inside the guest, check:
-        journalctl -u avendesora-node -n 50
+        journalctl -u mshin-node -n 50
       and /var/log/cloud-init-output.log for provisioning errors.
 
 message: |
-  The Avendesora Node is up. Read its address on the shared network:
+  The Machin Shin Node is up. Read its address on the shared network:
   ------
   limactl shell {{.Name}} -- ip -4 -br addr show lima0
   ------

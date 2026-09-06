@@ -50,8 +50,8 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
     throw new Error(`Tool binary not found: ${bin}. Is ${name} installed?`);
   }
 
-  // When running as the unprivileged avendesora user, use sudo so the
-  // NOPASSWD allowlist in /etc/sudoers.d/avendesora takes effect.
+  // When running as the unprivileged mshin user, use sudo so the
+  // NOPASSWD allowlist in /etc/sudoers.d/mshin takes effect.
   // tshark is excluded: reading a user-owned PCAP as root triggers Wireshark's
   // file-owner check and fails, and tshark does not need privileges to read
   // capture files anyway.
@@ -170,7 +170,7 @@ const tools = [
   {
     name: "tshark",
     description:
-      "Analyze a PCAP file with tshark. The file must be readable by the avendesora user.",
+      "Analyze a PCAP file with tshark. The file must be readable by the mshin user.",
     inputSchema: {
       type: "object",
       properties: {
