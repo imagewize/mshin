@@ -129,7 +129,7 @@ Examples across the repo use `192.168.1.100` (Node), `192.168.1.200` (Core), `19
 
 **Content:**
 - Link to other docs rather than duplicating them
-- Placeholders for anything reader-specific: `<KALI_IP>`, `<PATH>`, `<PASSWORD>` — never a real home directory
+- Placeholders for anything reader-specific: `<NODE_IP>`, `<PATH>`, `<PASSWORD>` — never a real home directory
 - Run the commands you document, or say which ones you could not
 - Verify CLI syntax against the installed version rather than memory; flags change between major releases
 - ASCII diagrams must have every line the same display width

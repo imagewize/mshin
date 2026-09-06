@@ -142,8 +142,8 @@ probes:
 message: |
   The Machin Shin Core is up. Point the CLI at your Node guest:
   ------
-  limactl shell mshin-node -- ip -4 -br addr show lima0   # find <KALI_IP>
-  limactl shell {{.Name}} -- mshin --node http://<KALI_IP>:3000
+  limactl shell mshin-node -- ip -4 -br addr show lima0   # find <NODE_IP>
+  limactl shell {{.Name}} -- mshin --node http://<NODE_IP>:3000
   ------
   `ollama run mshin` is a plain chat session with no tools — only the CLI
   bridges the model to the Node.

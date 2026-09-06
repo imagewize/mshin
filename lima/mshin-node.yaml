@@ -195,5 +195,5 @@ message: |
   ------
   limactl shell {{.Name}} -- ip -4 -br addr show lima0
   ------
-  That address is <KALI_IP> in docs/lima-local-dev.md. Verify it from the Core
-  guest with: curl http://<KALI_IP>:3000/health
+  That address is <NODE_IP> in docs/lima-local-dev.md. Verify it from the Core
+  guest with: curl http://<NODE_IP>:3000/health
