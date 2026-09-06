@@ -21,14 +21,15 @@ Everything here describes splitting LLM inference from security-tool execution a
 - **Avendesora Core** — runs **Ollama** (Mistral Small 3 / Llama 3.3 70B) for inference plus the **Avendesora CLI client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/avendesora` that launches `/opt/avendesora/clients/avendesora-cli/index.js` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/architecture.md` ("Why Ollama (and not raw llama.cpp)?").
 - **Avendesora Node** — runs **Kali Linux** and the **custom Kali MCP server** (`servers/src/kali`) exposing tools (`nmap`, `metasploit`, `searchsploit`, `nikto`, `whois`, `tshark`) on port **3000**. Provisioned by `scripts/setup_mcp_server.sh`, kept alive by the `avendesora-node` systemd service (`configs/mcp-kali.service`).
 
-Data flow: `User prompt → Core (LLM) → Avendesora CLI → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona and tool list are defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`).
+Data flow: `User prompt → Core (LLM) → Avendesora CLI → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona is defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create avendesora -f <file>`); the tool list reaches the model at runtime as the MCP `tools` array the CLI passes to Ollama, **not** from the Modelfile.
 
-When changing the tool set, five places must stay in sync:
+When changing the tool set, four places must stay in sync:
 1. The `--tools` flag in `scripts/setup_mcp_server.sh` (and the apt package list there).
 2. The same flag in `configs/mcp-kali.service`.
 3. The `sudoers` allowlist for the `avendesora` user in the setup script.
 4. The tool list in `servers/src/kali/tools.js` (and any tool metadata there).
-5. The Modelfile's documented tool list in `configs/ollama-modelfile`.
+
+`configs/ollama-modelfile` is deliberately **not** on that list: its system prompt must not enumerate the tools. A hand-written tool list with shell-command examples trains smaller models to emit tool calls as text instead of native `tool_calls`, which breaks the agent loop (verified on a Lima Core guest — see `CHANGELOG.md`).
 
 The sudoers entry is the easiest to miss: `servers/src/kali/tools.js` runs each binary as `sudo -n` whenever the process is not root, so a tool absent from the allowlist fails at call time, not at startup.
 

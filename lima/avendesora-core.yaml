@@ -100,8 +100,15 @@ provision:
     script: |
       #!/bin/bash
       set -eux -o pipefail
-      # The Ollama installer starts the daemon under systemd; wait for the API
-      # before pulling, or the first `ollama` call races the socket.
+      # cloud-init runs this as root with no HOME set, and the ollama CLI panics
+      # ("$HOME is not defined") while resolving its models path. Give it one.
+      export HOME=/root
+      # The Ollama installer registers the systemd unit but does not reliably
+      # start it during cloud-init (on Ubuntu 26.04 the unit is left
+      # `disabled`/`inactive`), so start it ourselves rather than assume it is
+      # up. Then wait for the API before pulling, or the first call races the
+      # socket.
+      systemctl enable --now ollama
       timeout 120s bash -c "until curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; do sleep 2; done"
       ollama pull "{{.Param.model}}"
       # configs/ollama-modelfile is FROM mistral-small, which needs ~15GB and
