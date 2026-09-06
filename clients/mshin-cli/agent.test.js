@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Agent, AgentMemory, ACTIVE_TOOLS } from "./agent.js";
+import { Agent, AgentMemory, ACTIVE_TOOLS, extractTextToolCall } from "./agent.js";
 
 // -----------------------------------------------------------------------------
 // Test doubles
@@ -167,6 +167,7 @@ test("sends model, tools and stream:false in the /api/chat body", async (t) => {
   assert.equal(req.url, "/api/chat");
   assert.equal(req.body.model, "mshin");
   assert.equal(req.body.stream, false);
+  assert.equal(req.body.options?.temperature, 0);
   assert.deepEqual(req.body.tools, OLLAMA_TOOLS);
   assert.equal(req.body.messages[0].role, "system");
   assert.equal(req.body.messages.at(-1).role, "user");
@@ -434,4 +435,217 @@ test("compactContext keeps the system prompt and original goal while trimming hi
   assert.ok(compacted.length < messages.length);
   assert.ok(compacted.some((m) => m.content === "SYSTEM PROMPT"));
   assert.ok(compacted.some((m) => m.content === "ORIGINAL GOAL"));
+});
+
+// -----------------------------------------------------------------------------
+// Narrated tool calls
+//
+// Small models given a tools array sometimes write the call out as text instead
+// of emitting it, then invent the result. Ollama returns that as plain content
+// with no tool_calls, so the loop must notice rather than pass the fabrication
+// off as an answer.
+// -----------------------------------------------------------------------------
+
+const isNmap = (n) => n === "nmap";
+
+test("extracts a bare text-emitted tool call", () => {
+  const call = extractTextToolCall(
+    'To scan it I will use nmap.\n\n[{"name":"nmap","arguments":{"target":"127.0.0.1"}}]',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "127.0.0.1" } });
+});
+
+test("extracts a call behind a [TOOL_CALLS] marker", () => {
+  const call = extractTextToolCall(
+    '[TOOL_CALLS] [{"name": "nmap", "arguments": {"target": "10.0.0.1"}}]',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "10.0.0.1" } });
+});
+
+test("extracts a call fenced in a code block", () => {
+  const call = extractTextToolCall(
+    'Here is the call:\n```json\n{"name":"nmap","arguments":{"target":"h"}}\n```',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "h" } });
+});
+
+test("ignores JSON that names no available tool", () => {
+  assert.equal(
+    extractTextToolCall('{"name":"rm","arguments":{"path":"/"}}', isNmap),
+    null
+  );
+});
+
+test("ignores an answer that merely quotes JSON", () => {
+  assert.equal(
+    extractTextToolCall('The scan returned {"ports": [22, 80]} in total.', isNmap),
+    null
+  );
+});
+
+test("ignores prose with no JSON at all", () => {
+  assert.equal(extractTextToolCall("No open ports were found.", isNmap), null);
+  assert.equal(extractTextToolCall("", isNmap), null);
+  assert.equal(extractTextToolCall(null, isNmap), null);
+});
+
+test("recovers a narrated call, runs it, and drops the invented output", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh"),
+  });
+
+  // The model narrates the call and fabricates a scan report in the same turn.
+  ollama.queueFinal(
+    'To scan 127.0.0.1 I will use nmap.\n' +
+      '[{"name":"nmap","arguments":{"target":"127.0.0.1"}}]\n' +
+      "PORT   STATE SERVICE\n3306/tcp open  mysql"
+  );
+  ollama.queueFinal("Port 22 is open.");
+
+  const narrated = [];
+  const answer = await agent.run({
+    sessionId: "s-narrated",
+    userGoal: "scan localhost",
+    onNarratedToolCall: (name) => narrated.push(name),
+  });
+
+  // The tool actually ran, and the real result -- not the invention -- is the
+  // basis of the answer.
+  assert.deepEqual(narrated, ["nmap"]);
+  assert.equal(mcp.calls.length, 1);
+  assert.equal(mcp.calls[0].name, "nmap");
+  assert.equal(answer, "Port 22 is open.");
+
+  // The fabricated report must not survive in the transcript the model sees.
+  const sent = ollama.requests.at(-1).body.messages;
+  assert.ok(
+    !sent.some((m) => (m.content || "").includes("3306/tcp")),
+    "invented tool output leaked into the transcript"
+  );
+  assert.ok(sent.some((m) => m.role === "tool" && m.content === "22/tcp open ssh"));
+});
+
+test("a genuine text answer still ends the loop", async (t) => {
+  const { ollama, mcp, agent } = await setup(t);
+  ollama.queueFinal("No scan was needed; the host is documented as offline.");
+
+  const answer = await agent.run({ sessionId: "s-plain", userGoal: "status?" });
+
+  assert.equal(mcp.calls.length, 0);
+  assert.equal(answer, "No scan was needed; the host is documented as offline.");
+});
+
+test("extracts a functions.name(args) text-emitted call", () => {
+  const call = extractTextToolCall(
+    'functions.nmap(target="127.0.0.1", flags=["-sS"])',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "127.0.0.1", flags: ["-sS"] } });
+});
+
+test("extracts a bare name(args) text-emitted call", () => {
+  const call = extractTextToolCall(
+    'To scan it I will use nmap(target="10.0.0.1").',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "10.0.0.1" } });
+});
+
+test("ignores function-syntax prose that names no available tool", () => {
+  assert.equal(
+    extractTextToolCall('rm(path="/")', isNmap),
+    null
+  );
+});
+
+test("extracts function-syntax calls with parentheses inside string args", () => {
+  const call = extractTextToolCall(
+    'nmap(target="127.0.0.1 (localhost)", flags=["-sS"])',
+    isNmap
+  );
+  assert.deepEqual(call, { name: "nmap", args: { target: "127.0.0.1 (localhost)", flags: ["-sS"] } });
+});
+
+test("recovers a functions.name narrated call and drops invented results", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh"),
+  });
+
+  ollama.queueFinal(
+    'functions.nmap(target="127.0.0.1", flags=["-sS"])\n\n' +
+      "Result:\n" +
+      "22/tcp   open  ssh\n" +
+      "80/tcp   open  http\n" +
+      "3306/tcp open  mysql"
+  );
+  ollama.queueFinal("Port 22 is open.");
+
+  const narrated = [];
+  const answer = await agent.run({
+    sessionId: "s-func-syntax",
+    userGoal: "scan localhost",
+    onNarratedToolCall: (name) => narrated.push(name),
+  });
+
+  assert.deepEqual(narrated, ["nmap"]);
+  assert.equal(mcp.calls.length, 1);
+  assert.deepEqual(mcp.calls[0].args, { target: "127.0.0.1", flags: ["-sS"] });
+  assert.equal(answer, "Port 22 is open.");
+
+  const sent = ollama.requests.at(-1).body.messages;
+  assert.ok(!sent.some((m) => (m.content || "").includes("3306/tcp")));
+  assert.ok(sent.some((m) => m.role === "tool" && m.content === "22/tcp open ssh"));
+});
+
+test("backstop blocks unparseable fabricated results from reaching the user", async (t) => {
+  const { ollama, mcp, agent, memory } = await setup(t, {
+    mcpHandler: () => textContent("should not run"),
+  });
+
+  // No parseable call syntax, but the model invented a scan report.
+  ollama.queueFinal(
+    "I ran a scan.\n\n" +
+      "Result:\n" +
+      "22/tcp   open  ssh\n" +
+      "80/tcp   open  http\n" +
+      "3306/tcp open  mysql"
+  );
+
+  const answer = await agent.run({ sessionId: "s-backstop", userGoal: "scan localhost" });
+
+  assert.equal(mcp.calls.length, 0);
+  assert.match(answer, /no tool executed/i);
+  assert.ok(!answer.includes("3306/tcp"));
+
+  // The fabricated turn must not persist as a valid assistant answer.
+  const stored = memory.getSession("s-backstop").messages;
+  assert.ok(!stored.some((m) => (m.content || "").includes("3306/tcp")));
+});
+
+test("backstop catches fenced invented output", async (t) => {
+  const { ollama, mcp, agent } = await setup(t);
+
+  ollama.queueFinal(
+    "The scan returned:\n```\n22/tcp open ssh\n80/tcp open http\n```"
+  );
+
+  const answer = await agent.run({ sessionId: "s-fenced", userGoal: "scan localhost" });
+
+  assert.equal(mcp.calls.length, 0);
+  assert.match(answer, /no tool executed/i);
+});
+
+test("does not block a genuine final answer after a real tool ran", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("Result: port 22 is open.");
+
+  const answer = await agent.run({ sessionId: "s-real-result", userGoal: "scan localhost" });
+  assert.equal(answer, "Result: port 22 is open.");
 });

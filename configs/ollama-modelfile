@@ -16,39 +16,37 @@ You have been given a set of tools via function calling. When a task needs one, 
 - Stay in character as Machin Shin: a tireless, disciplined hunter that ranges the dark of a network and misses nothing -- turned always to the service of the one who commands it.
 """
 
-# Enforce the tool-calling template from the base Mistral model. Without this,
-# smaller models (e.g. a 7B) may emit tool calls as text in the reply instead of
-# using Ollama's native tool_calls, and the agent loop then never fires the tool.
-# Verified on a Lima Core guest: the persona with this template tool-calls
-# nikto and tshark correctly, while a system-prompt-only persona narrates or
-# hallucinates results.
-TEMPLATE """{{- if .Messages }}
-{{- range $index, $_ := .Messages }}
-{{- if eq .Role "user" }}
-{{- if and (eq (len (slice $.Messages $index)) 1) $.Tools }}[AVAILABLE_TOOLS] {{ $.Tools }}[/AVAILABLE_TOOLS]
-{{- end }}[INST] {{ if and $.System (eq (len (slice $.Messages $index)) 1) }}{{ $.System }}
+# No TEMPLATE is pinned here, deliberately.
+#
+# 0.6.0 pinned a copy of the base Mistral prompt template in this file. Measured
+# against it now (ollama 0.33.2, 5 trials per config on a Lima Core guest), it
+# makes no difference to tool calling -- 3/5 with it, 2/5 without -- so it is
+# not load-bearing. It is removed because it is wrong by construction: `FROM`
+# above is rewritten per host (the Lima templates build on mistral or
+# qwen2.5:7b, a 16GB Mac on qwen3:8b), and a Mistral-specific prompt format
+# applied to a Qwen base is a latent bug waiting for someone to hit it.
+# Inheriting the base model's own template is correct for every base.
 
-{{ end }}{{ .Content }}[/INST]
-{{- else if eq .Role "assistant" }}
-{{- if .Content }}{{ .Content }}
-{{- else if .ToolCalls }}[TOOL_CALLS] [
-{{- range .ToolCalls }}{"name": "{{ .Function.Name }}", "arguments": {{ .Function.Arguments }}}
-{{- end }}]
-{{- end }}</s>
-{{- else if eq .Role "tool" }}[TOOL_RESULTS] {"content": {{ .Content }}} [/TOOL_RESULTS]
-{{- end }}
-{{- end }}
-{{- else }}[INST] {{ if .System }}{{ $.System }}
-
-{{ end }}{{ .Prompt }}[/INST]
-{{- end }}{{ .Response }}
-{{- if .Response }}</s>
-{{- end }}"""
-
-# Custom parameters (optional)
-PARAMETER temperature 0.7
-PARAMETER top_p 0.9
-PARAMETER top_k 40
+# Temperature 0, not 0.7. This is the setting that decides whether the agent
+# loop works at all.
+#
+# At 0.7 a 7B model given a tools array will sometimes *write about* calling the
+# tool -- "To scan 127.0.0.1, I will use nmap..." followed by an invented scan
+# report -- instead of emitting a call Ollama can parse into `tool_calls`. The
+# CLI then never fires the tool and the model's hallucination reaches the user
+# as though it were a scan result. Measured on a Lima Core guest, one prompt,
+# 5 trials per config:
+#
+#   mistral (base), no system prompt, default temp .... 5/5 native tool_calls
+#   mistral + this system prompt, default temp ........ 2/5
+#   mshin persona, default temp ....................... 2/5
+#   mshin persona, temperature 0 ...................... 5/5
+#
+# The persona prompt raises the odds of narration; temperature 0 removes them.
+# This is a security tool whose job is to report what a scan actually returned,
+# so there is nothing here that wants sampling diversity. top_p and top_k are
+# left unset: they only shape a distribution that greedy decoding never samples.
+PARAMETER temperature 0
 
 # Ollama defaults to a 4096-token context when num_ctx is unset. The agent loop
 # spends roughly 900 of those on every turn before the conversation starts --
