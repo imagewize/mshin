@@ -542,7 +542,7 @@ node index.js --tools nmap,nikto,whois,tshark &
 /opt/avendesora/clients/avendesora-cli/index.js --node http://localhost:3000 --model avendesora
 ```
 
-> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and `universe` on Ubuntu; Ubuntu enables `universe` by default, Debian's cloud image does not enable `non-free`. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
+> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and **`multiverse`** on Ubuntu (verified against `packages.ubuntu.com` for jammy 22.04 and noble 24.04: `nikto 1:2.1.5-3.1 [multiverse]`) — not `universe`. If the install fails on the Lima `template:ubuntu` guest, enable multiverse with `sudo add-apt-repository -y multiverse && sudo apt update`, then reinstall. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
 
 > **Pros:** Simplest setup, single VM to manage
 > **Cons:** Less isolation, tools and LLM share resources, MCP server runs on localhost
