@@ -7,33 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Verified
-
-- **The guest-to-guest Core → Node hop runs end to end on Lima's shared
-  network.** Both guests on the `lima: shared` vmnet — Core `192.168.105.4`,
-  Node `192.168.105.3` — with the Core's `/opt/mshin` at `829ee1f`, the 0.7.3
-  code. `curl http://192.168.105.3:3000/health` from the Core answers with the
-  four tools a Debian-based guest can expose (`nmap`, `nikto`, `whois`,
-  `tshark`). A piped whois on `example.com` then drove the whole chain — Core
-  LLM → CLI → MCP client → Node → tool → answer — and named IANA as the
-  registrar from real registry output.
-
-  This is the two-machine data flow with both machines virtual, which leaves
-  only the physical-LAN case open.
-- **The 0.7.3 readline fixes hold in a live run, not only in tests.** The piped
-  `exit` arrived mid-run, the busy guard refused it, and close waited for the
-  answer instead of exiting early — both defects observed on the wire rather
-  than in a harness.
-- **The narrated-tool-call fallback is model-dependent.** This Core builds the
-  persona on `mistral` (7B) and wrote the call as text, where 0.7.3's
-  host-Ollama run on `qwen3:8b` emitted a native `tool_calls`. The 0.7.2
-  recovery path caught it and ran the tool anyway, so the smaller model still
-  shows the 0.5.0 behaviour that hardening was written for.
-
 ### Still not verified
 
 - The two-machine path on real hardware, across a physical LAN.
-- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
+
+## [0.8.0] - 2026-09-06
+
+Full-toolset release for the Lima Node. The Debian dev guest now provisions all
+six MCP tools — the last two, `metasploit` and `searchsploit`, from their
+upstream vendors rather than Kali's repo — and both are verified executing for
+real through the server's own handlers. Verifying `metasploit` surfaced a
+handler bug that made it unusable, now fixed. The guest is renamed `mshin-kali`
+→ `mshin-node`, since it is Debian, not Kali.
+
+### Fixed
+
+- **The `metasploit` tool hung instead of returning its result.**
+  `servers/src/kali/tools.js` built the msfconsole `-x` resource script as
+  `use …; set …; run` with no terminating `exit`. `runTool` invokes the binary
+  through `execFile`, which has no TTY, so after the module ran msfconsole
+  dropped to its interactive prompt, never received input, and hung until the
+  600s timeout — then exited non-zero, so the handler rejected even though the
+  module had executed. The script now ends with `exit`. Verified on the Lima
+  Node: without it the call hangs; with it a portscan of `127.0.0.1` returns in
+  ~2s with the real `TCP OPEN` result and `isError: false`. The script builder
+  is extracted as `buildMsfScript` and unit-tested.
+
+### Added
+
+- **The Lima Node guest provisions all six tools.** `lima/mshin-node.yaml` adds
+  `searchsploit` (cloned from exploit-db's GitLab repo — the clone is the
+  install, arch-independent) and `metasploit` (from Rapid7's apt repo, which
+  publishes `arm64`, so it works on Apple Silicon). Neither needs Kali's repo
+  grafted onto Debian, which stays unsupported. A provisioning step warms
+  metasploit's one-time Initial Setup as root — the account `sudo -n` tool calls
+  use — so the first real call is fast rather than colliding with setup. The
+  `sudoers` allowlist and the unit's `--tools` flag now carry all six.
+- **The manual Path B in `docs/lima-local-dev.md` mirrors the template**, with
+  the same upstream install steps, warm-up, sudoers and six-tool `--tools` flag.
+
+### Changed
+
+- **The Lima Node guest is renamed `mshin-kali` → `mshin-node`.** Naming it for
+  the OS was wrong the moment the OS did not match: it is Debian, not Kali, and
+  now it installs the offensive tools from upstream rather than from Kali. It is
+  now named for its architectural role, pairing with `mshin-core`. The
+  production Node still runs real Kali; `servers/src/kali/` and the
+  `mshin-kali-mcp-server` package keep their names. `lima/mshin-kali.yaml` →
+  `lima/mshin-node.yaml`, with all references updated across
+  `docs/lima-local-dev.md`, `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` and
+  `lima/mshin-core.yaml`, and the `<KALI_IP>` placeholder is now `<NODE_IP>`.
+  A running guest created as `mshin-kali` keeps that instance name (Lima cannot
+  rename one); recreate it from the renamed template to pick up the new name.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes 16/16 cases (two new for
+  `buildMsfScript`); `clients/mshin-cli/` still passes 32/32.
+- **`searchsploit` and `metasploit` execute for real through the server
+  handlers** on the Lima Node (`aarch64`, Debian 13, metasploit 6.5.3):
+  `searchsploit` on `apache 2.4` returned live exploit-db rows, and the
+  `metasploit` handler ran `auxiliary/scanner/portscan/tcp` against `127.0.0.1`
+  and returned `TCP OPEN` in ~2s with `isError: false`. This closes the
+  long-standing "real execution of metasploit and searchsploit" gap on the
+  local-dev path.
+- **The guest-to-guest Core → Node hop runs end to end on Lima's shared
+  network.** Both guests on the `lima: shared` vmnet — Core `192.168.105.4`,
+  Node `192.168.105.3`. `curl …:3000/health` from the Core reaches the Node, and
+  a piped whois on `example.com` drove the whole chain — Core LLM → CLI → MCP
+  client → Node → tool → answer — naming IANA as the registrar from real
+  registry output. This leaves only the physical-LAN case open.
+- **The 0.7.3 readline fixes hold in a live run, not only in tests.** The piped
+  `exit` arrived mid-run, the busy guard refused it, and close waited for the
+  answer instead of exiting early.
+- **The narrated-tool-call fallback is model-dependent.** The `mistral` (7B)
+  Core wrote the call as text where 0.7.3's `qwen3:8b` emitted a native
+  `tool_calls`; the 0.7.2 recovery path ran the tool anyway, so smaller models
+  still show the 0.5.0 behaviour the hardening was written for.
 
 ## [0.7.3] - 2026-09-06
 
@@ -775,7 +825,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1

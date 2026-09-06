@@ -41,6 +41,31 @@ function assertSafeArray(arr, name = "argument") {
   }
 }
 
+// Build the `-x` resource script for a Metasploit run: select the module, set
+// each option, run it, then `exit`. The trailing `exit` is essential: under
+// execFile there is no TTY, so without it msfconsole drops to its interactive
+// prompt, never gets input, hangs until the 600s timeout, and exits non-zero —
+// so runTool rejects even though the module ran. Verified on the Lima node:
+// without `exit` the call hangs; with it a portscan of 127.0.0.1 returns in ~2s.
+function buildMsfScript(module, options = {}) {
+  assertSafe(module, "module");
+  if (!/^[-_/a-zA-Z0-9]+$/.test(module)) {
+    throw new Error("module contains invalid characters");
+  }
+
+  const scriptParts = [`use ${module}`];
+  for (const [key, value] of Object.entries(options)) {
+    const k = String(key);
+    const v = String(value);
+    assertSafe(k, "option key");
+    assertSafe(v, "option value");
+    scriptParts.push(`set ${k} ${v}`);
+  }
+  scriptParts.push("run");
+  scriptParts.push("exit");
+  return scriptParts.join("; ");
+}
+
 async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true } = {}) {
   const bin = TOOL_PATHS[name];
   if (!bin) {
@@ -227,27 +252,12 @@ const tools = [
       required: ["module"],
     },
     handler: async ({ module, options = {} }) => {
-      assertSafe(module, "module");
-      if (!/^[-_/a-zA-Z0-9]+$/.test(module)) {
-        throw new Error("module contains invalid characters");
-      }
-
-      const scriptParts = [`use ${module}`];
-      for (const [key, value] of Object.entries(options)) {
-        const k = String(key);
-        const v = String(value);
-        assertSafe(k, "option key");
-        assertSafe(v, "option value");
-        scriptParts.push(`set ${k} ${v}`);
-      }
-      scriptParts.push("run");
-
-      const msfScript = scriptParts.join("; ");
+      const msfScript = buildMsfScript(module, options);
       const output = await runTool("metasploit", ["-q", "-x", msfScript], 600_000);
       return { content: [{ type: "text", text: output }] };
     },
   },
 ];
 
-export { tools, TOOL_PATHS };
+export { tools, TOOL_PATHS, buildMsfScript };
 export default tools;

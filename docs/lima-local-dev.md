@@ -35,15 +35,15 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │                    macOS HOST (Apple Silicon)                  │
 │                                                                │
 │  ┌───────────────────────────┐   ┌──────────────────────────┐  │
-│  │   Lima: mshin-core        │   │  Lima: mshin-kali        │  │
-│  │   Ubuntu, aarch64         │   │  Debian + Kali tools     │  │
-│  │                           │   │                          │  │
-│  │  ┌─────────────────────┐  │   │  ┌────────────────────┐  │  │
-│  │  │ Ollama       :11434 │  │   │  │ MCP server   :3000 │  │  │
-│  │  │ mistral (7B, ~4GB)  │  │   │  │ nmap, nikto,       │  │  │
-│  │  └──────────▲──────────┘  │   │  │ whois, tshark      │  │  │
-│  │             │             │   │  └─────────▲──────────┘  │  │
-│  │  ┌──────────▼──────────┐  │   │            │             │  │
+│  │   Lima: mshin-core        │   │  Lima: mshin-node        │  │
+│  │   Ubuntu, aarch64         │   │  Debian, all six tools   │  │
+│  │                           │   │  ┌────────────────────┐  │  │
+│  │  ┌─────────────────────┐  │   │  │ MCP server   :3000 │  │  │
+│  │  │ Ollama       :11434 │  │   │  │ nmap, nikto,       │  │  │
+│  │  │ mistral (7B, ~4GB)  │  │   │  │ whois, tshark,     │  │  │
+│  │  └──────────▲──────────┘  │   │  │ metasploit,        │  │  │
+│  │             │             │   │  │ searchsploit       │  │  │
+│  │  ┌──────────▼──────────┐  │   │  └─────────▲──────────┘  │  │
 │  │  │ Machin Shin CLI     │──┼───┼──── SSE ───┘             │  │
 │  │  │ (MCP client)        │  │   │                          │  │
 │  │  └─────────────────────┘  │   │                          │  │
@@ -53,7 +53,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Both VMs run as **Lima instances** on your Mac. They talk to each other over Lima's **shared vmnet network** (`192.168.105.0/24`, addresses assigned by DHCP), which is opt-in per instance — see [Shared networking](#shared-networking-required-for-two-vms) below. The Core VM runs Ollama with a smaller model (`mistral`, 7B, ~4GB), and the Kali Node VM runs the MCP server with Kali tools.
+Both VMs run as **Lima instances** on your Mac. They talk to each other over Lima's **shared vmnet network** (`192.168.105.0/24`, addresses assigned by DHCP), which is opt-in per instance — see [Shared networking](#shared-networking-required-for-two-vms) below. The Core VM runs Ollama with a smaller model (`mistral`, 7B, ~4GB), and the Node VM runs the MCP server with the security tools.
 
 ---
 
@@ -125,22 +125,22 @@ There are two ways to build these guests, and the guide covers both.
 
 | | **Path A — Template files** | **Path B — `limactl` flags** |
 | - | --------------------------- | ---------------------------- |
-| Command | `limactl create --name=… lima/mshin-kali.yaml` | `limactl create template:debian-13 --cpus=4 …` |
+| Command | `limactl create --name=… lima/mshin-node.yaml` | `limactl create template:debian-13 --cpus=4 …` |
 | Provisioning | Automatic, on first boot | You type every step inside the guest |
 | Architecture | Host default — one file for Intel and Apple Silicon | You pass `--arch` yourself |
 | Mounts, port forwards, probes | Available | No flags exist for them |
 | Repeatable | Yes — the file is versioned in this repo | Only as far as you re-type it correctly |
 | Good for | Anything you will rebuild | A one-off you plan to throw away |
 
-**Path A is the shorter road**, and it is the one this repo maintains: `lima/mshin-kali.yaml` and `lima/mshin-core.yaml` carry the resources, the shared network, and a `provision:` block that runs the same commands Path B asks you to type. Path B is kept in full because it shows what those blocks actually do — read it if you want to understand the guest, or if you are debugging a provisioning failure.
+**Path A is the shorter road**, and it is the one this repo maintains: `lima/mshin-node.yaml` and `lima/mshin-core.yaml` carry the resources, the shared network, and a `provision:` block that runs the same commands Path B asks you to type. Path B is kept in full because it shows what those blocks actually do — read it if you want to understand the guest, or if you are debugging a provisioning failure.
 
 Both paths need the [shared networking](#shared-networking-required-for-two-vms) host setup first.
 
 ---
 
-### Step 1: Create the Kali Node VM
+### Step 1: Create the Node VM
 
-The Kali Node VM runs **Debian with Kali tools** and the **Machin Shin MCP server**.
+The Node VM runs **Debian with the offensive-security tools** and the **Machin Shin MCP server**.
 
 > **Lima ships no Kali template** (`limactl create --list-templates`), and `limactl create` boots **cloud images**, not installer ISOs — so neither path boots Kali itself. Both install the tools Debian packages on top of a Debian base.
 
@@ -148,16 +148,20 @@ The Kali Node VM runs **Debian with Kali tools** and the **Machin Shin MCP serve
 
 ```bash
 # From your clone of this repo
-limactl create --name=mshin-kali lima/mshin-kali.yaml
-limactl start mshin-kali
+limactl create --name=mshin-node lima/mshin-node.yaml
+limactl start mshin-node
 ```
 
 That is the whole step. On first boot the template:
 
-1. Installs `nmap`, `nikto`, `whois`, `tshark`, `git` and Node.js 20.
+1. Installs all six tools — `nmap`, `nikto`, `whois`, `tshark` from Debian,
+   `searchsploit` from exploit-db's git repo and `metasploit` from Rapid7's apt
+   repo — plus `git` and Node.js 20, and warms metasploit's one-time setup.
 2. Clones this repo to `/opt/mshin` and runs `npm install` for the MCP server.
-3. Writes the `NOPASSWD` sudoers allowlist those four tools need.
-4. Installs `configs/mcp-kali.service` as `mshin-node`, rewritten for the Lima login user and the four available tools.
+3. Writes the `NOPASSWD` sudoers allowlist those tools need (all but `tshark`,
+   which runs unprivileged).
+4. Installs `configs/mcp-kali.service` as `mshin-node`, rewritten for the Lima
+   login user, exposing all six tools.
 
 Lima then waits on a probe until `curl :3000/health` answers, so `limactl start` returning means the MCP server is up. It prints the command that reads the guest's address on the shared network.
 
@@ -165,7 +169,7 @@ Lima then waits on a probe until `curl :3000/health` answers, so `limactl start`
 
 To point the guest at your working clone instead of a fresh GitHub checkout, uncomment the `mounts:` block at the top of the template and set `location` to your clone's path.
 
-> **When provisioning fails**, `limactl start` reports a failed probe rather than the underlying error. The error is in the guest: `limactl shell mshin-kali -- sudo journalctl -u mshin-node -n 50`, and `/var/log/cloud-init-output.log` for the provisioning scripts themselves. `limactl start --debug` is louder still.
+> **When provisioning fails**, `limactl start` reports a failed probe rather than the underlying error. The error is in the guest: `limactl shell mshin-node -- sudo journalctl -u mshin-node -n 50`, and `/var/log/cloud-init-output.log` for the provisioning scripts themselves. `limactl start --debug` is louder still.
 
 #### Path B: From `limactl` flags, provisioned by hand
 
@@ -175,7 +179,7 @@ On an **Intel Mac**, build on an x86_64 base:
 
 ```bash
 limactl create template:debian-13 \
-  --name=mshin-kali \
+  --name=mshin-node \
   --arch=x86_64 \
   --cpus=4 \
   --memory=4 \
@@ -187,7 +191,7 @@ On **Apple Silicon**, build on an aarch64 base:
 
 ```bash
 limactl create template:debian-13 \
-  --name=mshin-kali \
+  --name=mshin-node \
   --arch=aarch64 \
   --cpus=4 \
   --memory=4 \
@@ -198,8 +202,8 @@ limactl create template:debian-13 \
 > **Flag notes:** the template is a **positional** argument (`template:<name>`; run `limactl create --list-templates` for the full list). `--memory` and `--disk` are plain numbers in GiB — `--memory=8GiB` fails to parse. There is no flag for mounts, port forwards, or provisioning; those need a template file.
 
 ```bash
-limactl start mshin-kali
-limactl shell mshin-kali
+limactl start mshin-node
+limactl shell mshin-node
 ```
 
 ##### Install the tools
@@ -220,17 +224,35 @@ sudo sed -i 's/^Components: main$/Components: main non-free/' \
   /etc/apt/sources.list.d/debian.sources
 sudo apt update
 
-# Install the security tools Debian ships
+# Install the four tools Debian ships
 sudo apt install -y nmap nikto whois tshark
+
+# searchsploit: a shell script over the exploit-db data repo. The clone is the
+# install, and it is arch-independent. tools.js expects /usr/bin/searchsploit.
+sudo git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb
+sudo ln -sf /opt/exploitdb/searchsploit /usr/bin/searchsploit
+
+# metasploit: Rapid7's own apt repo, which publishes amd64 and arm64.
+curl -fsSL https://apt.metasploit.com/metasploit-framework.gpg.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/metasploit.gpg
+echo "deb [signed-by=/usr/share/keyrings/metasploit.gpg] https://apt.metasploit.com lucid main" \
+  | sudo tee /etc/apt/sources.list.d/metasploit.list
+sudo apt update
+sudo apt install -y metasploit-framework
+
+# Warm metasploit's one-time Initial Setup once, as root (tools.js calls it via
+# `sudo -n`), so the first real tool call is fast instead of hitting setup.
+sudo msfconsole -q -x exit
 
 # Verify installation
 nmap --version
 nikto -Version
+searchsploit --version
 ```
 
 > **`nikto` needs `non-free`.** Debian 13's cloud image enables only the `main` component, and `nikto` is packaged in `non-free` — without the `sed` above, `apt install` fails with `E: Unable to locate package nikto` and takes the rest of the command down with it. Debian's `nikto` is also **1:2.1.5**, against Kali's 2.5.x: the plugin database is years older, so findings will differ from a real Node.
 
-> **Two tools are missing on purpose.** `searchsploit` (package `exploitdb`) and `metasploit-framework` live in **Kali's** repositories, not Debian's — `apt install` for either fails on this base, and grafting Kali's repo onto Debian is unsupported and can break the guest. Leave both out of the MCP server's `--tools` list here; if you need them, use the real Kali Node from the [full setup guide](setup.md).
+> **The last two tools come from upstream, not Kali.** `searchsploit` and `metasploit` are the tools Kali is known for, but neither is Kali-only: exploit-db publishes searchsploit as a git repo, and Rapid7 publishes metasploit through its own apt repo (with arm64 builds, so this works on Apple Silicon). Installing them this way keeps the guest on Debian without grafting Kali's repo onto it — which remains unsupported and can break the base. This is exactly what `lima/mshin-node.yaml` does; the manual steps above mirror it.
 
 ##### Set up the MCP server
 
@@ -250,12 +272,11 @@ npm install
 The server shells out as `sudo -n <tool>` whenever it is not running as root (`servers/src/kali/tools.js:53-57`), so it needs a passwordless allowlist or **every tool call fails** with `sudo: a password is required`:
 
 ```bash
-# Mirror the allowlist that scripts/setup_mcp_server.sh installs,
-# limited to the tools available on this base. tshark is omitted because
-# reading user-owned PCAP files as root triggers Wireshark's file-owner
-# check; tshark needs no privileges to analyze existing captures.
+# Mirror the allowlist that scripts/setup_mcp_server.sh installs. tshark is
+# omitted because reading user-owned PCAP files as root triggers Wireshark's
+# file-owner check; tshark needs no privileges to analyze existing captures.
 sudo tee /etc/sudoers.d/mshin >/dev/null <<EOF
-$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole
 EOF
 sudo chmod 440 /etc/sudoers.d/mshin
 ```
@@ -263,7 +284,7 @@ sudo chmod 440 /etc/sudoers.d/mshin
 Test it in the foreground before daemonising:
 
 ```bash
-node index.js --tools nmap,nikto,whois,tshark
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
 # Expect: [INFO] Machin Shin Node listening on http://0.0.0.0:3000
 # Ctrl-C to stop
 ```
@@ -273,12 +294,12 @@ Then install the unit the repo already ships:
 ```bash
 sudo cp /opt/mshin/configs/mcp-kali.service /etc/systemd/system/mshin-node.service
 
-# The shipped unit runs as a dedicated 'mshin' user and enables all six
-# tools. In a throwaway Lima VM, run as your own login user and drop the two
-# tools Debian does not provide.
+# The shipped unit runs as a dedicated 'mshin' user. In a throwaway Lima VM,
+# run as your own login user instead; the tool list is the same six, since the
+# steps above installed metasploit and searchsploit from upstream.
 sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/mshin-node.service
 sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin $HOME|" /etc/systemd/system/mshin-node.service
-sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" /etc/systemd/system/mshin-node.service
+sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark|" /etc/systemd/system/mshin-node.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now mshin-node
@@ -386,18 +407,18 @@ From the **Mac host**:
 
 ```bash
 # Read each VM's address on the shared network
-limactl shell mshin-kali -- ip -4 -br addr show lima0
+limactl shell mshin-node -- ip -4 -br addr show lima0
 limactl shell mshin-core -- ip -4 -br addr show lima0
 ```
 
-Note the Kali Node address (something in `192.168.105.0/24`) — it is `<KALI_IP>` throughout the rest of this guide. Then, from the **Core VM**:
+Note the Node's address (something in `192.168.105.0/24`) — it is `<NODE_IP>` throughout the rest of this guide. Then, from the **Core VM**:
 
 ```bash
-# Reach the Kali Node VM
-ping -c 3 <KALI_IP>
+# Reach the Node VM
+ping -c 3 <NODE_IP>
 
 # Test the MCP server
-curl http://<KALI_IP>:3000/health
+curl http://<NODE_IP>:3000/health
 ```
 
 If the connection fails:
@@ -416,9 +437,9 @@ If the connection fails:
 
 3. **Test MCP server manually:**
    ```bash
-   # On Kali Node VM, start the server manually
+   # On Node VM, start the server manually
    cd /opt/mshin/servers/src/kali
-   node index.js --tools nmap,nikto,whois
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
    ```
 
 ---
@@ -429,7 +450,7 @@ From the **Core VM**, run the Machin Shin CLI:
 
 ```bash
 # Start an interactive session
-/opt/mshin/clients/mshin-cli/index.js --node http://<KALI_IP>:3000 --model mshin
+/opt/mshin/clients/mshin-cli/index.js --node http://<NODE_IP>:3000 --model mshin
 ```
 
 Then, try a command:
@@ -444,7 +465,7 @@ To check the two halves separately when something misbehaves:
 
 ```bash
 # Is the Node reachable and serving tools?
-curl http://<KALI_IP>:3000/health
+curl http://<NODE_IP>:3000/health
 
 # Is the model loaded and answering?
 ollama run mshin
@@ -460,21 +481,21 @@ ollama run mshin
 
 ```bash
 # Start both VMs
-limactl start mshin-kali
+limactl start mshin-node
 limactl start mshin-core
 
 # Shell into Core VM
 limactl shell mshin-core
 
 # Start the Machin Shin CLI
-/opt/mshin/clients/mshin-cli/index.js --node http://<KALI_IP>:3000 --model mshin
+/opt/mshin/clients/mshin-cli/index.js --node http://<NODE_IP>:3000 --model mshin
 ```
 
 ### Stopping the Environment
 
 ```bash
 # Stop both VMs
-limactl stop mshin-kali
+limactl stop mshin-node
 limactl stop mshin-core
 ```
 
@@ -596,9 +617,9 @@ Then, in the CLI session:
 "Use the tshark tool to read /tmp/localhost.pcap and summarize the traffic."
 ```
 
-`metasploit` and `searchsploit` are **not** available in the Ubuntu repositories used here. To exercise those you need a real Kali Node — see the two-machine setup above.
+`metasploit` and `searchsploit` are **not** in the Ubuntu repositories used here, so the four-tool list above leaves them out. They are not Kali-only, though — to add them, use the same upstream sources the two-machine Node does (exploit-db's git repo and Rapid7's apt repo; see [Install the tools](#install-the-tools) in Step 1), then add `metasploit,searchsploit` to the `--tools` list and `/usr/bin/searchsploit`, `/usr/bin/msfconsole` to the sudoers allowlist.
 
-> **`nikto` is in `multiverse` on Ubuntu.** The install block above enables it up front so the package resolves cleanly. On Debian, nikto lives in `non-free`; the fix for the Debian guest is in [Step 1](#step-1-create-the-kali-node-vm).
+> **`nikto` is in `multiverse` on Ubuntu.** The install block above enables it up front so the package resolves cleanly. On Debian, nikto lives in `non-free`; the fix for the Debian guest is in [Step 1](#step-1-create-the-node-vm).
 
 > **Pros:** Simplest setup, single VM to manage
 > **Cons:** Less isolation, tools and LLM share resources, MCP server runs on localhost
@@ -611,8 +632,8 @@ Then, in the CLI session:
 
 | VM | CPUs | Memory | Disk | Notes |
 | ---- | ---- | ------ | ---- | ----- |
-| Kali Node | 2-4 | **4GB** (template default) | 30-50GB | No model, no inference — a Node.js process and short-lived CLI tools |
-| Core | 4-8 | **10GB** (template default) | 30-50GB | Holds the model; raise it if you swap in a bigger one |
+| mshin-node | 2-4 | **4GB** (template default) | 30-50GB | No model, no inference — a Node.js process and short-lived CLI tools |
+| mshin-core | 4-8 | **10GB** (template default) | 30-50GB | Holds the model; raise it if you swap in a bigger one |
 
 **Total:** 8 CPUs, 14GB RAM, 100GB disk — sized so both guests fit the 16GB Mac
 this guide takes as its minimum.
@@ -632,10 +653,10 @@ afterwards does not affect an instance that already exists).
 inference is CPU-only and the host is left with ~2GB. Two lighter paths:
 
 - **Host Ollama + Node guest.** Run [Ollama](https://ollama.com) natively on
-  macOS and start only `mshin-kali`. Nothing in the architecture requires the
+  macOS and start only `mshin-node`. Nothing in the architecture requires the
   Core to be a VM — the CLI is the MCP client and simply needs an Ollama
   endpoint, so point it at the host: `node clients/mshin-cli/index.js --node
-  http://<KALI_IP>:3000 --ollama http://localhost:11434 --model mshin`. Build
+  http://<NODE_IP>:3000 --ollama http://localhost:11434 --model mshin`. Build
   the persona on the host first against a base that fits
   (`sed 's|^FROM .*|FROM qwen3:8b|' configs/ollama-modelfile > /tmp/Modelfile
   && ollama create mshin -f /tmp/Modelfile`). Inference runs on the Mac's GPU
@@ -645,7 +666,7 @@ inference is CPU-only and the host is left with ~2GB. Two lighter paths:
 ### Apple Silicon Notes
 
 1. **x86_64 emulation:** Running x86_64 Kali in qemu on M1/M2 Macs works but is **slow** (~10-20x slower than native).
-2. **aarch64 Kali:** Kali Linux publishes ARM64 builds, but Lima ships **no Kali template** (`limactl create --list-templates`) and `limactl create` boots **cloud images**, not installer ISOs. Kali's ARM64 releases are installer ISOs and pre-built VM disks rather than cloud-init images, so there is no drop-in Lima equivalent. The practical ARM64 path is what both paths in [Step 1](#step-1-create-the-kali-node-vm) do — a Debian base with Kali tooling installed on top. See the [Lima templates documentation](https://lima-vm.io/docs/templates/) if you want to try wiring up a custom image.
+2. **aarch64 Kali:** Kali Linux publishes ARM64 builds, but Lima ships **no Kali template** (`limactl create --list-templates`) and `limactl create` boots **cloud images**, not installer ISOs. Kali's ARM64 releases are installer ISOs and pre-built VM disks rather than cloud-init images, so there is no drop-in Lima equivalent. The practical ARM64 path is what both paths in [Step 1](#step-1-create-the-node-vm) do — a Debian base with Kali tooling installed on top. See the [Lima templates documentation](https://lima-vm.io/docs/templates/) if you want to try wiring up a custom image.
 
 ### GPU Acceleration
 
@@ -663,13 +684,13 @@ For better performance:
 | Issue | Diagnosis | Solution |
 | ----- | --------- | -------- |
 | VM won't start | `limactl list` shows error | `limactl delete <name>` and recreate |
-| MCP connection refused | `curl http://<KALI_IP>:3000/health` fails | Check the MCP server is running in the Kali VM |
+| MCP connection refused | `curl http://<NODE_IP>:3000/health` fails | Check the MCP server is running in the Node VM |
 | Ollama model won't load | `ollama list` shows model, but `ollama run` fails | Check VRAM: `free -h`; model may be too large |
 | Slow performance | VMs are responsive but slow | Reduce CPU/memory allocation or use smaller model |
 | `limactl create` rejects a flag | `unknown flag: --os` / `--ip` | Those flags do not exist; pass a template positionally and use `--network=lima:shared` |
 | `limactl create` rejects memory | `invalid argument "8GiB"` | `--memory` and `--disk` take plain GiB numbers: `--memory=8` |
 | VMs cannot ping each other | No `lima0` interface in the VM | Instance was created without `--network=lima:shared`; recreate it, and check `socket_vmnet` is installed |
-| Kali tools not found | `nmap` command not found | Reinstall tools: `sudo apt install -y nmap` |
+| Node tools not found | `nmap` command not found | Reinstall tools: `sudo apt install -y nmap` |
 | `E: Unable to locate package nikto` | Debian cloud image enables only `main` | `nikto` is in `non-free`; add it to `Components:` in `/etc/apt/sources.list.d/debian.sources`, then `apt update` |
 | Template edit has no effect | Guest still behaves the old way after editing `lima/*.yaml` | `limactl create` snapshotted the template; edit `~/.lima/<name>/lima.yaml` with `limactl edit`, or delete and recreate |
 | `limactl start` fails on a probe | "mshin-node did not come up" / "the mshin model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u mshin-node -n 50` and `/var/log/cloud-init-output.log` |
@@ -711,7 +732,7 @@ To free up disk space:
 
 ```bash
 # Remove stopped VMs
-limactl delete mshin-kali
+limactl delete mshin-node
 limactl delete mshin-core
 
 # Remove all Lima data
@@ -744,22 +765,22 @@ The two templates live in this repo:
 
 | File | Guest |
 | ---- | ----- |
-| `lima/mshin-kali.yaml` | Debian 13 + Kali tools + `mshin-node` MCP server |
+| `lima/mshin-node.yaml` | Debian 13 + all six tools + `mshin-node` MCP server |
 | `lima/mshin-core.yaml` | Ubuntu LTS + Ollama + the `mshin` persona and CLI |
 
 Copy one, edit it, and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
 
 ```bash
-cp lima/mshin-kali.yaml ~/my-kali.yaml
-$EDITOR ~/my-kali.yaml
+cp lima/mshin-node.yaml ~/my-node.yaml
+$EDITOR ~/my-node.yaml
 
 # Check it before you build it
-limactl template validate ~/my-kali.yaml
+limactl template validate ~/my-node.yaml
 
 # See exactly what Lima will run, with every {{.Var}} resolved
-limactl template copy --fill ~/my-kali.yaml -
+limactl template copy --fill ~/my-node.yaml -
 
-limactl create --name=my-kali ~/my-kali.yaml
+limactl create --name=my-kali ~/my-node.yaml
 ```
 
 What is worth changing:
@@ -776,8 +797,8 @@ What is worth changing:
 > **`limactl create` snapshots the template.** The instance keeps its own copy at `~/.lima/<name>/lima.yaml`, and that copy is what generates the cidata the guest reads — so **editing the file in this repo does nothing to a VM that already exists**. To pick up a template change, either edit the instance in place (`limactl edit <name>`, or `limactl edit <name> --set '<yq expression>'` for a single field), or delete and recreate:
 >
 > ```bash
-> limactl delete mshin-kali
-> limactl create --name=mshin-kali lima/mshin-kali.yaml
+> limactl delete mshin-node
+> limactl create --name=mshin-node lima/mshin-node.yaml
 > ```
 >
 > Recreating is cheap after the first run — the cloud image stays in `~/Library/Caches/lima`, so only provisioning repeats. Check which one you are actually running with `grep <something-you-changed> ~/.lima/<name>/lima.yaml`.
