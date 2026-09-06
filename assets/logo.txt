@@ -1,14 +1,11 @@
-       \ | /
-     \  \|/  /
-   '-.\\\|///.-'
-  '--._\\|//_.--'
-      \\\|///
-        \|/
-         |
-         |
+      ╭──────────────╮
+ ─────╯              ╰───╮
+ ────────────────────────╯
+ ─────╮              ╭────
+      ╰──────────────╯
 
-        A V E N D E S O R A
-   ~ The Leaf that Opens the Ways ~
+        M A C H I N   S H I N
+    ~ The Black Wind of the Ways ~
 
    "The Wheel weaves as the Wheel wills.
-    With Avendesora, you weave with it."
+    With Machin Shin, you weave with it."
