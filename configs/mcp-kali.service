@@ -11,11 +11,13 @@ RestartSec=5s
 Environment=NODE_ENV=production
 
 # Security settings
-# NoNewPrivileges is deliberately NOT set. tools.js runs each binary as
+# NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as
 # `sudo -n <bin>` whenever the server is not root (see the NOPASSWD allowlist in
 # /etc/sudoers.d/avendesora), and NoNewPrivileges=true blocks exactly that:
 # every tool call fails with "sudo: The "no new privileges" flag is set".
-# The sudoers allowlist is what constrains this service, not this flag.
+# tshark is the exception: it runs as the service user because reading PCAP
+# files as root triggers Wireshark's file-owner check. The sudoers allowlist is
+# what constrains the remaining tools, not this flag.
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only

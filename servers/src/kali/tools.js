@@ -41,7 +41,7 @@ function assertSafeArray(arr, name = "argument") {
   }
 }
 
-async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS) {
+async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true } = {}) {
   const bin = TOOL_PATHS[name];
   if (!bin) {
     throw new Error(`Unknown tool: ${name}`);
@@ -52,7 +52,10 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS) {
 
   // When running as the unprivileged avendesora user, use sudo so the
   // NOPASSWD allowlist in /etc/sudoers.d/avendesora takes effect.
-  const needsSudo = process.getuid && process.getuid() !== 0;
+  // tshark is excluded: reading a user-owned PCAP as root triggers Wireshark's
+  // file-owner check and fails, and tshark does not need privileges to read
+  // capture files anyway.
+  const needsSudo = useSudo && process.getuid && process.getuid() !== 0;
   const cmd = needsSudo ? "sudo" : bin;
   const cmdArgs = needsSudo ? ["-n", bin, ...args] : args;
 
@@ -198,7 +201,7 @@ const tools = [
         assertSafe(display_filter, "display_filter");
         args.push("-Y", display_filter);
       }
-      const output = await runTool("tshark", args);
+      const output = await runTool("tshark", args, DEFAULT_TIMEOUT_MS, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },

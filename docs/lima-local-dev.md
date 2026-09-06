@@ -251,9 +251,11 @@ The server shells out as `sudo -n <tool>` whenever it is not running as root (`s
 
 ```bash
 # Mirror the allowlist that scripts/setup_mcp_server.sh installs,
-# limited to the tools available on this base
+# limited to the tools available on this base. tshark is omitted because
+# reading user-owned PCAP files as root triggers Wireshark's file-owner
+# check; tshark needs no privileges to analyze existing captures.
 sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
-$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
 EOF
 sudo chmod 440 /etc/sudoers.d/avendesora
 ```
@@ -529,6 +531,8 @@ Inside the VM:
 ```bash
 # Install all dependencies
 sudo apt update && sudo apt upgrade -y
+# nikto is in Ubuntu's multiverse component, not main or universe.
+sudo add-apt-repository -y multiverse && sudo apt update
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git curl nmap nikto whois tshark
 
@@ -551,9 +555,11 @@ sudo chown -R "$(whoami)" /opt/avendesora
 sed 's|^FROM .*|FROM mistral|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
 ollama create avendesora -f ~/Modelfile.lima
 
-# Allow the tools to run without a password prompt
+# Allow the tools to run without a password prompt. tshark is omitted
+# because reading user-owned PCAP files as root triggers Wireshark's
+# file-owner check; tshark needs no privileges to analyze captures.
 sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
-$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
 EOF
 sudo chmod 440 /etc/sudoers.d/avendesora
 
@@ -566,7 +572,33 @@ node index.js --tools nmap,nikto,whois,tshark &
 /opt/avendesora/clients/avendesora-cli/index.js --node http://localhost:3000 --model avendesora
 ```
 
-> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and **`multiverse`** on Ubuntu (verified against `packages.ubuntu.com` for jammy 22.04 and noble 24.04: `nikto 1:2.1.5-3.1 [multiverse]`) — not `universe`. If the install fails on the Lima `template:ubuntu` guest, enable multiverse with `sudo add-apt-repository -y multiverse && sudo apt update`, then reinstall. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
+### Verifying the tools
+
+With the CLI running, exercise the reconnaissance tools the Ubuntu image actually provides. Only point scanners at hosts you own or are authorised to test; `127.0.0.1` and the local MCP server are safe targets for this guest.
+
+First, capture a tiny loopback PCAP so `tshark` has something to analyze. `tshark` needs to own the capture file (Wireshark's file-owner check rejects root-owned or foreign-owned files), so chown it to your user after capture:
+
+```bash
+sudo tcpdump -i any -w /tmp/localhost.pcap -c 50 &
+TCPDUMP_PID=$!
+ping -c 2 127.0.0.1 >/dev/null 2>&1 || true
+curl -4 -fsS http://127.0.0.1:3000/health >/dev/null || true
+sleep 2
+sudo kill $TCPDUMP_PID 2>/dev/null || true
+wait $TCPDUMP_PID 2>/dev/null || true
+sudo chown "$(whoami):$(whoami)" /tmp/localhost.pcap
+```
+
+Then, in the CLI session:
+
+```
+"Run a Nikto scan against http://127.0.0.1 and report any findings."
+"Use the tshark tool to read /tmp/localhost.pcap and summarize the traffic."
+```
+
+`metasploit` and `searchsploit` are **not** available in the Ubuntu repositories used here. To exercise those you need a real Kali Node — see the two-machine setup above.
+
+> **`nikto` is in `multiverse` on Ubuntu.** The install block above enables it up front so the package resolves cleanly. On Debian, nikto lives in `non-free`; the fix for the Debian guest is in [Step 1](#step-1-create-the-kali-node-vm).
 
 > **Pros:** Simplest setup, single VM to manage
 > **Cons:** Less isolation, tools and LLM share resources, MCP server runs on localhost

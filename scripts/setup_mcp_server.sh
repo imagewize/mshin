@@ -125,8 +125,11 @@ fi
 # --- Configure Sudoers for Avendesora User ---
 
 echo "[+] Configuring sudoers for '${AVENDESORA_USER}'..."
+# tshark is intentionally omitted: reading user-owned PCAP files as root
+# triggers Wireshark's file-owner check, and tshark needs no privileges to
+# analyze existing captures.
 cat > /etc/sudoers.d/avendesora <<EOF
-${AVENDESORA_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+${AVENDESORA_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
 EOF
 chmod 440 /etc/sudoers.d/avendesora
 
