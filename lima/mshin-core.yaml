@@ -16,7 +16,12 @@ base:
   - template:_default/mounts
 
 cpus: 4
-memory: "16GiB"
+# 10GiB, not 16: docs/lima-local-dev.md puts the host minimum at 16GB, and a
+# guest sized to the whole host leaves nothing for macOS — or for the Node
+# guest, which has to run at the same time for an end-to-end test. 10GiB fits
+# the default 7B model with headroom. Raise it on a bigger Mac with
+# `limactl edit mshin-core --memory=<GiB>`.
+memory: "10GiB"
 disk: "50GiB"
 
 # Nothing here runs containers; skip the nerdctl download the stock templates do.

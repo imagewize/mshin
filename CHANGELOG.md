@@ -5,6 +5,75 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-09-06
+
+Post-rename cleanup release. Fallout from 0.7.0, caught while rebuilding the two
+Lima guests under their new `mshin-*` names. Neither bug was in the renamed code
+itself — one was the box-drawing art the rename knocked out of alignment, the
+other a guest sizing that only became impossible once both guests had to
+coexist.
+
+### Fixed
+
+- **Lima guests no longer ask for more RAM than the host has.** The Core
+  template requested 16GiB and the Node 8GiB — 24GiB against the 16GB Mac
+  `docs/lima-local-dev.md` sets as its minimum. Lima accepts it and the guest
+  boots, but the host swaps from the first byte and the second guest cannot
+  start at all, so an end-to-end test across the pair was impossible on a
+  machine the docs call supported. Core is now **10GiB**, which holds the
+  default 7B model with headroom, and the Node **4GiB** — it runs a Node.js
+  process and short-lived CLI tools, with no model and no inference. The manual
+  `limactl create` commands and the all-in-one VM are sized to match.
+- **ASCII diagrams squared up.** `avendesora` → `mshin` changed label lengths
+  inside the box-drawing figures without repadding them, so borders ran ragged
+  in the rendered Markdown across `README.md`, `KALI-OPENLLM.md`,
+  `docs/architecture.md`, and `docs/lima-local-dev.md`. `docs/architecture.md`
+  had also been left with bare `MSHIN SYSTEM` / `MSHIN CORE` / `MSHIN NODE`
+  labels; they read **MACHIN SHIN** again, matching the prose headings in the
+  same file, since `mshin` is the binary name and not the system's.
+- **`clients/mshin-cli/package-lock.json` synced to `0.2.0`.** It had been left
+  at `0.1.1` while `package.json` moved on at the rename.
+
+### Changed
+
+- **`docs/lima-local-dev.md` documents a lighter path for 16GB Macs.** Run
+  Ollama natively and start only the Node guest, pointing the CLI at the host
+  with `--ollama`. Nothing in the architecture requires the Core to be a VM —
+  the CLI is the MCP client and only needs an Ollama endpoint — and host
+  inference uses the Mac's GPU rather than an emulated CPU, so it is also the
+  fastest option. Resource Allocation now states the template defaults instead
+  of a range and warns against handing a guest all of the host's RAM.
+- **New troubleshooting row for `bind: address already in use` on 11434.**
+  Starting the Core guest while Ollama.app holds that port on the Mac leaves
+  Lima unable to forward the guest's Ollama. Harmless — the in-guest CLI uses
+  the guest's own `localhost` — but it looks alarming in the start log.
+
+### Verified
+
+Both guests deleted and rebuilt from these templates on a 16GB M-series Mac,
+with the host clone mounted at `/opt/mshin`:
+
+- **Node**, provisioned in 2m40s: `:3000/health` returns
+  `{"status":"ok","tools":["nmap","nikto","whois","tshark"]}`, `mshin-node` is
+  active, `sudo -n` is allowed for `nmap`/`nikto`/`whois` while `tshark` runs
+  unprivileged as `tools.js` intends, and `searchsploit`/`msfconsole` are absent
+  as documented for the Debian base.
+- **Core**: `ollama create` built the persona on `mistral` 7.2B Q4_K_M.
+  `ollama show mshin` reports `num_ctx 16384` and a `tools` capability, so
+  native tool calling survives; the system prompt names no tools; and
+  `/usr/local/bin/mshin` resolves into the mounted clone.
+- Diagram alignment checked by comparing line widths within each box-drawing
+  block — every block is uniform except the roadmap's Workstation figure, where
+  the right-hand box deliberately closes a line early.
+
+### Note
+
+- `limactl start mshin-core` can exit 1 with `did not receive an event with the
+  running status` while the guest is perfectly healthy: Lima's 900s probe
+  expires if the 4.4GB model pull is slow, and provisioning finishes on its own.
+  Already documented in `docs/lima-local-dev.md`; called out here because the
+  rebuild hit it.
+
 ## [0.7.0] - 2026-09-06
 
 Rename release. The project is now **Machin Shin** — named for the Black Wind
@@ -583,7 +652,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/imagewize/mshin/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/imagewize/mshin/compare/v0.4.0...v0.5.0
