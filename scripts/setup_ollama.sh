@@ -28,6 +28,10 @@ ART
 # --- Configuration ---
 
 AVENDESORA_DIR="/opt/avendesora"
+# Override to clone from somewhere else — an SSH URL, or a local path/bundle.
+# Needed while the repository is private; the HTTPS default is correct once it
+# is public.
+AVENDESORA_REPO="${AVENDESORA_REPO:-https://github.com/imagewize/avendesora.git}"
 
 # --- Check for Root (recommended) ---
 
@@ -61,8 +65,29 @@ if [ -d "${AVENDESORA_DIR}/.git" ]; then
     cd "${AVENDESORA_DIR}"
     sudo git pull
 else
+    # Clone into a staging directory first. Removing the destination up front
+    # would destroy a working install whenever the clone fails.
+    STAGE_DIR="$(mktemp -d)"
+    if ! GIT_TERMINAL_PROMPT=0 git clone "${AVENDESORA_REPO}" "${STAGE_DIR}/avendesora"; then
+        rm -rf "${STAGE_DIR}"
+        cat >&2 <<EOF
+[ERROR] Could not clone ${AVENDESORA_REPO}
+
+The repository is private until v1.0, so an anonymous HTTPS clone fails with
+"could not read Username for 'https://github.com'". Point the script at a
+source this host can actually reach:
+
+  # SSH, with your key loaded in an agent
+  AVENDESORA_REPO=git@github.com:imagewize/avendesora.git bash "\$0"
+
+  # A copy you transferred yourself (rsync, scp, USB)
+  AVENDESORA_REPO=\$HOME/avendesora bash "\$0"
+EOF
+        exit 1
+    fi
     sudo rm -rf "${AVENDESORA_DIR}"
-    sudo git clone https://github.com/imagewize/avendesora.git "${AVENDESORA_DIR}"
+    sudo mv "${STAGE_DIR}/avendesora" "${AVENDESORA_DIR}"
+    rm -rf "${STAGE_DIR}"
 fi
 
 # --- Install Ollama ---

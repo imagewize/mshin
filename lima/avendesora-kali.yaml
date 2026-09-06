@@ -1,0 +1,152 @@
+# Avendesora Node — Lima template
+#
+#   limactl create --name=avendesora-kali lima/avendesora-kali.yaml
+#   limactl start avendesora-kali
+#
+# Debian 13 with the Kali tools Debian ships, the Avendesora MCP server, and the
+# avendesora-node systemd unit. See docs/lima-local-dev.md.
+#
+# `arch` is deliberately unset: Lima defaults to the host architecture, so this
+# one file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an
+# aarch64 guest. Both run the tools natively.
+
+minimumLimaVersion: 2.0.0
+
+base:
+  - template:_images/debian-13
+  - template:_default/mounts
+
+cpus: 4
+memory: "8GiB"
+disk: "50GiB"
+
+# Nothing here runs containers; skip the nerdctl download the stock templates do.
+containerd:
+  system: false
+  user: false
+
+# Requires the one-time host setup described in docs/lima-local-dev.md:
+#   brew install socket_vmnet
+#   limactl sudoers | sudo tee /etc/sudoers.d/lima
+# Gives the guest a lima0 interface with a DHCP address in 192.168.105.0/24.
+networks:
+  - lima: shared
+
+# The repo is private until v1.0, so the guest cannot clone it anonymously.
+# Mount your host clone instead — either uncomment and set `location` below, or
+# pass it at create time without editing this file, from your clone's root:
+#
+#   limactl create --name=avendesora-kali \
+#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
+#     lima/avendesora-kali.yaml
+#
+# npm then writes node_modules back to the Mac clone (it is gitignored).
+# mounts:
+#   - location: "<path to your clone>"
+#     mountPoint: "/opt/avendesora"
+#     writable: true
+
+provision:
+  # Debian gives us four of the MCP server's six tools: nmap, whois and tshark
+  # from main, nikto from non-free. metasploit and searchsploit are Kali-only,
+  # and grafting Kali's repo onto Debian is unsupported. Keep this list, the
+  # sudoers allowlist and the unit's --tools flag below in sync; see the
+  # tool-list invariant in AGENTS.md.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if command -v nmap >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+          exit 0
+      fi
+      export DEBIAN_FRONTEND=noninteractive
+      # Answer tshark's setuid prompt up front so apt does not block on debconf.
+      echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections
+      # nikto ships in Debian's non-free component, not main, so the stock cloud
+      # image cannot see it. nmap, whois and tshark are all in main.
+      if ! grep -q "^Components:.*non-free" /etc/apt/sources.list.d/debian.sources; then
+          sed -i "s/^Components: main$/Components: main non-free/" /etc/apt/sources.list.d/debian.sources
+      fi
+      apt-get update
+      apt-get install -y curl git nmap nikto whois tshark
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt-get install -y nodejs
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      REPO_DIR=/opt/avendesora
+      MARKER=servers/src/kali/index.js
+      if [ ! -e "${REPO_DIR}/${MARKER}" ]; then
+          # Nothing mounted there, so fall back to a clone. GIT_TERMINAL_PROMPT=0
+          # turns a credential prompt into an immediate error instead of a hang.
+          export GIT_TERMINAL_PROMPT=0
+          if ! git clone https://github.com/imagewize/avendesora.git "${REPO_DIR}"; then
+              cat >&2 <<'ERR'
+      [ERROR] /opt/avendesora has no checkout and the clone failed.
+      The repository is private until v1.0, so an anonymous clone cannot work.
+      Mount your host clone into the guest instead — from the root of your clone:
+        limactl delete <name>
+        limactl create --name=<name> \
+          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
+          lima/avendesora-kali.yaml
+      ERR
+              exit 1
+          fi
+      fi
+      # Skip ownership fixes when the repo is a host mount — the mount owns them.
+      if ! mountpoint -q "${REPO_DIR}"; then
+          chown -R "{{.User}}" "${REPO_DIR}"
+      fi
+      sudo -u "{{.User}}" npm install --prefix "${REPO_DIR}/servers/src/kali"
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      # servers/src/kali/tools.js runs every binary as `sudo -n` when the server
+      # is not root, so a tool missing here fails at call time, not at startup.
+      cat >/etc/sudoers.d/avendesora <<'EOF'
+      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+      EOF
+      chmod 440 /etc/sudoers.d/avendesora
+      visudo -cf /etc/sudoers.d/avendesora
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      UNIT=/etc/systemd/system/avendesora-node.service
+      install -m 644 /opt/avendesora/configs/mcp-kali.service "${UNIT}"
+      # The shipped unit runs as a dedicated 'avendesora' user with all six
+      # tools. In a throwaway guest, run as the Lima login user and drop the two
+      # tools Debian does not provide.
+      sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
+      sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora {{.Home}}|" "${UNIT}"
+      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" "${UNIT}"
+      systemctl daemon-reload
+      systemctl enable avendesora-node
+      systemctl restart avendesora-node
+
+probes:
+  - description: "avendesora-node answering on :3000"
+    script: |
+      #!/bin/bash
+      set -eu -o pipefail
+      if ! timeout 300s bash -c "until curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; do sleep 3; done"; then
+          echo >&2 "avendesora-node did not come up"
+          exit 1
+      fi
+    hint: |
+      The MCP server is not answering. Inside the guest, check:
+        journalctl -u avendesora-node -n 50
+      and /var/log/cloud-init-output.log for provisioning errors.
+
+message: |
+  The Avendesora Node is up. Read its address on the shared network:
+  ------
+  limactl shell {{.Name}} -- ip -4 -br addr show lima0
+  ------
+  That address is <KALI_IP> in docs/lima-local-dev.md. Verify it from the Core
+  guest with: curl http://<KALI_IP>:3000/health

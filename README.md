@@ -85,6 +85,10 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 - [Architecture](docs/architecture.md) – System design and components
 - [Setup Guide](docs/setup.md) – Step-by-step installation
 - [Workflows](docs/workflows.md) – Example cybersecurity tasks
+- [Lima Local Dev](docs/lima-local-dev.md) – Single-machine development environment on macOS
+  - Lima templates: [`lima/avendesora-kali.yaml`](lima/avendesora-kali.yaml), [`lima/avendesora-core.yaml`](lima/avendesora-core.yaml)
+- [Agent Roadmap](docs/cybersecurity-agent-roadmap.md) – Where the agent loop is headed
+- [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
 
 ---
 

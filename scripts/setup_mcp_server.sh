@@ -37,6 +37,10 @@ fi
 AVENDESORA_DIR="/opt/avendesora"
 AVENDESORA_USER="avendesora"
 TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark"
+# Override to clone from somewhere else — an SSH URL, or a local path/bundle.
+# Needed while the repository is private; the HTTPS default is correct once it
+# is public. Pass it through sudo with -E: AVENDESORA_REPO=... sudo -E bash "$0"
+AVENDESORA_REPO="${AVENDESORA_REPO:-https://github.com/imagewize/avendesora.git}"
 
 # --- Install Dependencies ---
 
@@ -72,8 +76,30 @@ if [ -d "${AVENDESORA_DIR}/.git" ]; then
     cd "${AVENDESORA_DIR}"
     git pull
 else
+    # Clone into a staging directory first. Removing the destination up front
+    # would destroy a working install whenever the clone fails.
+    STAGE_DIR="$(mktemp -d)"
+    export GIT_TERMINAL_PROMPT=0
+    if ! git clone "${AVENDESORA_REPO}" "${STAGE_DIR}/avendesora"; then
+        rm -rf "${STAGE_DIR}"
+        cat >&2 <<EOF
+[ERROR] Could not clone ${AVENDESORA_REPO}
+
+The repository is private until v1.0, so an anonymous HTTPS clone fails with
+"could not read Username for 'https://github.com'". Point the script at a
+source this host can actually reach:
+
+  # SSH, with a deploy key installed on this host
+  AVENDESORA_REPO=git@github.com:imagewize/avendesora.git sudo -E bash "\$0"
+
+  # A copy you transferred yourself (rsync, scp, USB)
+  AVENDESORA_REPO=/root/avendesora sudo -E bash "\$0"
+EOF
+        exit 1
+    fi
     rm -rf "${AVENDESORA_DIR}"
-    git clone https://github.com/imagewize/avendesora.git "${AVENDESORA_DIR}"
+    mv "${STAGE_DIR}/avendesora" "${AVENDESORA_DIR}"
+    rm -rf "${STAGE_DIR}"
 fi
 
 # --- Install MCP Server Dependencies ---

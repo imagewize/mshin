@@ -16,7 +16,7 @@ By participating in this project, you agree to abide by the **[Contributor Coven
 
 ### **1. Reporting Bugs**
 
-If you find a bug, please [open an issue](https://github.com/your-repo/avendesora/issues) with:
+If you find a bug, please [open an issue](https://github.com/imagewize/avendesora/issues) with:
 
 - A **clear title** describing the issue.
 - A **detailed description** of the problem, including:
@@ -61,7 +61,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
 
 1. Clone the repository:
   ```bash
-   git clone https://github.com/your-repo/avendesora.git
+   git clone https://github.com/imagewize/avendesora.git
    cd avendesora
   ```
 2. Set up the **Avendesora Node** and **Avendesora Core** as described in the [Setup Guide](docs/setup.md).
@@ -76,11 +76,13 @@ avendesora/
 ├── README.md                  # Project overview
 ├── LICENSE                    # MIT License
 ├── CONTRIBUTING.md            # This file
+├── AGENTS.md                  # Guidelines for AI agents
 ├── KALI-OPENLLM.md            # Complete single-file master guide
 ├── docs/
 │   ├── architecture.md        # System architecture
 │   ├── setup.md               # Setup instructions
 │   ├── workflows.md           # Example workflows
+│   ├── lima-local-dev.md      # Lima VM local development on macOS
 │   └── cybersecurity-agent-roadmap.md  # Agent roadmap
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
@@ -88,6 +90,9 @@ avendesora/
 ├── configs/
 │   ├── mcp-kali.service       # systemd service for MCP server
 │   └── ollama-modelfile       # Custom Ollama model configuration
+├── lima/
+│   ├── avendesora-kali.yaml   # Lima template: Node guest (Debian + Kali tools)
+│   └── avendesora-core.yaml   # Lima template: Core guest (Ollama + CLI)
 ├── servers/
 │   └── src/kali/              # Custom Kali MCP server
 │       ├── package.json
