@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Still not verified
+
+- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
+  across the shared network.
+- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
+
+## [0.7.3] - 2026-09-06
+
+CLI readline lifecycle release. Closes three defects that left stdin with two
+owners, allowed concurrent agent runs, and killed in-flight work on EOF.
+
 ### Fixed
 
 - **The CLI session now has a single owner of stdin.**
@@ -31,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verified
 
+- `npm test` in `clients/mshin-cli/` passes 32/32 cases.
+- `npm test` in `servers/src/kali/` passes 14/14 cases.
+- Verified against host Ollama and the `mshin-kali` guest: piped `whois` now
+  runs the tool and prints the answer, with the busy guard catching typed-ahead
+  `exit`. Approval routing checked separately -- reply resolves the question
+  and starts no second run, stdin holds one listener throughout, EOF
+  mid-approval denies.
 - **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
   it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
   pointed at both with `--node http://192.168.105.3:3000 --ollama
@@ -52,12 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it). Same whois on `example.com` through the CLI against host Ollama and
   the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
   registry output, IANA named correctly.
-
-### Still not verified
-
-- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
-  across the shared network.
-- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
 
 ## [0.7.2] - 2026-09-06
 
@@ -741,7 +753,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
