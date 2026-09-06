@@ -108,16 +108,59 @@ Instances then opt in with `--network=lima:shared`, and each receives a DHCP add
 
 ## Setup
 
-### Step 1: Create the Kali Node Lima VM
+There are two ways to build these guests, and the guide covers both.
 
-The Kali Node VM runs **Kali Linux** with the **Avendesora MCP server** and Kali tools.
+| | **Path A — Template files** | **Path B — `limactl` flags** |
+| - | --------------------------- | ---------------------------- |
+| Command | `limactl create --name=… lima/avendesora-kali.yaml` | `limactl create template:debian-13 --cpus=4 …` |
+| Provisioning | Automatic, on first boot | You type every step inside the guest |
+| Architecture | Host default — one file for Intel and Apple Silicon | You pass `--arch` yourself |
+| Mounts, port forwards, probes | Available | No flags exist for them |
+| Repeatable | Yes — the file is versioned in this repo | Only as far as you re-type it correctly |
+| Good for | Anything you will rebuild | A one-off you plan to throw away |
 
-#### Option A: x86_64 base (Intel Macs)
+**Path A is the shorter road**, and it is the one this repo maintains: `lima/avendesora-kali.yaml` and `lima/avendesora-core.yaml` carry the resources, the shared network, and a `provision:` block that runs the same commands Path B asks you to type. Path B is kept in full because it shows what those blocks actually do — read it if you want to understand the guest, or if you are debugging a provisioning failure.
 
-On an **Intel Mac**, build the Node on an x86_64 Debian base so Kali tools run natively:
+Both paths need the [shared networking](#shared-networking-required-for-two-vms) host setup first.
+
+---
+
+### Step 1: Create the Kali Node VM
+
+The Kali Node VM runs **Debian with Kali tools** and the **Avendesora MCP server**.
+
+> **Lima ships no Kali template** (`limactl create --list-templates`), and `limactl create` boots **cloud images**, not installer ISOs — so neither path boots Kali itself. Both install the tools Debian packages on top of a Debian base.
+
+#### Path A: From the template file
 
 ```bash
-# Create an x86_64 Debian VM on the shared network
+# From your clone of this repo
+limactl create --name=avendesora-kali lima/avendesora-kali.yaml
+limactl start avendesora-kali
+```
+
+That is the whole step. On first boot the template:
+
+1. Installs `nmap`, `nikto`, `whois`, `tshark`, `git` and Node.js 20.
+2. Clones this repo to `/opt/avendesora` and runs `npm install` for the MCP server.
+3. Writes the `NOPASSWD` sudoers allowlist those four tools need.
+4. Installs `configs/mcp-kali.service` as `avendesora-node`, rewritten for the Lima login user and the four available tools.
+
+Lima then waits on a probe until `curl :3000/health` answers, so `limactl start` returning means the MCP server is up. It prints the command that reads the guest's address on the shared network.
+
+> **The template sets no `arch`.** Lima defaults to the host architecture, so the same file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an aarch64 guest. Either way the tools run natively — see [Apple Silicon Notes](#apple-silicon-notes).
+
+To point the guest at your working clone instead of a fresh GitHub checkout, uncomment the `mounts:` block at the top of the template and set `location` to your clone's path.
+
+> **When provisioning fails**, `limactl start` reports a failed probe rather than the underlying error. The error is in the guest: `limactl shell avendesora-kali -- sudo journalctl -u avendesora-node -n 50`, and `/var/log/cloud-init-output.log` for the provisioning scripts themselves. `limactl start --debug` is louder still.
+
+#### Path B: From `limactl` flags, provisioned by hand
+
+##### Create the VM
+
+On an **Intel Mac**, build on an x86_64 base:
+
+```bash
 limactl create template:debian-13 \
   --name=avendesora-kali \
   --arch=x86_64 \
@@ -127,16 +170,9 @@ limactl create template:debian-13 \
   --network=lima:shared
 ```
 
-> **Flag notes:** the template is a **positional** argument (`template:<name>`; run `limactl create --list-templates` for the full list). `--memory` and `--disk` are plain numbers in GiB — `--memory=8GiB` fails to parse.
-
-Then, **after creation**, we install the Kali tooling on top.
-
-#### Option B: Debian with Kali Tools (Apple Silicon / Universal)
-
-For **Apple Silicon Macs**, use a Debian base and install Kali tools:
+On **Apple Silicon**, build on an aarch64 base:
 
 ```bash
-# Create an aarch64 Debian VM (native on Apple Silicon)
 limactl create template:debian-13 \
   --name=avendesora-kali \
   --arch=aarch64 \
@@ -146,19 +182,16 @@ limactl create template:debian-13 \
   --network=lima:shared
 ```
 
-> **Note on Apple Silicon:** Running x86_64 Kali in qemu emulation on M1/M2 Macs is possible but **very slow**. The Debian + Kali tools approach (Option B) is much more practical.
-
-#### Start and Configure the Kali Node VM
+> **Flag notes:** the template is a **positional** argument (`template:<name>`; run `limactl create --list-templates` for the full list). `--memory` and `--disk` are plain numbers in GiB — `--memory=8GiB` fails to parse. There is no flag for mounts, port forwards, or provisioning; those need a template file.
 
 ```bash
-# Start the VM
 limactl start avendesora-kali
-
-# SSH into the VM
 limactl shell avendesora-kali
 ```
 
-Now, inside the VM, set up Kali tools:
+##### Install the tools
+
+Inside the VM:
 
 ```bash
 # Update and upgrade
@@ -168,29 +201,33 @@ sudo apt update && sudo apt upgrade -y
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git
 
+# nikto is in Debian's non-free component, which the cloud image does not
+# enable. nmap, whois and tshark are in main.
+sudo sed -i 's/^Components: main$/Components: main non-free/' \
+  /etc/apt/sources.list.d/debian.sources
+sudo apt update
+
 # Install the security tools Debian ships
-sudo apt install -y nmap nikto whois tshark sqlmap
+sudo apt install -y nmap nikto whois tshark
 
 # Verify installation
 nmap --version
 nikto -Version
 ```
 
+> **`nikto` needs `non-free`.** Debian 13's cloud image enables only the `main` component, and `nikto` is packaged in `non-free` — without the `sed` above, `apt install` fails with `E: Unable to locate package nikto` and takes the rest of the command down with it. Debian's `nikto` is also **1:2.1.5**, against Kali's 2.5.x: the plugin database is years older, so findings will differ from a real Node.
+
 > **Two tools are missing on purpose.** `searchsploit` (package `exploitdb`) and `metasploit-framework` live in **Kali's** repositories, not Debian's — `apt install` for either fails on this base, and grafting Kali's repo onto Debian is unsupported and can break the guest. Leave both out of the MCP server's `--tools` list here; if you need them, use the real Kali Node from the [full setup guide](setup.md).
 
-> **Both options install the same tooling.** Lima ships no Kali template (`limactl create --list-templates`), so neither option boots Kali itself — the difference is only the guest architecture. Option A runs the tools natively on Intel; Option B runs them natively on Apple Silicon.
-
-#### Set Up the MCP Server
-
-Inside the Kali Node VM:
+##### Set up the MCP server
 
 ```bash
 # Option 1: Clone directly (if the VM has internet)
 sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
 sudo chown -R "$(whoami)" /opt/avendesora
 
-# Option 2: Or mount your Mac clone into the VM instead - see
-# Advanced: Custom Lima Templates below
+# Option 2: Or mount your Mac clone into the VM instead — that needs a
+# template file, so see Path A above
 
 # Install MCP server dependencies
 cd /opt/avendesora/servers/src/kali
@@ -225,7 +262,7 @@ sudo cp /opt/avendesora/configs/mcp-kali.service /etc/systemd/system/avendesora-
 # tools. In a throwaway Lima VM, run as your own login user and drop the two
 # tools Debian does not provide.
 sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/avendesora-node.service
-sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora /home/$(whoami)|" /etc/systemd/system/avendesora-node.service
+sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/avendesora $HOME|" /etc/systemd/system/avendesora-node.service
 sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" /etc/systemd/system/avendesora-node.service
 
 sudo systemctl daemon-reload
@@ -233,16 +270,36 @@ sudo systemctl enable --now avendesora-node
 systemctl status avendesora-node --no-pager
 ```
 
+> **Use `$HOME`, not `/home/$(whoami)`.** Lima's guest home carries a suffix — `/home/<user>.linux` — so a hand-written `/home/<user>` path leaves `ReadWritePaths` pointing at a directory that does not exist.
+
 > **Note:** Lima's Debian and Ubuntu guests boot standard cloud images and run **systemd**, so the packaged unit works as-is. Follow the logs with `journalctl -u avendesora-node -f`.
 
 ---
 
-### Step 2: Create the Core Lima VM
+### Step 2: Create the Core VM
 
 The Core VM runs **Ollama** with your LLM and the **Avendesora CLI client**.
 
+#### Path A: From the template file
+
 ```bash
-# Create the Core VM
+limactl create --name=avendesora-core lima/avendesora-core.yaml
+limactl start avendesora-core
+```
+
+On first boot the template installs Node.js 20 and Ollama, pulls the base model, clones this repo to `/opt/avendesora`, installs the CLI's dependencies, symlinks it to `/usr/local/bin/avendesora`, and builds the `avendesora` persona. Expect the first start to take a while — most of it is the model download.
+
+To build the persona on a different base model:
+
+```bash
+limactl create --name=avendesora-core --param model=qwen2.5:7b lima/avendesora-core.yaml
+```
+
+> **The template rewrites the Modelfile's `FROM` line.** `configs/ollama-modelfile` is `FROM mistral-small` (24B, ~15GB), sized for a real Core machine and far too large for a Lima guest. The template renders a copy with `FROM <param model>` into `/var/lib/avendesora/Modelfile` and builds from that, leaving the repo copy untouched. **Path B must do the same** — see below.
+
+#### Path B: From `limactl` flags, provisioned by hand
+
+```bash
 limactl create template:ubuntu \
   --name=avendesora-core \
   --arch=aarch64 \
@@ -251,10 +308,7 @@ limactl create template:ubuntu \
   --disk=50 \
   --network=lima:shared
 
-# Start the VM
 limactl start avendesora-core
-
-# SSH into the VM
 limactl shell avendesora-core
 ```
 
@@ -279,21 +333,23 @@ ollama pull mistral
 ollama list
 ```
 
-#### Create the Avendesora Persona Model
+##### Create the Avendesora persona model
 
 ```bash
 # Clone Avendesora repo (if not already present)
 sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
 sudo chown -R "$(whoami)" /opt/avendesora
 
-# Create the model
-ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
+# configs/ollama-modelfile is FROM mistral-small (24B, ~15GB) and will pull
+# that model if you build it as-is. Render a copy on the small model instead.
+sed 's|^FROM .*|FROM mistral|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create avendesora -f ~/Modelfile.lima
 
 # Verify
 ollama list
 ```
 
-#### Install the Avendesora CLI Client
+##### Install the Avendesora CLI client
 
 ```bash
 cd /opt/avendesora/clients/avendesora-cli
@@ -414,7 +470,8 @@ ollama list
 ollama pull qwen2.5:7b
 
 # Recreate the avendesora persona with a different base
-ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
+sed 's|^FROM .*|FROM qwen2.5:7b|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create avendesora -f ~/Modelfile.lima
 
 # Remove old models to free space
 ollama rm mistral
@@ -465,8 +522,10 @@ ollama pull mistral
 sudo git clone https://github.com/imagewize/avendesora.git /opt/avendesora
 sudo chown -R "$(whoami)" /opt/avendesora
 
-# Create avendesora model
-ollama create avendesora -f /opt/avendesora/configs/ollama-modelfile
+# Create avendesora model. configs/ollama-modelfile is FROM mistral-small
+# (24B, ~15GB); render a copy on the small model instead of building it as-is.
+sed 's|^FROM .*|FROM mistral|' /opt/avendesora/configs/ollama-modelfile > ~/Modelfile.lima
+ollama create avendesora -f ~/Modelfile.lima
 
 # Allow the tools to run without a password prompt
 sudo tee /etc/sudoers.d/avendesora >/dev/null <<EOF
@@ -482,6 +541,8 @@ node index.js --tools nmap,nikto,whois,tshark &
 # Start Avendesora CLI in another session
 /opt/avendesora/clients/avendesora-cli/index.js --node http://localhost:3000 --model avendesora
 ```
+
+> **If `apt` cannot find `nikto`**, the component that carries it is not enabled. It lives in `non-free` on Debian and `universe` on Ubuntu; Ubuntu enables `universe` by default, Debian's cloud image does not enable `non-free`. The Debian fix is in [Step 1](#step-1-create-the-kali-node-vm).
 
 > **Pros:** Simplest setup, single VM to manage
 > **Cons:** Less isolation, tools and LLM share resources, MCP server runs on localhost
@@ -504,7 +565,7 @@ node index.js --tools nmap,nikto,whois,tshark &
 ### Apple Silicon Notes
 
 1. **x86_64 emulation:** Running x86_64 Kali in qemu on M1/M2 Macs works but is **slow** (~10-20x slower than native).
-2. **aarch64 Kali:** Kali Linux publishes ARM64 builds, but Lima ships **no Kali template** (`limactl create --list-templates`) and `limactl create` boots **cloud images**, not installer ISOs. Kali's ARM64 releases are installer ISOs and pre-built VM disks rather than cloud-init images, so there is no drop-in Lima equivalent. The practical ARM64 path stays Option B — a Debian base with Kali tooling installed on top, optionally by adding the Kali package repository. See the [Lima templates documentation](https://lima-vm.io/docs/templates/) if you want to try wiring up a custom image.
+2. **aarch64 Kali:** Kali Linux publishes ARM64 builds, but Lima ships **no Kali template** (`limactl create --list-templates`) and `limactl create` boots **cloud images**, not installer ISOs. Kali's ARM64 releases are installer ISOs and pre-built VM disks rather than cloud-init images, so there is no drop-in Lima equivalent. The practical ARM64 path is what both paths in [Step 1](#step-1-create-the-kali-node-vm) do — a Debian base with Kali tooling installed on top. See the [Lima templates documentation](https://lima-vm.io/docs/templates/) if you want to try wiring up a custom image.
 
 ### GPU Acceleration
 
@@ -529,6 +590,10 @@ For better performance:
 | `limactl create` rejects memory | `invalid argument "8GiB"` | `--memory` and `--disk` take plain GiB numbers: `--memory=8` |
 | VMs cannot ping each other | No `lima0` interface in the VM | Instance was created without `--network=lima:shared`; recreate it, and check `socket_vmnet` is installed |
 | Kali tools not found | `nmap` command not found | Reinstall tools: `sudo apt install -y nmap` |
+| `E: Unable to locate package nikto` | Debian cloud image enables only `main` | `nikto` is in `non-free`; add it to `Components:` in `/etc/apt/sources.list.d/debian.sources`, then `apt update` |
+| Template edit has no effect | Guest still behaves the old way after editing `lima/*.yaml` | `limactl create` snapshotted the template; edit `~/.lima/<name>/lima.yaml` with `limactl edit`, or delete and recreate |
+| `limactl start` fails on a probe | "avendesora-node did not come up" / "the avendesora model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u avendesora-node -n 50` and `/var/log/cloud-init-output.log` |
+| Persona pulls a 15GB model | `ollama create` on the repo Modelfile as-is | `configs/ollama-modelfile` is `FROM mistral-small`; render a copy with `FROM mistral` first |
 
 ### Common Commands
 
@@ -588,43 +653,49 @@ rm -rf ~/.ollama
 
 ---
 
-## Advanced: Custom Lima Templates
+## Advanced: Editing the Templates
 
-For repeated use, create a **custom Lima template** for the Kali Node:
+The two templates live in this repo:
 
-Write the template anywhere and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
+| File | Guest |
+| ---- | ----- |
+| `lima/avendesora-kali.yaml` | Debian 13 + Kali tools + `avendesora-node` MCP server |
+| `lima/avendesora-core.yaml` | Ubuntu LTS + Ollama + the `avendesora` persona and CLI |
 
-```yaml
-# ~/avendesora-kali.yaml
-minimumLimaVersion: 2.0.0
-
-# Inherit the stock image list rather than hardcoding a cloud image URL
-base:
-  - template:_images/debian-13
-  - template:_default/mounts
-
-arch: "aarch64"
-cpus: 4
-memory: "8GiB"
-disk: "50GiB"
-mounts:
-  - location: "~/code/avendesora"   # your clone on the Mac
-    writable: true
-    mountPoint: "/opt/avendesora"
-ssh:
-  loadDotSSHPubKeys: true
-networks:
-  - lima: shared
-```
+Copy one, edit it, and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
 
 ```bash
-# Check it before you build it
-limactl template validate ~/avendesora-kali.yaml
+cp lima/avendesora-kali.yaml ~/my-kali.yaml
+$EDITOR ~/my-kali.yaml
 
-limactl create --name=avendesora-kali ~/avendesora-kali.yaml
+# Check it before you build it
+limactl template validate ~/my-kali.yaml
+
+# See exactly what Lima will run, with every {{.Var}} resolved
+limactl template copy --fill ~/my-kali.yaml -
+
+limactl create --name=my-kali ~/my-kali.yaml
 ```
 
-> **Note:** the key is `networks` (plural), and its only supported forms are `lima: <name>` or `socket: <path>` — a template cannot invent its own gateway or CIDR. Unlike the CLI flags, the YAML `memory` and `disk` fields **do** take unit suffixes.
+What is worth changing:
+
+- **`mounts:`** — uncomment the block to bind your Mac clone to `/opt/avendesora`, so edits to `servers/src/kali` take effect without a `git pull` in the guest. The provisioning skips its `chown` when the path is a mount.
+- **`param.model`** (Core only) — the base model the persona is built on, overridable per-instance with `limactl create --param model=…`.
+- **`cpus` / `memory` / `disk`** — see [Resource Allocation](#resource-allocation). Unlike the CLI flags, these YAML fields **do** take unit suffixes.
+- **`arch`** — unset on purpose, so the guest matches the host. Set it only if you deliberately want emulation.
+
+> **Note:** the key is `networks` (plural), and its only supported forms are `lima: <name>` or `socket: <path>` — a template cannot invent its own gateway or CIDR.
+
+> **Provisioning runs on every boot.** Lima installs the blocks as cloud-init per-boot scripts (`/var/lib/cloud/scripts/per-boot/00-lima.boot.sh`, reading `/mnt/lima-cidata/provision.system/`), so each script guards itself and exits early when its work is already done. Keep that property if you add steps, or every `limactl start` will re-run an `apt-get install`.
+
+> **`limactl create` snapshots the template.** The instance keeps its own copy at `~/.lima/<name>/lima.yaml`, and that copy is what generates the cidata the guest reads — so **editing the file in this repo does nothing to a VM that already exists**. To pick up a template change, either edit the instance in place (`limactl edit <name>`, or `limactl edit <name> --set '<yq expression>'` for a single field), or delete and recreate:
+>
+> ```bash
+> limactl delete avendesora-kali
+> limactl create --name=avendesora-kali lima/avendesora-kali.yaml
+> ```
+>
+> Recreating is cheap after the first run — the cloud image stays in `~/Library/Caches/lima`, so only provisioning repeats. Check which one you are actually running with `grep <something-you-changed> ~/.lima/<name>/lima.yaml`.
 
 ---
 
@@ -656,6 +727,8 @@ limactl create --name=avendesora-kali ~/avendesora-kali.yaml
 | ---- | ------ | ------ |
 | 2026-09-06 | Initial version: Lima local development guide | Jasper Frumau |
 | 2026-09-06 | Correct `limactl` syntax, document shared vmnet networking, systemd unit and sudoers allowlist | Jasper Frumau |
+| 2026-09-06 | Add `lima/` templates and split Setup into template and flag paths | Jasper Frumau |
+| 2026-09-06 | Enable Debian's `non-free` component so `nikto` installs | Jasper Frumau |
 
 ---
 
