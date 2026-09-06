@@ -41,6 +41,7 @@ The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 - `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`, `cybersecurity-agent-roadmap.md`, `lima-local-dev.md`.
 - `scripts/` holds both provisioning scripts: `setup_mcp_server.sh` (Node) and `setup_ollama.sh` (Core).
 - `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
+- `lima/` holds the two Lima templates for the macOS local-dev path: `avendesora-kali.yaml` (Node guest) and `avendesora-core.yaml` (Core guest). They provision the same things the scripts do, scoped to what Debian/Ubuntu cloud images can install — no metasploit or searchsploit, and the persona built on a 7B model rather than the Modelfile's `mistral-small`.
 - `servers/src/kali/` holds the custom Kali MCP server (`index.js`, `tools.js`, `package.json`).
 - `clients/avendesora-cli/` holds the Ollama + MCP CLI harness (`index.js`, `package.json`).
 - `KALI-OPENLLM.md` at the repo root is the most complete single-file master guide, superseding the split docs.

@@ -24,6 +24,7 @@ Documentation map:
 | `docs/setup.md` | Step-by-step installation |
 | `docs/workflows.md` | Example cybersecurity tasks |
 | `docs/lima-local-dev.md` | Single-machine Lima setup on macOS |
+| `lima/*.yaml` | Lima templates backing that guide |
 | `docs/cybersecurity-agent-roadmap.md` | Where the agent loop is headed |
 
 ---
@@ -172,6 +173,9 @@ Ask first: `rm -rf`, `git reset --hard`, `git clean -fd`, dropping a VM, overwri
 - Verify `limactl` flags against the installed version — `limactl create` takes a template positionally and has no `--os` or `--ip`
 - Lima addresses are DHCP-assigned; read them, do not assume them
 - Document cleanup: `limactl stop`, `limactl delete`, `limactl prune`
+- Changes to `lima/*.yaml` must pass `limactl template validate`, and `limactl template copy --fill <file> -` shows what Lima will actually run
+- Lima provision scripts re-run on every boot — keep each one guarded and idempotent
+- The guest home is `/home/<user>.linux`, not `/home/<user>`; use `{{.Home}}` in a template and `$HOME` in the guest
 
 ---
 

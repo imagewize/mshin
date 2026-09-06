@@ -90,6 +90,9 @@ avendesora/
 ├── configs/
 │   ├── mcp-kali.service       # systemd service for MCP server
 │   └── ollama-modelfile       # Custom Ollama model configuration
+├── lima/
+│   ├── avendesora-kali.yaml   # Lima template: Node guest (Debian + Kali tools)
+│   └── avendesora-core.yaml   # Lima template: Core guest (Ollama + CLI)
 ├── servers/
 │   └── src/kali/              # Custom Kali MCP server
 │       ├── package.json
