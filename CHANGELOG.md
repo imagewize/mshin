@@ -7,30 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Verified
-
-- **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
-  it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
-  pointed at both with `--node http://192.168.105.3:3000 --ollama
-  http://localhost:11434`. The persona was built on `qwen3:8b` rather than the
-  Modelfile's `mistral-small`, per the guide's `sed` on the `FROM` line. Asked
-  for a whois on `example.com`, the model emitted a native `tool_calls` for
-  `whois` — not the narrated shell command that 0.5.0 found smaller models fall
-  back to — the Node ran it under `sudo -n`, and the answer correctly named IANA
-  as the registrar from the real registry output.
-
-  This settles the architectural claim the 0.7.1 docs made: **the Core does not
-  have to be a VM.** The CLI is the MCP client and needs only an Ollama
-  endpoint, so a 16GB Mac can run the whole system without the Core guest, with
-  inference on the Mac's GPU instead of an emulated CPU.
-- Both guests boot and provision cleanly at the 0.7.1 memory defaults
-  (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
-- **Re-checked on the merged 0.7.3 agent loop**, with the persona rebuilt
-  from the current modelfile on `qwen3:8b` (the installed `mshin` predated
-  it). Same whois on `example.com` through the CLI against host Ollama and
-  the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
-  registry output, IANA named correctly.
-
 ### Still not verified
 
 - The two-machine path on real hardware, and the guest-to-guest Core → Node hop
@@ -95,6 +71,27 @@ readline lifecycle bugs that broke piped prompts and the approval gate.
   `exit`. Approval routing checked separately -- reply resolves the question
   and starts no second run, stdin holds one listener throughout, EOF
   mid-approval denies.
+- **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
+  it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
+  pointed at both with `--node http://192.168.105.3:3000 --ollama
+  http://localhost:11434`. The persona was built on `qwen3:8b` rather than the
+  Modelfile's `mistral-small`, per the guide's `sed` on the `FROM` line. Asked
+  for a whois on `example.com`, the model emitted a native `tool_calls` for
+  `whois` — not the narrated shell command that 0.5.0 found smaller models fall
+  back to — the Node ran it under `sudo -n`, and the answer correctly named IANA
+  as the registrar from the real registry output.
+
+  This settles the architectural claim the 0.7.1 docs made: **the Core does not
+  have to be a VM.** The CLI is the MCP client and needs only an Ollama
+  endpoint, so a 16GB Mac can run the whole system without the Core guest, with
+  inference on the Mac's GPU instead of an emulated CPU.
+- Both guests boot and provision cleanly at the 0.7.1 memory defaults
+  (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
+- **Re-checked on the merged 0.7.3 agent loop**, with the persona rebuilt
+  from the current modelfile on `qwen3:8b` (the installed `mshin` predated
+  it). Same whois on `example.com` through the CLI against host Ollama and
+  the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
+  registry output, IANA named correctly.
 
 ## [0.7.1] - 2026-09-06
 
