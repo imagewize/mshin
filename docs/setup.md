@@ -249,8 +249,25 @@ sudo visudo
 Add the following line:
 
 ```
-avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+# tshark is omitted: it does not need root to read user-owned PCAP files, and
+# running it as root triggers Wireshark's file-owner check.
+avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
 ```
+
+### **1.9 Verify the Node Tools**
+
+Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. The first five are passive; `metasploit` is destructive-by-default and the CLI will ask for approval before it runs.
+
+```
+"Scan 127.0.0.1 with nmap and list the open ports."
+"Whois example.com."
+"Search searchsploit for openssh 8.9."
+"Run nikto against http://127.0.0.1 and report any findings."
+"Use tshark to read /home/avendesora/capture.pcap and summarize the traffic."
+"Run the metasploit auxiliary scanner http/http_version against 127.0.0.1."
+```
+
+> **PCAP ownership matters.** Capture files must be readable by the `avendesora` user; `tshark` is run without `sudo` because Wireshark's file-owner check rejects root-owned captures.
 
 ---
 

@@ -369,7 +369,9 @@ sudo visudo
 Add:
 
 ```
-avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+# tshark is omitted: it does not need root to read user-owned PCAP files, and
+# running it as root triggers Wireshark's file-owner check.
+avendesora ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
 ```
 
 #### **3. Test SSH Access**
@@ -387,6 +389,23 @@ Prompt the LLM to run SSH commands:
 ```
 "Avendesora, SSH into the Kali Node and run 'nmap -sV 192.168.1.1'."
 ```
+
+#### **5. Verify Every MCP Tool**
+
+With the CLI pointed at the Node, these prompts exercise all six tools against safe targets. Only run scans against systems you own or are authorised to test.
+
+```
+"Scan 127.0.0.1 with nmap and list the open ports."
+"Whois example.com."
+"Search searchsploit for openssh 8.9."
+"Run nikto against http://127.0.0.1 and report any findings."
+"Use tshark to read /home/avendesora/capture.pcap and summarize the traffic."
+"Run the metasploit auxiliary scanner http/http_version against 127.0.0.1."
+```
+
+> **`metasploit` requires approval.** It is the only active tool in the approval gate; the CLI will prompt you before it runs.
+>
+> **`tshark` needs user-owned PCAP files.** The server runs `tshark` without `sudo`; capture files must be readable by the `avendesora` user.
 
 ---
 
