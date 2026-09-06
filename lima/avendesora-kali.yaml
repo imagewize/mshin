@@ -107,8 +107,11 @@ provision:
       set -eux -o pipefail
       # servers/src/kali/tools.js runs every binary as `sudo -n` when the server
       # is not root, so a tool missing here fails at call time, not at startup.
+      # tshark is omitted: reading user-owned PCAP files as root triggers
+      # Wireshark's file-owner check, and tshark needs no privileges to read
+      # capture files.
       cat >/etc/sudoers.d/avendesora <<'EOF'
-      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/tshark
+      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
       EOF
       chmod 440 /etc/sudoers.d/avendesora
       visudo -cf /etc/sudoers.d/avendesora
