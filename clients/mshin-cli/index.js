@@ -112,10 +112,48 @@ async function main() {
     prompt: "Machin Shin> ",
   });
 
+  // This interface is the only consumer of stdin for the whole session.
+  // Every line is routed from here: to a waiting approval question if the
+  // agent asked one, otherwise as a new prompt. Opening a second interface
+  // for the approval would leave two `data` listeners racing for the reply.
+  let pendingAnswer = null;
+  // A run is in flight. readline does not await an async `line` handler, so
+  // without this guard a line typed mid-scan starts a second concurrent
+  // agent.run() against the same Agent and the same session memory.
+  let busy = false;
+  // Set once the interface has closed, so a run that outlives it does not
+  // write a prompt to a dead interface.
+  let closed = false;
+  // The in-flight run, so `close` can wait for it instead of exiting and
+  // discarding a tool result that has already cost a real scan.
+  let activeRun = null;
+
+  function askLine(prompt) {
+    return new Promise((resolve) => {
+      process.stdout.write(prompt);
+      pendingAnswer = resolve;
+    });
+  }
+
   rl.prompt();
 
-  rl.on("line", async (line) => {
+  rl.on("line", (line) => {
     const userInput = line.trim();
+
+    if (pendingAnswer) {
+      const resolve = pendingAnswer;
+      pendingAnswer = null;
+      resolve(userInput);
+      return;
+    }
+
+    if (busy) {
+      console.log(
+        "  [busy] Machin Shin is still working. Wait for the answer, or press Ctrl-C to abort."
+      );
+      return;
+    }
+
     if (!userInput) {
       rl.prompt();
       return;
@@ -129,6 +167,15 @@ async function main() {
     // continue a prior session by ID.
     const sessionId = `cli-${Date.now()}`;
 
+    busy = true;
+    activeRun = runPrompt(sessionId, userInput).finally(() => {
+      busy = false;
+      activeRun = null;
+      if (!closed) rl.prompt();
+    });
+  });
+
+  async function runPrompt(sessionId, userInput) {
     try {
       await agent.run({
         sessionId,
@@ -153,7 +200,8 @@ async function main() {
         onApproval: async (name, args) => {
           const argSummary = JSON.stringify(args, null, 2);
           return askYesNo(
-            `\n  [approval] The agent wants to run the active tool '${name}' with:\n  ${argSummary}\n  Allow this execution?`
+            `\n  [approval] The agent wants to run the active tool '${name}' with:\n  ${argSummary}\n  Allow this execution?`,
+            askLine
           );
         },
         onComplete: (answer) => {
@@ -163,11 +211,28 @@ async function main() {
     } catch (err) {
       console.error(`\n[ERROR] ${err.message}\n`);
     }
-
-    rl.prompt();
-  });
+  }
 
   rl.on("close", async () => {
+    closed = true;
+    // An approval question outlives the stdin that was meant to answer it
+    // whenever input is piped. Deny it: no answer is not a yes, and waiting
+    // for one that can never arrive would hang the exit.
+    if (pendingAnswer) {
+      const resolve = pendingAnswer;
+      pendingAnswer = null;
+      resolve("n");
+    }
+    // EOF or Ctrl-D can land mid-run -- and always does when a prompt is
+    // piped in, since stdin ends the moment it is read. Exiting here would
+    // kill the agent before it answers.
+    if (activeRun) {
+      try {
+        await activeRun;
+      } catch {
+        // runPrompt already reported it.
+      }
+    }
     await client.close();
     console.log("\nThe Wheel weaves as the Wheel wills.");
     process.exit(0);

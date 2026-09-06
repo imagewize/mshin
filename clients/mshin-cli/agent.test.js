@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Agent, AgentMemory, ACTIVE_TOOLS, extractTextToolCall } from "./agent.js";
+import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, extractTextToolCall } from "./agent.js";
 
 // -----------------------------------------------------------------------------
 // Test doubles
@@ -648,4 +648,28 @@ test("does not block a genuine final answer after a real tool ran", async (t) =>
 
   const answer = await agent.run({ sessionId: "s-real-result", userGoal: "scan localhost" });
   assert.equal(answer, "Result: port 22 is open.");
+});
+
+test("askYesNo reads through an injected reader instead of opening stdin", async () => {
+  const prompts = [];
+  const ask = (prompt) => {
+    prompts.push(prompt);
+    return Promise.resolve("y\n");
+  };
+
+  // The CLI owns the only readline interface for the session, so askYesNo
+  // must never create a second one on the same stdin.
+  const before = process.stdin.listenerCount("data");
+  const approved = await askYesNo("Allow this execution?", ask);
+  assert.equal(process.stdin.listenerCount("data"), before);
+
+  assert.equal(approved, true);
+  assert.deepEqual(prompts, ["Allow this execution? (y/n): "]);
+});
+
+test("askYesNo treats anything but a leading y as a denial", async () => {
+  assert.equal(await askYesNo("q", () => "n"), false);
+  assert.equal(await askYesNo("q", () => ""), false);
+  assert.equal(await askYesNo("q", () => "  YES  "), true);
+  assert.equal(await askYesNo("q", () => "nope"), false);
 });

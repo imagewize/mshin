@@ -519,19 +519,38 @@ class Agent {
 }
 
 /**
- * Ask the user a y/n question on stdin and return a boolean promise.
+ * Read one line from stdin through a readline interface of our own.
+ *
+ * Only safe when nothing else is reading stdin. A caller that already owns a
+ * readline interface must pass its own reader to `askYesNo` instead.
  */
-function askYesNo(question) {
+function readLineFromStdin(prompt) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   return new Promise((resolve) => {
-    rl.question(`${question} (y/n): `, (answer) => {
+    rl.question(prompt, (answer) => {
       rl.close();
-      resolve(answer.trim().toLowerCase().startsWith("y"));
+      resolve(answer);
     });
   });
+}
+
+/**
+ * Ask the user a y/n question and return a boolean promise.
+ *
+ * `ask` reads one line and is supplied by callers that already own stdin. The
+ * CLI does: it keeps one readline interface for the whole session, and a
+ * second interface on the same stdin leaves two `data` listeners racing for
+ * the answer -- the approval reply reaches both, so it is consumed as a new
+ * prompt while the question it was meant for never resolves. Callers with no
+ * interface of their own get the default reader.
+ */
+function askYesNo(question, ask = readLineFromStdin) {
+  return Promise.resolve(ask(`${question} (y/n): `)).then((answer) =>
+    String(answer).trim().toLowerCase().startsWith("y")
+  );
 }
 
 export { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo };
