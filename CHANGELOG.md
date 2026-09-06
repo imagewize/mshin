@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-06
+
+First release with an actual test suite. 0.3.0 shipped `npm test` as
+`node --check` and listed the agent loop and the tool set as untested; this
+release replaces that with 28 `node --test` cases across both packages, closing
+the parts of that list a macOS host can close without a Kali Node or a live LLM.
+The two-machine path, real tool execution, a real-LLM loop, and a booted Core
+template remain unverified — see below.
+
+### Added
+
+- **A real test suite replaces `npm test`'s syntax check.** Both packages now
+  run `node --test` after `node --check` (the old check is kept as `npm run
+  check`).
+  - `clients/avendesora-cli/agent.test.js` — 14 tests driving the agent loop
+    against a mock Ollama HTTP server and a mock MCP client. This exercises the
+    tool-call formatting the 0.3.0 notes flagged as untested: the `/api/chat`
+    request body (model, tools, `stream:false`, message order), `tool_calls`
+    parsing and argument extraction, MCP text-content joining, the
+    one-decision-at-a-time rule, unknown-tool rejection, the `metasploit`
+    approval gate (approve and decline), step-budget exhaustion, session
+    persistence, and context compaction. The *agent's* side of the contract is
+    now covered; a **real LLM** is still not in the loop (see Not verified).
+  - `servers/src/kali/tools.test.js` — 14 tests over the tool contract and the
+    shell-injection guard for all six tools (`metasploit` and `searchsploit`
+    included), plus dispatch: well-formed input clears validation and stops only
+    at the missing-binary check. No Kali binary is required to run them.
+
+### Fixed
+
+- **`nikto` is in `multiverse` on Ubuntu, not `universe`.** The single-VM guide
+  claimed `universe`; verified against `packages.ubuntu.com` for jammy (22.04)
+  and noble (24.04): `nikto 1:2.1.5-3.1 [multiverse]`. The note now names the
+  right component and gives the `add-apt-repository multiverse` fallback.
+
+### Changed
+
+- **`docs/lima-local-dev.md`** — the model-recommendations box now states that
+  the agent loop needs a tool-calling model (several small models are read-only)
+  and links the companion repo `imagewize/ollama-opencode-setup`, which carries
+  tool-calling results measured on the target Macs (M1 16GB, M4 Pro 24GB).
+
+### Still not verified
+
+Carried forward from 0.3.0, narrowed by the tests above:
+
+- The two-machine path on real hardware; real execution of `metasploit` and
+  `searchsploit` (their input validation is now tested, their execution is not).
+- The agent loop against a **real LLM** — the mock covers the agent's side of
+  the tool-call contract, not whether a given Ollama model emits well-formed
+  `tool_calls`.
+- `lima/avendesora-core.yaml` has never been booted.
+- A clean `nikto` install on the Lima `template:ubuntu` guest (the component is
+  now correct; the install itself is unbooted).
+
 ## [0.3.0] - 2026-09-06
 
 First release whose claims were checked by running them. A Debian guest was
@@ -328,7 +383,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/imagewize/avendesora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/imagewize/avendesora/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/imagewize/avendesora/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/imagewize/avendesora/compare/v0.1.1...v0.2.0
