@@ -1,10 +1,16 @@
-# Machin Shin Node — Lima template
+# Machin Shin Node — Lima template (guest name: mshin-node)
 #
-#   limactl create --name=mshin-kali lima/mshin-kali.yaml
-#   limactl start mshin-kali
+#   limactl create --name=mshin-node lima/mshin-node.yaml
+#   limactl start mshin-node
 #
-# Debian 13 with the Kali tools Debian ships, the Machin Shin MCP server, and the
-# mshin-node systemd unit. See docs/lima-local-dev.md.
+# Named for its architectural role (the Node), not its OS. It was mshin-kali,
+# but this guest is Debian, not Kali Linux — naming it for the OS was wrong the
+# moment the OS did not match, so it now pairs with mshin-core by role. The
+# production Node still runs real Kali; see docs/lima-local-dev.md.
+#
+# Debian 13 with the full six-tool set — nmap, whois, tshark and nikto from
+# Debian, metasploit and searchsploit from their upstream vendors — the Machin
+# Shin MCP server, and the mshin-node systemd unit. See docs/lima-local-dev.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so this
 # one file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an
@@ -19,7 +25,7 @@ base:
 cpus: 4
 # The Node runs a Node.js process and short-lived CLI tools — no model, no
 # inference — so it idles near 1GB. 4GiB leaves room for the Core guest on a
-# 16GB Mac. Raise it with `limactl edit mshin-kali --memory=<GiB>`.
+# 16GB Mac. Raise it with `limactl edit mshin-node --memory=<GiB>`.
 memory: "4GiB"
 disk: "50GiB"
 
@@ -39,9 +45,9 @@ networks:
 # Mount your host clone instead — either uncomment and set `location` below, or
 # pass it at create time without editing this file, from your clone's root:
 #
-#   limactl create --name=mshin-kali \
+#   limactl create --name=mshin-node \
 #     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
-#     lima/mshin-kali.yaml
+#     lima/mshin-node.yaml
 #
 # npm then writes node_modules back to the Mac clone (it is gitignored).
 # mounts:
@@ -50,11 +56,12 @@ networks:
 #     writable: true
 
 provision:
-  # Debian gives us four of the MCP server's six tools: nmap, whois and tshark
-  # from main, nikto from non-free. metasploit and searchsploit are Kali-only,
-  # and grafting Kali's repo onto Debian is unsupported. Keep this list, the
-  # sudoers allowlist and the unit's --tools flag below in sync; see the
-  # tool-list invariant in AGENTS.md.
+  # Debian ships four of the MCP server's six tools: nmap, whois and tshark
+  # from main, nikto from non-free. The other two come from their upstream
+  # vendors in the block below -- Kali packages them, but neither is Kali-only,
+  # and neither needs Kali's repo grafted onto Debian (that part is still
+  # unsupported). Keep this list, the sudoers allowlist and the unit's --tools
+  # flag below in sync; see the tool-list invariant in AGENTS.md.
   - mode: system
     script: |
       #!/bin/bash
@@ -75,6 +82,40 @@ provision:
       curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
       apt-get install -y nodejs
 
+  # searchsploit and metasploit, from the vendors rather than from Kali.
+  # Split from the block above because metasploit is a ~400MB download: a
+  # failure here should not force the base tools to be reinstalled.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      # searchsploit is a shell script over a data repo, so the clone is the
+      # install and it is arch-independent. --depth 1 keeps it to the current
+      # snapshot; `searchsploit -u` updates it in place afterwards.
+      if ! command -v searchsploit >/dev/null 2>&1; then
+          git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git \
+              /opt/exploitdb
+          # tools.js looks for /usr/bin/searchsploit specifically.
+          ln -sf /opt/exploitdb/searchsploit /usr/bin/searchsploit
+      fi
+      # Rapid7's own apt repo, which publishes amd64 and arm64, so this works on
+      # both the Intel and Apple Silicon guests this template produces.
+      if ! command -v msfconsole >/dev/null 2>&1; then
+          curl -fsSL https://apt.metasploit.com/metasploit-framework.gpg.key \
+              | gpg --dearmor -o /usr/share/keyrings/metasploit.gpg
+          echo "deb [signed-by=/usr/share/keyrings/metasploit.gpg] https://apt.metasploit.com lucid main" \
+              > /etc/apt/sources.list.d/metasploit.list
+          apt-get update
+          apt-get install -y metasploit-framework
+      fi
+      # First msfconsole launch runs a one-time "Initial Setup" that is slow and
+      # emits interactive prompts. tools.js calls the binary through `sudo -n`,
+      # so the run that matters is root's -- warm /root/.msf4 here, at provision
+      # time, so the first real tool call is fast and clean instead of colliding
+      # with setup. `-x exit` runs the setup then quits.
+      msfconsole -q -x exit >/dev/null 2>&1 || true
+
   - mode: system
     script: |
       #!/bin/bash
@@ -93,7 +134,7 @@ provision:
         limactl delete <name>
         limactl create --name=<name> \
           --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
-          lima/mshin-kali.yaml
+          lima/mshin-node.yaml
       ERR
               exit 1
           fi
@@ -114,7 +155,7 @@ provision:
       # Wireshark's file-owner check, and tshark needs no privileges to read
       # capture files.
       cat >/etc/sudoers.d/mshin <<'EOF'
-      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois
+      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole
       EOF
       chmod 440 /etc/sudoers.d/mshin
       visudo -cf /etc/sudoers.d/mshin
@@ -125,12 +166,12 @@ provision:
       set -eux -o pipefail
       UNIT=/etc/systemd/system/mshin-node.service
       install -m 644 /opt/mshin/configs/mcp-kali.service "${UNIT}"
-      # The shipped unit runs as a dedicated 'mshin' user with all six
-      # tools. In a throwaway guest, run as the Lima login user and drop the two
-      # tools Debian does not provide.
+      # The shipped unit runs as a dedicated 'mshin' user. In a throwaway
+      # guest, run as the Lima login user instead; the tool list is the same
+      # six, now that the block above provides the last two.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
       sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
-      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,nikto,whois,tshark|" "${UNIT}"
+      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark|" "${UNIT}"
       systemctl daemon-reload
       systemctl enable mshin-node
       systemctl restart mshin-node
