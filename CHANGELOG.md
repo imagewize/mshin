@@ -5,12 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.1] - 2026-09-06
 
-Fallout from the rename, caught while rebuilding the two Lima guests under their
-new `mshin-*` names. Neither bug was in the renamed code itself — one was the
-box-drawing art the rename knocked out of alignment, the other a guest sizing
-that only became impossible once both guests had to coexist.
+Post-rename cleanup release. Fallout from 0.7.0, caught while rebuilding the two
+Lima guests under their new `mshin-*` names. Neither bug was in the renamed code
+itself — one was the box-drawing art the rename knocked out of alignment, the
+other a guest sizing that only became impossible once both guests had to
+coexist.
 
 ### Fixed
 
@@ -651,7 +652,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/imagewize/mshin/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/imagewize/mshin/compare/v0.4.0...v0.5.0
