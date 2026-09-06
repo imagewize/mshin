@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript } from "./tools.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
 // injection guard, without needing the Kali binaries installed: malicious input
@@ -113,6 +113,22 @@ test("metasploit rejects an injection in an option value", async () => {
   const msf = byName("metasploit");
   await assert.rejects(
     msf.handler({ module: "exploit/linux/x", options: { RHOSTS: "10.0.0.1; whoami" } }),
+    /unsafe characters/
+  );
+});
+
+test("buildMsfScript ends the resource script with exit so msfconsole quits", () => {
+  // Without the trailing `exit`, msfconsole drops to its interactive prompt
+  // under execFile (no TTY), hangs to the timeout, and exits non-zero — so the
+  // run is reported as an error even though the module executed.
+  const script = buildMsfScript("auxiliary/scanner/portscan/tcp", { RHOSTS: "127.0.0.1" });
+  assert.equal(script, "use auxiliary/scanner/portscan/tcp; set RHOSTS 127.0.0.1; run; exit");
+  assert.ok(script.endsWith("; exit"));
+});
+
+test("buildMsfScript rejects an injection in an option value", () => {
+  assert.throws(
+    () => buildMsfScript("exploit/linux/x", { RHOSTS: "10.0.0.1; whoami" }),
     /unsafe characters/
   );
 });
