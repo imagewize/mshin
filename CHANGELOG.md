@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Verified
+
+- **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
+  it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
+  pointed at both with `--node http://192.168.105.3:3000 --ollama
+  http://localhost:11434`. The persona was built on `qwen3:8b` rather than the
+  Modelfile's `mistral-small`, per the guide's `sed` on the `FROM` line. Asked
+  for a whois on `example.com`, the model emitted a native `tool_calls` for
+  `whois` — not the narrated shell command that 0.5.0 found smaller models fall
+  back to — the Node ran it under `sudo -n`, and the answer correctly named IANA
+  as the registrar from the real registry output.
+
+  This settles the architectural claim the 0.7.1 docs made: **the Core does not
+  have to be a VM.** The CLI is the MCP client and needs only an Ollama
+  endpoint, so a 16GB Mac can run the whole system without the Core guest, with
+  inference on the Mac's GPU instead of an emulated CPU.
+- Both guests boot and provision cleanly at the 0.7.1 memory defaults
+  (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
+
+### Still not verified
+
+- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
+  across the shared network.
+- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
+
 ## [0.7.1] - 2026-09-06
 
 Post-rename cleanup release. Fallout from 0.7.0, caught while rebuilding the two
