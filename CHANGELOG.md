@@ -5,6 +5,60 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-06
+
+Rename release. The project is now **Machin Shin** — named for the Black Wind
+that hunts the Ways in the *Wheel of Time*, a truer fit than the enduring
+Avendesora tree for a system that ranges the dark corners of a network and
+surfaces what hides there. It is `mshin` everywhere an identifier is needed and
+**Machin Shin** in prose. This is a breaking change for any deployed host: the
+binary, install path, systemd unit, Unix user, and package names all change.
+
+### Changed
+
+- **Every identifier `avendesora` → `mshin`.** The CLI binary
+  (`/usr/local/bin/mshin`), the install root (`/opt/mshin`), the systemd unit
+  (`mshin-node`), the service `User=` and `ReadWritePaths`, the `sudoers`
+  entries, the npm package names (`mshin-cli`, `mshin-kali-mcp-server`), and the
+  agent memory path (`~/.mshin/`) all follow. Directories renamed:
+  `clients/avendesora-cli/` → `clients/mshin-cli/`, and
+  `lima/avendesora-{core,kali}.yaml` → `lima/mshin-{core,kali}.yaml`.
+- **The persona is now the Black Wind.** `configs/ollama-modelfile`'s system
+  prompt reframes Machin Shin as a tireless hunter that ranges the dark and
+  misses nothing — "turned always to the service of the one who commands it," so
+  the malevolent namesake does not undercut the safety directives. The
+  tool-calling `TEMPLATE` and `num_ctx` are unchanged.
+- **All Wheel of Time lore reworked from tree to Wind.** The epigraphs and the
+  "named after" sections in `README.md`, `KALI-OPENLLM.md`,
+  `docs/architecture.md` (the symbolism table), `docs/cybersecurity-agent-roadmap.md`,
+  and `docs/lima-local-dev.md` no longer describe a rooted, enduring tree. The
+  one surviving mention of Avendesora is deliberate: its trefoil leaf is
+  canonically the shape of the Waygate key, and the Wind waits beyond that
+  threshold.
+- **New logo.** `assets/logo.svg` and `assets/logo-dark.svg` are now the *wind*
+  icon from [Feather Icons](https://feathericons.com/) (MIT), replacing the
+  Entypo leaf; the README credit changes to match. The ASCII logo in
+  `assets/logo.txt` and `KALI-OPENLLM.md` is redrawn as wind gusts with a
+  `M A C H I N   S H I N` wordmark.
+
+### Added
+
+- **Unofficial-project disclaimer** in `README.md`, naming the Bandersnatch
+  Group as the rights-holder of *The Wheel of Time* and its lore.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli` passes all 14 cases after the rename.
+- `bash -n` on both `scripts/setup_mcp_server.sh` and `scripts/setup_ollama.sh`.
+- Both logo SVGs parse as well-formed XML.
+
+### Note
+
+- The GitHub repository slug is renamed `avendesora` → `mshin` with this release;
+  GitHub redirects the old URL, so existing clones and links keep working. Prior
+  releases genuinely shipped as `avendesora`; their entries below are left as
+  historical record, while the compare links now point at the new slug.
+
 ## [0.6.0] - 2026-09-06
 
 Lima-local verification release. Running the agent loop against `nikto` and
@@ -529,12 +583,13 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/imagewize/avendesora/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/imagewize/avendesora/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/imagewize/avendesora/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/imagewize/avendesora/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/imagewize/avendesora/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/imagewize/avendesora/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/imagewize/avendesora/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/imagewize/avendesora/releases/tag/v0.1.0
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/imagewize/mshin/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/imagewize/mshin/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/imagewize/mshin/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/imagewize/mshin/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/imagewize/mshin/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/imagewize/mshin/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/imagewize/mshin/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/imagewize/mshin/releases/tag/v0.1.0
