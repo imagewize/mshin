@@ -64,7 +64,7 @@ Both VMs run as **Lima instances** on your Mac. They talk to each other over Lim
 | Requirement | Minimum | Recommended | Notes |
 | ----------- | ------- | ----------- | ----- |
 | **CPU** | Apple Silicon (M1+) or Intel x86_64 | M1 Pro/Max/M2+ | x86_64 Macs can run Kali natively in Lima |
-| **RAM** | 16GB | 32GB+ | Each VM needs 8-16GB; they share your Mac's RAM |
+| **RAM** | 16GB | 32GB+ | The templates size the Core at 10GB and the Node at 4GB; they share your Mac's RAM |
 | **Disk** | 100GB free | 200GB+ free | VM disks + Ollama models (~4-6GB for mistral) |
 | **OS** | macOS Ventura+ | macOS Tahoe (26.6.2) | Lima requires macOS 11.4+ |
 
@@ -178,7 +178,7 @@ limactl create template:debian-13 \
   --name=mshin-kali \
   --arch=x86_64 \
   --cpus=4 \
-  --memory=8 \
+  --memory=4 \
   --disk=50 \
   --network=lima:shared
 ```
@@ -190,7 +190,7 @@ limactl create template:debian-13 \
   --name=mshin-kali \
   --arch=aarch64 \
   --cpus=4 \
-  --memory=8 \
+  --memory=4 \
   --disk=50 \
   --network=lima:shared
 ```
@@ -319,7 +319,7 @@ limactl create template:ubuntu \
   --name=mshin-core \
   --arch=aarch64 \
   --cpus=4 \
-  --memory=16 \
+  --memory=10 \
   --disk=50 \
   --network=lima:shared
 
@@ -519,7 +519,7 @@ limactl create template:ubuntu \
   --name=mshin-allinone \
   --arch=aarch64 \
   --cpus=8 \
-  --memory=16 \
+  --memory=12 \
   --disk=80
 
 limactl start mshin-allinone
@@ -611,12 +611,36 @@ Then, in the CLI session:
 
 | VM | CPUs | Memory | Disk | Notes |
 | ---- | ---- | ------ | ---- | ----- |
-| Kali Node | 2-4 | 4-8GB | 30-50GB | Tools don't need much RAM |
-| Core | 4-8 | 8-16GB | 30-50GB | Needs RAM for models |
+| Kali Node | 2-4 | **4GB** (template default) | 30-50GB | No model, no inference — a Node.js process and short-lived CLI tools |
+| Core | 4-8 | **10GB** (template default) | 30-50GB | Holds the model; raise it if you swap in a bigger one |
 
-**Total:** 8-12 CPUs, 16-24GB RAM, 80-120GB disk
+**Total:** 8 CPUs, 14GB RAM, 100GB disk — sized so both guests fit the 16GB Mac
+this guide takes as its minimum.
 
-> **Adjust based on your Mac:** If you have 32GB RAM, allocate 12GB to Core and 4GB to Kali Node and run both at once. On a **16GB Mac**, running both guests concurrently while the Core does CPU-only inference exceeds physical RAM and swaps hard — an 8GB+8GB split leaves nothing for the host. Test one guest at a time instead (e.g. `--memory=10` on Core with the Node stopped), or run the all-in-one single VM.
+Change either with `limactl edit <name> --memory=<GiB>` (the instance must be
+stopped; `limactl create` snapshots the template, so editing `lima/*.yaml`
+afterwards does not affect an instance that already exists).
+
+> **Never give a guest all of your host's RAM.** Lima will accept
+> `memory: "16GiB"` on a 16GB Mac and the guest will boot, but macOS is then
+> swapping against it from the first byte, and the other guest cannot start at
+> all. Leave the host at least a quarter of physical RAM.
+
+**On a 32GB Mac**, 12GB to Core and 4GB to the Node runs both comfortably.
+
+**On a 16GB Mac**, the 10GB + 4GB defaults do start together, but the Core's
+inference is CPU-only and the host is left with ~2GB. Two lighter paths:
+
+- **Host Ollama + Node guest.** Run [Ollama](https://ollama.com) natively on
+  macOS and start only `mshin-kali`. Nothing in the architecture requires the
+  Core to be a VM — the CLI is the MCP client and simply needs an Ollama
+  endpoint, so point it at the host: `node clients/mshin-cli/index.js --node
+  http://<KALI_IP>:3000 --ollama http://localhost:11434 --model mshin`. Build
+  the persona on the host first against a base that fits
+  (`sed 's|^FROM .*|FROM qwen3:8b|' configs/ollama-modelfile > /tmp/Modelfile
+  && ollama create mshin -f /tmp/Modelfile`). Inference runs on the Mac's GPU
+  rather than an emulated CPU, so this is also the *fastest* option.
+- **One guest at a time**, or the [all-in-one single VM](#alternative-single-vm-all-in-one).
 
 ### Apple Silicon Notes
 
@@ -651,7 +675,8 @@ For better performance:
 | `limactl start` fails on a probe | "mshin-node did not come up" / "the mshin model was never created" | The probe timed out; the real error is in the guest. See `journalctl -u mshin-node -n 50` and `/var/log/cloud-init-output.log` |
 | Persona pulls a 15GB model | `ollama create` on the repo Modelfile as-is | `configs/ollama-modelfile` is `FROM mistral-small`; render a copy with `FROM mistral` first |
 | Model pull times out during provisioning | `provision.system` step fails right after the API wait; `systemctl status ollama` shows `disabled`/`inactive` | The installer did not start the daemon (seen on the Ubuntu 26.04 cloud image). `sudo systemctl enable --now ollama`. The Core template now does this automatically |
-| Both VMs sluggish or swapping on a 16GB Mac | Core inference crawls while the Node is also running | CPU-only inference plus two guests exceeds 16GB. Run one guest at a time, or size Core down (`--memory=10`) and keep the Node stopped while testing Core |
+| Both VMs sluggish or swapping on a 16GB Mac | Core inference crawls while the Node is also running | The 10GB + 4GB defaults fit, but CPU-only inference leaves the host little. Run [host Ollama with only the Node guest](#resource-allocation), or one guest at a time |
+| `limactl start mshin-core` warns `bind: address already in use` on 11434 | Ollama is also running natively on the Mac | Lima cannot forward the guest's Ollama to a host port that Ollama.app already holds. Harmless — the in-guest CLI uses the guest's own `localhost:11434`. Quit Ollama.app first if you want to reach the guest's Ollama from the Mac |
 | `limactl start` exits `did not receive an event with the running status` | The guest is still `Running` and cloud-init is mid-provision | On a loaded host the hostagent can time out while the guest is fine. Check inside with `limactl shell <name> -- sudo tail -f /var/log/cloud-init-output.log`; the pull/persona finish on their own. `limactl shell` reconnects once it is up |
 | `failed to listen tcp: 127.0.0.1:11434 ... address already in use` | Ollama is running on the **host** (e.g. `brew` install) on the same port | Harmless — only the host-side port-forward fails; the guest's own Ollama is unaffected. Stop host Ollama (`brew services stop ollama`) if you want the forward |
 
