@@ -1,0 +1,137 @@
+# Avendesora Core — Lima template
+#
+#   limactl create --name=avendesora-core lima/avendesora-core.yaml
+#   limactl start avendesora-core
+#
+# Ubuntu LTS with Ollama, a small local model, the avendesora persona and the
+# Avendesora CLI client. See docs/lima-local-dev.md.
+#
+# `arch` is deliberately unset: Lima defaults to the host architecture, so the
+# guest is native on both Intel and Apple Silicon Macs.
+
+minimumLimaVersion: 2.0.0
+
+base:
+  - template:_images/ubuntu-lts
+  - template:_default/mounts
+
+cpus: 4
+memory: "16GiB"
+disk: "50GiB"
+
+# Nothing here runs containers; skip the nerdctl download the stock templates do.
+containerd:
+  system: false
+  user: false
+
+# Requires the one-time host setup described in docs/lima-local-dev.md:
+#   brew install socket_vmnet
+#   limactl sudoers | sudo tee /etc/sudoers.d/lima
+networks:
+  - lima: shared
+
+param:
+  # The base model the avendesora persona is built on. Lima guests get no GPU
+  # passthrough and run CPU-only inference, so stay at 7B or smaller here:
+  # mistral, qwen2.5:7b, phi3:3.8b, llama3.2:3b. The full setup's default,
+  # mistral-small (24B, ~15GB), does not fit.
+  #   limactl create --param model=qwen2.5:7b ... lima/avendesora-core.yaml
+  model: "mistral"
+
+# The repo is private until v1.0, so the guest cannot clone it anonymously.
+# Mount your host clone instead — either uncomment and set `location` below, or
+# pass it at create time without editing this file, from your clone's root:
+#
+#   limactl create --name=avendesora-core \
+#     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
+#     lima/avendesora-core.yaml
+#
+# mounts:
+#   - location: "<path to your clone>"
+#     mountPoint: "/opt/avendesora"
+#     writable: true
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if command -v ollama >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+          exit 0
+      fi
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y curl git
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt-get install -y nodejs
+      curl -fsSL https://ollama.com/install.sh | sh
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      REPO_DIR=/opt/avendesora
+      MARKER=clients/avendesora-cli/index.js
+      if [ ! -e "${REPO_DIR}/${MARKER}" ]; then
+          # Nothing mounted there, so fall back to a clone. GIT_TERMINAL_PROMPT=0
+          # turns a credential prompt into an immediate error instead of a hang.
+          export GIT_TERMINAL_PROMPT=0
+          if ! git clone https://github.com/imagewize/avendesora.git "${REPO_DIR}"; then
+              cat >&2 <<'ERR'
+      [ERROR] /opt/avendesora has no checkout and the clone failed.
+      The repository is private until v1.0, so an anonymous clone cannot work.
+      Mount your host clone into the guest instead — from the root of your clone:
+        limactl delete <name>
+        limactl create --name=<name> \
+          --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/avendesora\",\"writable\":true}]" \
+          lima/avendesora-core.yaml
+      ERR
+              exit 1
+          fi
+      fi
+      if ! mountpoint -q "${REPO_DIR}"; then
+          chown -R "{{.User}}" "${REPO_DIR}"
+      fi
+      sudo -u "{{.User}}" npm install --prefix "${REPO_DIR}/clients/avendesora-cli"
+      chmod +x "${REPO_DIR}/clients/avendesora-cli/index.js"
+      ln -sf "${REPO_DIR}/clients/avendesora-cli/index.js" /usr/local/bin/avendesora
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      # The Ollama installer starts the daemon under systemd; wait for the API
+      # before pulling, or the first `ollama` call races the socket.
+      timeout 120s bash -c "until curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; do sleep 2; done"
+      ollama pull "{{.Param.model}}"
+      # configs/ollama-modelfile is FROM mistral-small, which needs ~15GB and
+      # does not fit in this guest. Build the persona on the small model instead,
+      # without editing the repo copy (it may be a read-only host mount).
+      install -d /var/lib/avendesora
+      sed "s|^FROM .*|FROM {{.Param.model}}|" /opt/avendesora/configs/ollama-modelfile \
+          >/var/lib/avendesora/Modelfile
+      ollama create avendesora -f /var/lib/avendesora/Modelfile
+
+probes:
+  - description: "ollama serving the avendesora persona"
+    script: |
+      #!/bin/bash
+      set -eu -o pipefail
+      if ! timeout 900s bash -c "until ollama list 2>/dev/null | grep -q '^avendesora'; do sleep 5; done"; then
+          echo >&2 "the avendesora model was never created"
+          exit 1
+      fi
+    hint: |
+      Ollama did not finish. Inside the guest, check:
+        journalctl -u ollama -n 50
+      and /var/log/cloud-init-output.log for provisioning errors. A slow first
+      run is usually the model download.
+
+message: |
+  The Avendesora Core is up. Point the CLI at your Node guest:
+  ------
+  limactl shell avendesora-kali -- ip -4 -br addr show lima0   # find <KALI_IP>
+  limactl shell {{.Name}} -- avendesora --node http://<KALI_IP>:3000
+  ------
+  `ollama run avendesora` is a plain chat session with no tools — only the CLI
+  bridges the model to the Node.
