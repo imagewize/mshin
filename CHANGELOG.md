@@ -7,8 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Verified
+
+- **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
+  it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
+  pointed at both with `--node http://192.168.105.3:3000 --ollama
+  http://localhost:11434`. The persona was built on `qwen3:8b` rather than the
+  Modelfile's `mistral-small`, per the guide's `sed` on the `FROM` line. Asked
+  for a whois on `example.com`, the model emitted a native `tool_calls` for
+  `whois` — not the narrated shell command that 0.5.0 found smaller models fall
+  back to — the Node ran it under `sudo -n`, and the answer correctly named IANA
+  as the registrar from the real registry output.
+
+  This settles the architectural claim the 0.7.1 docs made: **the Core does not
+  have to be a VM.** The CLI is the MCP client and needs only an Ollama
+  endpoint, so a 16GB Mac can run the whole system without the Core guest, with
+  inference on the Mac's GPU instead of an emulated CPU.
+- Both guests boot and provision cleanly at the 0.7.1 memory defaults
+  (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
+- **Re-checked on the merged 0.7.3 agent loop**, with the persona rebuilt
+  from the current modelfile on `qwen3:8b` (the installed `mshin` predated
+  it). Same whois on `example.com` through the CLI against host Ollama and
+  the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
+  registry output, IANA named correctly.
+
+### Still not verified
+
+- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
+  across the shared network.
+- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
+
+## [0.7.3] - 2026-09-06
+
+Agent-loop hardening release. The prior `0.7.1` modelfile fix set `PARAMETER
+ temperature 0`, but the CLI was still overriding it with `temperature: 0.7` in
+the `/api/chat` request. This release fixes that override, adds recovery for
+text-emitted tool calls, backstops invented tool reports, and closes three
+readline lifecycle bugs that broke piped prompts and the approval gate.
+
 ### Fixed
 
+- **`clients/mshin-cli/agent.js` no longer overrides the modelfile temperature.**
+  The API request hard-coded `options.temperature: 0.7`, which overrode the
+  `PARAMETER temperature 0` set in `configs/ollama-modelfile`. It now sends
+  `temperature: 0`, matching the persona configuration that keeps native tool
+  calling reliable.
+- **Narrated tool-call recovery handles `functions.name(args)` syntax.**
+  `extractTextToolCall` previously matched only JSON payloads; some models emit
+  calls as text like `functions.nmap(target="127.0.0.1", flags=["-sS"])`. The
+  extractor now parses both JSON and function-syntax calls, then runs the real
+  tool and strips the invented output from the transcript.
+- **Backstop blocks fabricated tool output when no tool ran.** If a turn ends
+  with no tool ever executed and the assistant content looks like a tool report
+  (fenced `Result:` or port-style output), the loop drops the fabricated turn
+  and returns a plain warning instead of printing the hallucination as an answer.
 - **The CLI session now has a single owner of stdin.**
   `clients/mshin-cli/agent.js`'s `askYesNo` opened a second readline
   interface on the same stdin while `index.js`'s main interface was still
@@ -29,61 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   approval first so EOF cannot hang the exit and no answer is never read as
   a yes.
 
-### Verified
-
-- **The host-Ollama path works end to end.** 0.7.1 documented it but had not run
-  it: Ollama native on macOS, only the 4GiB Node guest booted, and the CLI
-  pointed at both with `--node http://192.168.105.3:3000 --ollama
-  http://localhost:11434`. The persona was built on `qwen3:8b` rather than the
-  Modelfile's `mistral-small`, per the guide's `sed` on the `FROM` line. Asked
-  for a whois on `example.com`, the model emitted a native `tool_calls` for
-  `whois` — not the narrated shell command that 0.5.0 found smaller models fall
-  back to — the Node ran it under `sudo -n`, and the answer correctly named IANA
-  as the registrar from the real registry output.
-
-  This settles the architectural claim the 0.7.1 docs made: **the Core does not
-  have to be a VM.** The CLI is the MCP client and needs only an Ollama
-  endpoint, so a 16GB Mac can run the whole system without the Core guest, with
-  inference on the Mac's GPU instead of an emulated CPU.
-- Both guests boot and provision cleanly at the 0.7.1 memory defaults
-  (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
-- **Re-checked on the merged 0.7.2 agent loop**, with the persona rebuilt
-  from the current modelfile on `qwen3:8b` (the installed `mshin` predated
-  it). Same whois on `example.com` through the CLI against host Ollama and
-  the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
-  registry output, IANA named correctly.
-
-### Still not verified
-
-- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
-  across the shared network.
-- Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
-
-## [0.7.2] - 2026-09-06
-
-Agent-loop hardening release. The prior `0.7.1` modelfile fix set `PARAMETER
- temperature 0`, but the CLI was still overriding it with `temperature: 0.7` in
-the `/api/chat` request. This release fixes that override and adds recovery for
-text-emitted tool calls plus a backstop that keeps invented tool reports from
-reaching the user.
-
-### Fixed
-
-- **`clients/mshin-cli/agent.js` no longer overrides the modelfile temperature.**
-  The API request hard-coded `options.temperature: 0.7`, which overrode the
-  `PARAMETER temperature 0` set in `configs/ollama-modelfile`. It now sends
-  `temperature: 0`, matching the persona configuration that keeps native tool
-  calling reliable.
-- **Narrated tool-call recovery handles `functions.name(args)` syntax.**
-  `extractTextToolCall` previously matched only JSON payloads; some models emit
-  calls as text like `functions.nmap(target="127.0.0.1", flags=["-sS"])`. The
-  extractor now parses both JSON and function-syntax calls, then runs the real
-  tool and strips the invented output from the transcript.
-- **Backstop blocks fabricated tool output when no tool ran.** If a turn ends
-  with no tool ever executed and the assistant content looks like a tool report
-  (fenced `Result:` or port-style output), the loop drops the fabricated turn
-  and returns a plain warning instead of printing the hallucination as an answer.
-
 ### Changed
 
 - **`configs/ollama-modelfile`** — removed the pinned Mistral `TEMPLATE` and set
@@ -91,8 +88,13 @@ reaching the user.
 
 ### Verified
 
-- `npm test` in `clients/mshin-cli/` passes 30/30 cases.
+- `npm test` in `clients/mshin-cli/` passes 32/32 cases.
 - `npm test` in `servers/src/kali/` passes 14/14 cases.
+- Verified against host Ollama and the `mshin-kali` guest: piped `whois` now
+  runs the tool and prints the answer, with the busy guard catching typed-ahead
+  `exit`. Approval routing checked separately -- reply resolves the question
+  and starts no second run, stdin holds one listener throughout, EOF
+  mid-approval denies.
 
 ## [0.7.1] - 2026-09-06
 
@@ -741,8 +743,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.2...HEAD
-[0.7.2]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.2
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.3
 [0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/imagewize/mshin/compare/v0.5.0...v0.6.0
