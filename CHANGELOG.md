@@ -7,6 +7,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-06
+
+First release whose claims were checked by running them. A Debian guest was
+provisioned from the new templates and driven end to end — `tools/list` and a
+real `nmap` call from the macOS host, through Lima's port forwarding, into the
+MCP server, out through `sudo -n`. That exercise found four defects that had
+been shipped since 0.1.0, three of them on the **production** two-machine path
+rather than the new local one.
+
+### Fixed
+
+- **Every tool call failed under systemd.** `configs/mcp-kali.service` set
+  `NoNewPrivileges=true`, while `servers/src/kali/tools.js` runs each binary as
+  `sudo -n <bin>` whenever the server is not root. Those cannot both hold: the
+  flag blocks the privilege transition sudo needs, so every call died with
+  `sudo: The "no new privileges" flag is set`. This affected any host
+  provisioned by `scripts/setup_mcp_server.sh`, not just Lima guests. The flag
+  is removed, with a comment recording why it must not come back; the sudoers
+  allowlist remains the constraint on the service.
+- **A failed clone destroyed the existing install.** Both setup scripts ran
+  `rm -rf "${AVENDESORA_DIR}"` *before* `git clone`, so any clone failure left
+  the machine with no checkout at all and `set -e` aborted the run. They now
+  clone into a staging directory and swap it into place only on success.
+- **Provisioning could not fetch the code.** Every path cloned
+  `https://github.com/imagewize/avendesora.git` anonymously, but the repository
+  is private until v1.0 — git prompted for credentials against a non-tty and
+  failed with the opaque `could not read Username for 'https://github.com'`.
+  Both scripts now honour an `AVENDESORA_REPO` override (SSH URL or local
+  path), set `GIT_TERMINAL_PROMPT=0` so the failure is immediate rather than a
+  hang, and print what to do about it. The Lima templates prefer a host mount
+  and fall back to the clone.
+- **The persona ran in a 4096-token context.** `configs/ollama-modelfile` set
+  `temperature`, `top_p` and `top_k` but no `num_ctx`, so Ollama's default
+  applied. Measured against it, the agent loop spends ~900 tokens every turn
+  before the conversation starts — ~510 for the six MCP tool schemas and ~380
+  for the system prompt — and a single nmap or nikto result is another 1-3k, so
+  history began falling off after about one substantial scan. Now
+  `PARAMETER num_ctx 16384`, verified via `ollama ps` (`CONTEXT 16384`). It
+  costs KV cache: the same 4B model grew from 3.2GB to 5.1GB.
+
+### Added
+
+- **`lima/avendesora-kali.yaml` and `lima/avendesora-core.yaml`** — Lima
+  templates for the macOS local-dev path, carrying resources, networking and a
+  `provision:` block that runs what `docs/lima-local-dev.md` previously asked
+  the reader to type by hand. `probes:` make `limactl start` block until
+  `:3000/health` answers. Neither sets `arch`, so one file serves Intel and
+  Apple Silicon natively. Both pass `limactl template validate`.
+
+### Changed
+
+- **`docs/lima-local-dev.md`** — Setup offers two paths per guest: the template
+  file, or the original `limactl` flags with provisioning typed by hand. The
+  flag path is kept in full as the explanation of what the templates do.
+  "Advanced: Custom Lima Templates" becomes "Advanced: Editing the Templates".
+- **`configs/mcp-kali.service`** — see the `NoNewPrivileges` fix above.
+- **`scripts/setup_mcp_server.sh`, `scripts/setup_ollama.sh`** — staged clone,
+  `AVENDESORA_REPO` override, actionable failure output.
+
+### Fixed (Lima guide)
+
+- **`nikto` is not in Debian `main`.** The guide's `apt install -y nmap nikto
+  whois tshark` failed with `E: Unable to locate package nikto` on a Debian 13
+  cloud image, and under `set -e` took Node.js, the checkout and the systemd
+  unit down with it. `nikto` lives in `non-free`, which the cloud image does not
+  enable; the templates and the guide now enable it. Debian's build is
+  **1:2.1.5** against Kali's 2.5.x, so its plugin database is years older —
+  noted in the guide.
+- **`ReadWritePaths` named a nonexistent directory.** Lima's guest home is
+  `/home/<user>.linux`, not `/home/<user>`. The guide uses `$HOME`; the
+  templates use `{{.Home}}`.
+- **The persona pulled a 24B model.** The guide had the reader `ollama pull
+  mistral` then build from `configs/ollama-modelfile`, which is
+  `FROM mistral-small` — silently fetching a second ~15GB model no guest can
+  hold. Every path now renders a copy with `FROM` rewritten.
+- **Editing a template appeared to do nothing.** `limactl create` snapshots the
+  template into `~/.lima/<name>/lima.yaml`; the repo file is not consulted
+  again. Documented, with the recovery.
+
+### Verified
+
+Run against a real guest, not asserted:
+
+- Provisioning completes from a clean `limactl create`; `/health` reports
+  `{"status":"ok","tools":["nmap","nikto","whois","tshark"]}`.
+- `sudo -n` succeeds for all four tools under the allowlist.
+- `curl http://127.0.0.1:3000/health` **from the macOS host** reaches the
+  guest — Lima forwards guest ports to loopback with no `socket_vmnet` and no
+  shared network.
+- An MCP `tools/list` and an `nmap` call from the host returned real scan
+  output through `sudo -n`.
+
+### Not verified
+
+- The two-machine path on real hardware. `metasploit` and `searchsploit` exist
+  in neither Debian nor this test, so two of the six tools remain unexercised.
+- The agent loop itself. These tests drove the MCP server directly; no LLM was
+  in the loop, so tool-call formatting between Ollama and `agent.js` is still
+  untested.
+- `lima/avendesora-core.yaml` has never been booted.
+- Ubuntu's `universe` claim for `nikto` in the single-VM section.
+- `npm test` remains `node --check` — a syntax check, not a test suite.
+
 ## [0.2.1] - 2026-09-06
 
 Documentation release. Adds a single-machine Lima development path for macOS
@@ -225,7 +328,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/imagewize/avendesora/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/imagewize/avendesora/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/imagewize/avendesora/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/imagewize/avendesora/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/imagewize/avendesora/compare/v0.1.0...v0.1.1
