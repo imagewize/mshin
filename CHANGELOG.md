@@ -15,28 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.3] - 2026-09-06
 
-Agent-loop hardening release. The prior `0.7.1` modelfile fix set `PARAMETER
- temperature 0`, but the CLI was still overriding it with `temperature: 0.7` in
-the `/api/chat` request. This release fixes that override, adds recovery for
-text-emitted tool calls, backstops invented tool reports, and closes three
-readline lifecycle bugs that broke piped prompts and the approval gate.
+CLI readline lifecycle release. Closes three defects that left stdin with two
+owners, allowed concurrent agent runs, and killed in-flight work on EOF.
 
 ### Fixed
 
-- **`clients/mshin-cli/agent.js` no longer overrides the modelfile temperature.**
-  The API request hard-coded `options.temperature: 0.7`, which overrode the
-  `PARAMETER temperature 0` set in `configs/ollama-modelfile`. It now sends
-  `temperature: 0`, matching the persona configuration that keeps native tool
-  calling reliable.
-- **Narrated tool-call recovery handles `functions.name(args)` syntax.**
-  `extractTextToolCall` previously matched only JSON payloads; some models emit
-  calls as text like `functions.nmap(target="127.0.0.1", flags=["-sS"])`. The
-  extractor now parses both JSON and function-syntax calls, then runs the real
-  tool and strips the invented output from the transcript.
-- **Backstop blocks fabricated tool output when no tool ran.** If a turn ends
-  with no tool ever executed and the assistant content looks like a tool report
-  (fenced `Result:` or port-style output), the loop drops the fabricated turn
-  and returns a plain warning instead of printing the hallucination as an answer.
 - **The CLI session now has a single owner of stdin.**
   `clients/mshin-cli/agent.js`'s `askYesNo` opened a second readline
   interface on the same stdin while `index.js`'s main interface was still
@@ -56,11 +39,6 @@ readline lifecycle bugs that broke piped prompts and the approval gate.
   exited before answering. Close now waits for the run, and denies a pending
   approval first so EOF cannot hang the exit and no answer is never read as
   a yes.
-
-### Changed
-
-- **`configs/ollama-modelfile`** — removed the pinned Mistral `TEMPLATE` and set
-  `PARAMETER temperature 0`, with comments explaining both decisions.
 
 ### Verified
 
@@ -87,11 +65,46 @@ readline lifecycle bugs that broke piped prompts and the approval gate.
   inference on the Mac's GPU instead of an emulated CPU.
 - Both guests boot and provision cleanly at the 0.7.1 memory defaults
   (Core 10GiB, Node 4GiB) on a 16GB M-series Mac.
-- **Re-checked on the merged 0.7.3 agent loop**, with the persona rebuilt
+- **Re-checked on the merged 0.7.2 agent loop**, with the persona rebuilt
   from the current modelfile on `qwen3:8b` (the installed `mshin` predated
   it). Same whois on `example.com` through the CLI against host Ollama and
   the `mshin-kali` guest: a native `tool_calls`, no narration recovery, real
   registry output, IANA named correctly.
+
+## [0.7.2] - 2026-09-06
+
+Agent-loop hardening release. The prior `0.7.1` modelfile fix set `PARAMETER
+ temperature 0`, but the CLI was still overriding it with `temperature: 0.7` in
+the `/api/chat` request. This release fixes that override and adds recovery for
+text-emitted tool calls plus a backstop that keeps invented tool reports from
+reaching the user.
+
+### Fixed
+
+- **`clients/mshin-cli/agent.js` no longer overrides the modelfile temperature.**
+  The API request hard-coded `options.temperature: 0.7`, which overrode the
+  `PARAMETER temperature 0` set in `configs/ollama-modelfile`. It now sends
+  `temperature: 0`, matching the persona configuration that keeps native tool
+  calling reliable.
+- **Narrated tool-call recovery handles `functions.name(args)` syntax.**
+  `extractTextToolCall` previously matched only JSON payloads; some models emit
+  calls as text like `functions.nmap(target="127.0.0.1", flags=["-sS"])`. The
+  extractor now parses both JSON and function-syntax calls, then runs the real
+  tool and strips the invented output from the transcript.
+- **Backstop blocks fabricated tool output when no tool ran.** If a turn ends
+  with no tool ever executed and the assistant content looks like a tool report
+  (fenced `Result:` or port-style output), the loop drops the fabricated turn
+  and returns a plain warning instead of printing the hallucination as an answer.
+
+### Changed
+
+- **`configs/ollama-modelfile`** — removed the pinned Mistral `TEMPLATE` and set
+  `PARAMETER temperature 0`, with comments explaining both decisions.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 30/30 cases.
+- `npm test` in `servers/src/kali/` passes 14/14 cases.
 
 ## [0.7.1] - 2026-09-06
 
@@ -741,7 +754,8 @@ hosts (Core for inference, Node for tool execution).
   line up in a monospace font.
 
 [Unreleased]: https://github.com/imagewize/mshin/compare/v0.7.3...HEAD
-[0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.3
+[0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/imagewize/mshin/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/imagewize/mshin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/imagewize/mshin/compare/v0.5.0...v0.6.0
