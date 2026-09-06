@@ -7,10 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Verified
+
+- **The guest-to-guest Core → Node hop runs end to end on Lima's shared
+  network.** Both guests on the `lima: shared` vmnet — Core `192.168.105.4`,
+  Node `192.168.105.3` — with the Core's `/opt/mshin` at `829ee1f`, the 0.7.3
+  code. `curl http://192.168.105.3:3000/health` from the Core answers with the
+  four tools a Debian-based guest can expose (`nmap`, `nikto`, `whois`,
+  `tshark`). A piped whois on `example.com` then drove the whole chain — Core
+  LLM → CLI → MCP client → Node → tool → answer — and named IANA as the
+  registrar from real registry output.
+
+  This is the two-machine data flow with both machines virtual, which leaves
+  only the physical-LAN case open.
+- **The 0.7.3 readline fixes hold in a live run, not only in tests.** The piped
+  `exit` arrived mid-run, the busy guard refused it, and close waited for the
+  answer instead of exiting early — both defects observed on the wire rather
+  than in a harness.
+- **The narrated-tool-call fallback is model-dependent.** This Core builds the
+  persona on `mistral` (7B) and wrote the call as text, where 0.7.3's
+  host-Ollama run on `qwen3:8b` emitted a native `tool_calls`. The 0.7.2
+  recovery path caught it and ran the tool anyway, so the smaller model still
+  shows the 0.5.0 behaviour that hardening was written for.
+
 ### Still not verified
 
-- The two-machine path on real hardware, and the guest-to-guest Core → Node hop
-  across the shared network.
+- The two-machine path on real hardware, across a physical LAN.
 - Real execution of `metasploit` and `searchsploit`, which remain Kali-only.
 
 ## [0.7.3] - 2026-09-06
