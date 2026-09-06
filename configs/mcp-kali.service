@@ -11,7 +11,11 @@ RestartSec=5s
 Environment=NODE_ENV=production
 
 # Security settings
-NoNewPrivileges=true
+# NoNewPrivileges is deliberately NOT set. tools.js runs each binary as
+# `sudo -n <bin>` whenever the server is not root (see the NOPASSWD allowlist in
+# /etc/sudoers.d/avendesora), and NoNewPrivileges=true blocks exactly that:
+# every tool call fails with "sudo: The "no new privileges" flag is set".
+# The sudoers allowlist is what constrains this service, not this flag.
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
