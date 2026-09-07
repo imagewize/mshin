@@ -73,7 +73,7 @@ function extractJsonToolCall(text, isValidTool) {
       if (typeof name === "string" && isValidTool(name) && typeof args === "object") {
         return { name, args };
       }
-      break;
+      break; // valid JSON but not a call to a known tool; try the next `{`
     }
   }
   return null;
@@ -95,6 +95,17 @@ function extractFunctionSyntaxToolCall(text, isValidTool) {
   return null;
 }
 
+/**
+ * Locate `name(...)`-style calls in free text and return each one's name
+ * alongside the raw, unparsed argument string between its parentheses.
+ *
+ * The regex only finds the opening `name(`; everything after that is walked
+ * by hand rather than matched with a closing-paren regex, because the naive
+ * `\)` match breaks the moment an argument contains its own parens (a
+ * nested call) or a `)` inside a quoted string (e.g. a shell flag). The scan
+ * below tracks paren depth and, while inside a quote, ignores parens
+ * entirely (and skips an escaped quote so it doesn't end the string early).
+ */
 function findFunctionCalls(text) {
   const calls = [];
   // Match optional `functions.` prefix.
@@ -130,6 +141,16 @@ function findFunctionCalls(text) {
   return calls;
 }
 
+/**
+ * Parse a Python-like keyword-argument string -- `target="1.2.3.4", flags=['-sS']`
+ * -- into a plain object, without a general expression parser.
+ *
+ * Only `key=value` pairs are collected; a bare positional value (no `=`) is
+ * scanned past and dropped, since every tool this agent calls takes named
+ * arguments (per its MCP schema), so a positional the model wrote has no
+ * schema field to land in anyway. Each value's own syntax (string/list/
+ * object/literal) is handled by `parsePythonLikeValue`.
+ */
 function parsePythonLikeArgs(argString) {
   const args = {};
   let i = 0;
@@ -167,6 +188,18 @@ function parsePythonLikeArgs(argString) {
   return args;
 }
 
+/**
+ * Recursive-descent parser for one argument value at `text[start:]`, used by
+ * `parsePythonLikeArgs`. Returns the parsed JS value and the index just past
+ * what it consumed, so the caller can keep scanning the rest of the string.
+ *
+ * Handles the shapes a model actually emits: a quoted string (with `\`
+ * escapes), a `[...]` list (elements recursively parsed, so nested
+ * lists/objects/strings all work), a `{...}` object (delegated to
+ * `JSON.parse` -- Python dict syntax with double-quoted keys happens to be
+ * valid JSON, and this loop only needs to find the matching `}`), or a bare
+ * token (number/boolean/None/word) handed to `parseLiteral`.
+ */
 function parsePythonLikeValue(text, start) {
   let i = start;
   while (i < text.length && /\s/.test(text[i])) i++;
@@ -226,6 +259,10 @@ function parsePythonLikeValue(text, start) {
   return { value: parseLiteral(token), nextIndex: i };
 }
 
+// Coerce a bare (unquoted) token to its likely type -- covering both
+// Python's spelling (`True`/`False`/`None`) and JSON's, since the model may
+// mix conventions. Anything that isn't a recognized literal or number is
+// returned as-is (a plain string).
 function parseLiteral(token) {
   if (token === "True" || token === "true") return true;
   if (token === "False" || token === "false") return false;
@@ -235,6 +272,20 @@ function parseLiteral(token) {
   return token;
 }
 
+/**
+ * Heuristic check for a model that invented tool output instead of calling a
+ * tool -- e.g. writing its own fake nmap report rather than emitting a call
+ * `extractTextToolCall` could have recovered. Only meaningful before any
+ * tool has actually run this turn (see the `toolWasExecuted` check at the
+ * call site); once a real result is in history, similar-looking text is
+ * presumably the model summarizing that real output, not fabricating it.
+ *
+ * Looks for two shapes: a fenced code block, or a "Result:" label, either of
+ * which is followed by text that reads like genuine scan output (an
+ * `<port>/tcp` or `<port>/udp` token near "open"/"closed"/"filtered"). This
+ * is deliberately narrow -- it is meant to catch confident fabrication, not
+ * to flag every code block or every use of the word "result".
+ */
 function looksLikeFabricatedToolOutput(content) {
   if (!content) return false;
 
