@@ -225,8 +225,8 @@ sudo sed -i 's/^Components: main$/Components: main non-free/' \
   /etc/apt/sources.list.d/debian.sources
 sudo apt update
 
-# Install the four tools Debian ships
-sudo apt install -y nmap nikto whois tshark
+# Install the eleven tools Debian ships
+sudo apt install -y nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum
 
 # searchsploit: a shell script over the exploit-db data repo. The clone is the
 # install, and it is arch-independent. tools.js expects /usr/bin/searchsploit.
@@ -249,6 +249,9 @@ sudo msfconsole -q -x exit
 nmap --version
 nikto -Version
 searchsploit --version
+hydra -h | head -1
+sqlmap --version
+gobuster --version
 ```
 
 > **`nikto` needs `non-free`.** Debian 13's cloud image enables only the `main` component, and `nikto` is packaged in `non-free` — without the `sed` above, `apt install` fails with `E: Unable to locate package nikto` and takes the rest of the command down with it. Debian's `nikto` is also **1:2.1.5**, against Kali's 2.5.x: the plugin database is years older, so findings will differ from a real Node.
@@ -270,14 +273,14 @@ cd /opt/mshin/servers/src/kali
 npm install
 ```
 
-The server shells out as `sudo -n <tool>` whenever it is not running as root (`servers/src/kali/tools.js:53-57`), so it needs a passwordless allowlist or **every tool call fails** with `sudo: a password is required`:
+The server shells out as `sudo -n <tool>` whenever it is not running as root (`servers/src/kali/tools.js:90-92`), so it needs a passwordless allowlist or **every tool call fails** with `sudo: a password is required`:
 
 ```bash
 # Mirror the allowlist that scripts/setup_mcp_server.sh installs. tshark is
 # omitted because reading user-owned PCAP files as root triggers Wireshark's
 # file-owner check; tshark needs no privileges to analyze existing captures.
 sudo tee /etc/sudoers.d/mshin >/dev/null <<EOF
-$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
 EOF
 sudo chmod 440 /etc/sudoers.d/mshin
 ```
@@ -285,7 +288,7 @@ sudo chmod 440 /etc/sudoers.d/mshin
 Test it in the foreground before daemonising:
 
 ```bash
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
 # Expect: [INFO] Machin Shin Node listening on http://0.0.0.0:3000
 # Ctrl-C to stop
 ```
@@ -296,8 +299,9 @@ Then install the unit the repo already ships:
 sudo cp /opt/mshin/configs/mcp-kali.service /etc/systemd/system/mshin-node.service
 
 # The shipped unit runs as a dedicated 'mshin' user. In a throwaway Lima VM,
-# run as your own login user instead; the tool list is the same thirteen, since the
-# steps above installed metasploit, searchsploit and the new tools from upstream.
+# run as your own login user instead; the tool list is the same thirteen, since
+# the steps above installed the other eleven from Debian and metasploit and
+# searchsploit from upstream.
 sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/mshin-node.service
 sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin $HOME|" /etc/systemd/system/mshin-node.service
 sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum|" /etc/systemd/system/mshin-node.service
@@ -440,7 +444,7 @@ If the connection fails:
    ```bash
    # On Node VM, start the server manually
    cd /opt/mshin/servers/src/kali
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
    ```
 
 ---
@@ -619,6 +623,8 @@ Then, in the CLI session:
 ```
 
 `metasploit` and `searchsploit` are **not** in the Ubuntu repositories used here, so the four-tool list above leaves them out. They are not Kali-only, though — to add them, use the same upstream sources the two-machine Node does (exploit-db's git repo and Rapid7's apt repo; see [Install the tools](#install-the-tools) in Step 1), then add `metasploit,searchsploit` to the `--tools` list and `/usr/bin/searchsploit`, `/usr/bin/msfconsole` to the sudoers allowlist.
+
+This single-VM path stays deliberately light and doesn't provision the other seven tools (`hydra`, `sqlmap`, `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`) either — they're Ubuntu-packaged the same way Debian ships them, so add them with `sudo apt install -y hydra sqlmap gobuster masscan dirb arping dnsenum`, extend the sudoers line and `--tools` flag above accordingly.
 
 > **`nikto` is in `multiverse` on Ubuntu.** The install block above enables it up front so the package resolves cleanly. On Debian, nikto lives in `non-free`; the fix for the Debian guest is in [Step 1](#step-1-create-the-node-vm).
 
