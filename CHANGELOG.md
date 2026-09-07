@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The two-machine path on real hardware, across a physical LAN.
 
+## [0.9.0] - 2026-09-07
+
+Tool expansion release. Adds seven new Kali tools to the MCP server (hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum), bringing the total to thirteen. All tool-list locations (tools.js, setup scripts, service config, docs) are updated in sync per the repo invariant. Not yet verified on real hardware.
+
+### Added
+
+- **Seven new MCP tools**: `hydra` (password cracking), `sqlmap` (SQL injection), `gobuster` (directory/DNS brute forcing), `masscan` (fast port scanning), `dirb` (directory brute forcing), `arping` (ARP discovery), and `dnsenum` (DNS enumeration). Each includes full input schema validation and shell-injection guards.
+- **Updated Lima Node template** (`lima/mshin-node.yaml`): provisions all thirteen tools from Debian repos plus metasploit/searchsploit from upstream vendors.
+
+### Changed
+
+- **All tool-list references updated**: `TOOL_PATHS` in `tools.js`, `--tools` flag and apt list in `setup_mcp_server.sh`, sudoers allowlist in both setup scripts and docs, `ExecStart` in `mcp-kali.service`, and all documentation examples now enumerate all thirteen tools.
+- **`docs/cybersecurity-agent-roadmap.md`**: marked Phase 1 as complete, updated Current State table and overview.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes 16/16 cases (contract test updated for 13 tools, injection guards added for all new tools).
+- `npm test` in `clients/mshin-cli/` passes 32/32 cases.
+
 ## [0.8.0] - 2026-09-06
 
 Full-toolset release for the Lima Node. The Debian dev guest now provisions all
@@ -825,7 +844,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/imagewize/mshin/compare/v0.7.1...v0.7.2
