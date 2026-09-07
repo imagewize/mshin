@@ -229,6 +229,18 @@ class EvalHarness {
       ? expectedTools.filter((name) => !calledTools.includes(name))
       : [];
 
+    // Two verdicts, kept apart on purpose. `success` is run health: did the
+    // loop finish without throwing. `behaviourPass` is whether the model did
+    // what the case asked — every expected tool called, no output blocked as
+    // fabricated. `overallPass` fails if either does, so a green run that skips
+    // a tool and invents its output no longer reads as a pass.
+    const behaviourPass = behaviourVerdict({
+      expectedTools,
+      missingTools,
+      fabricatedOutputsBlocked: agent.metrics.fabricatedOutputsBlocked,
+    });
+    const overallPass = success && behaviourPass !== false;
+
     return {
       model,
       case: testCase.name,
@@ -244,6 +256,7 @@ class EvalHarness {
       toolCallCount: agent.metrics.toolCalls,
       narratedToolCallCount: agent.metrics.narratedToolCalls,
       fabricatedOutputsBlocked: agent.metrics.fabricatedOutputsBlocked,
+      continuationNudges: agent.metrics.continuationNudges,
       approvalRequests: agent.metrics.approvalRequests,
       approvalGranted: agent.metrics.approvalGranted,
       approvalDenied: agent.metrics.approvalDenied,
@@ -254,6 +267,8 @@ class EvalHarness {
       expectedTools,
       missingTools,
       expectedToolsMet: expectedTools ? missingTools.length === 0 : null,
+      behaviourPass,
+      overallPass,
       maxSteps: testCase.maxSteps || 25,
     };
   }
@@ -270,6 +285,41 @@ function writeJsonReport(results, outputDir) {
   const path = join(outputDir, `eval-${timestamp}.json`);
   writeFileSync(path, JSON.stringify(results, null, 2));
   return path;
+}
+
+/**
+ * Behavioural verdict, separate from run health (`success`). Null when the case
+ * asserts nothing behavioural (no expected tools, and no fabrication to catch);
+ * otherwise true only when every expected tool was called and no output was
+ * blocked as fabricated. A fabrication the backstop *did* catch still fails the
+ * case — the model tried to invent a result.
+ */
+export function behaviourVerdict({
+  expectedTools,
+  missingTools = [],
+  fabricatedOutputsBlocked = 0,
+}) {
+  const fabricated = fabricatedOutputsBlocked > 0;
+  if (!expectedTools && !fabricated) return null;
+  const toolsMet = expectedTools ? missingTools.length === 0 : true;
+  return toolsMet && !fabricated;
+}
+
+function verdictLabel(pass) {
+  return pass ? "PASS" : "FAIL";
+}
+
+function behaviourLabel(result) {
+  if (result.behaviourPass === true) return "PASS";
+  if (result.behaviourPass === false) return "FAIL";
+  return "—";
+}
+
+// Report rows may be minimal (some tests pass a bare object). Fall back to run
+// health minus any explicit behaviour failure when the field is absent.
+function overallPassOf(result) {
+  if (typeof result.overallPass === "boolean") return result.overallPass;
+  return result.success !== false && result.behaviourPass !== false;
 }
 
 function expectedLabel(result) {
@@ -295,7 +345,7 @@ function writeMarkdownReport(results, outputDir) {
   const summaryRows = results
     .map(
       (r) =>
-        `| ${r.model} | ${r.case} | ${r.success ? "PASS" : "FAIL"} | ${expectedLabel(r)} | ${r.durationMs} | ${r.steps} | ${r.toolCallCount} | ${r.narratedToolCallCount} | ${r.fabricatedOutputsBlocked} | ${r.contextHighWaterTokens} |`
+        `| ${r.model} | ${r.case} | ${verdictLabel(overallPassOf(r))} | ${verdictLabel(r.success !== false)} | ${behaviourLabel(r)} | ${expectedLabel(r)} | ${r.durationMs} | ${r.steps} | ${r.toolCallCount} | ${r.narratedToolCallCount} | ${r.fabricatedOutputsBlocked} | ${r.contextHighWaterTokens} |`
     )
     .join("\n");
 
@@ -305,11 +355,11 @@ function writeMarkdownReport(results, outputDir) {
 ### ${r.model} / ${r.case}
 
 - **Prompt:** ${r.prompt}
-- **Result:** ${r.success ? "PASS" : "FAIL"}${r.error ? ` — ${r.error}` : ""}
+- **Overall:** ${verdictLabel(overallPassOf(r))}\n- **Run:** ${verdictLabel(r.success !== false)}${r.error ? ` — ${r.error}` : ""}\n- **Behaviour:** ${behaviourLabel(r)}
 - **Duration:** ${r.durationMs} ms
 - **Steps:** ${r.steps} / ${r.maxSteps}
 - **Tool calls:** ${r.toolCallCount} (${r.narratedToolCallCount} narrated)
-- **Fabricated outputs blocked:** ${r.fabricatedOutputsBlocked}
+- **Fabricated outputs blocked:** ${r.fabricatedOutputsBlocked}\n- **Continuation nudges:** ${r.continuationNudges ?? 0}
 - **Approval requests:** ${r.approvalRequests} granted / ${r.approvalDenied} denied
 - **Context high-water:** ${r.contextHighWaterTokens} tokens
 - **Unavailable tools:** ${r.nonRetryableToolErrors} non-retryable error(s), ${r.blockedToolRetries} retry/retries refused
@@ -323,8 +373,8 @@ ${r.finalAnswer ? "```\n" + r.finalAnswer + "\n```" : "_(none)_"}
 
   const markdown = `# Machin Shin Model Evaluation Report
 
-| Model | Case | Result | Expected Tools | Duration (ms) | Steps | Tool Calls | Narrated | Fabricated | Context Tokens |
-|-------|------|--------|----------------|--------------:|------:|-----------:|---------:|-----------:|---------------:|
+| Model | Case | Overall | Run | Behaviour | Expected Tools | Duration (ms) | Steps | Tool Calls | Narrated | Fabricated | Context Tokens |
+|-------|------|---------|-----|-----------|----------------|--------------:|------:|-----------:|---------:|-----------:|---------------:|
 ${summaryRows}
 
 ${details}
@@ -360,6 +410,7 @@ function writeCsvReport(results, outputDir) {
     "toolCallCount",
     "narratedToolCallCount",
     "fabricatedOutputsBlocked",
+    "continuationNudges",
     "approvalRequests",
     "approvalGranted",
     "approvalDenied",
@@ -370,6 +421,8 @@ function writeCsvReport(results, outputDir) {
     "expectedTools",
     "expectedToolsMet",
     "missingTools",
+    "behaviourPass",
+    "overallPass",
   ];
 
   const rows = results.map((r) =>
@@ -384,6 +437,7 @@ function writeCsvReport(results, outputDir) {
       r.toolCallCount,
       r.narratedToolCallCount,
       r.fabricatedOutputsBlocked,
+      r.continuationNudges,
       r.approvalRequests,
       r.approvalGranted,
       r.approvalDenied,
@@ -394,6 +448,10 @@ function writeCsvReport(results, outputDir) {
       r.expectedTools ? r.expectedTools.join(",") : "",
       r.expectedToolsMet === null ? "" : r.expectedToolsMet,
       r.missingTools ? r.missingTools.join(",") : "",
+      r.behaviourPass === null || r.behaviourPass === undefined
+        ? ""
+        : r.behaviourPass,
+      overallPassOf(r),
     ]
       .map(csvCell)
       .join(",")
@@ -471,15 +529,37 @@ async function main() {
     }
   }
 
-  // The exit code tracks harness errors only. A model that skips an expected
-  // tool is the measurement the suite exists to take, not a failed run.
-  const failures = results.filter((r) => !r.success);
-  if (failures.length > 0) {
-    console.log(`\n${failures.length} case(s) failed.`);
+  // Two exit codes, matching the two verdicts. A run that threw (harness or
+  // transport) is exit 2 — the measurement never completed. A run that
+  // completed but failed on behaviour (skipped an expected tool, or invented a
+  // result) is exit 3, so the suite can guard a behavioural fix while staying
+  // distinguishable from a broken run.
+  const runFailures = results.filter((r) => !r.success);
+  const behaviourFailures = results.filter(
+    (r) => r.success && r.overallPass === false
+  );
+
+  if (behaviourFailures.length > 0) {
+    console.log(`\n${behaviourFailures.length} case(s) failed on behaviour:`);
+    for (const r of behaviourFailures) {
+      const why =
+        r.missingTools && r.missingTools.length > 0
+          ? `missing ${r.missingTools.join(", ")}`
+          : "fabricated output";
+      console.log(`  ${r.model} / ${r.case}: ${why}`);
+    }
+  }
+
+  if (runFailures.length > 0) {
+    console.log(`\n${runFailures.length} case(s) failed to run.`);
     process.exit(2);
   }
 
-  console.log("\nAll cases completed successfully.");
+  if (behaviourFailures.length > 0) {
+    process.exit(3);
+  }
+
+  console.log("\nAll cases passed.");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
