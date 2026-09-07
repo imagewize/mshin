@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
@@ -322,6 +322,11 @@ function parseLiteral(token) {
 function looksLikeFabricatedToolOutput(content) {
   if (!content) return false;
 
+  // A port/proto token next to a port-state word is the signature of scan
+  // output wherever it appears -- fenced, labelled, or loose in prose.
+  const scanSignature = (text) =>
+    /\d+\/(tcp|udp)\b/i.test(text) && /\b(open|closed|filtered)\b/i.test(text);
+
   // Fenced code block containing "Result:" or scan-like output.
   const fenced = content.match(/```[\s\S]*?```/g) || [];
   for (const block of fenced) {
@@ -329,7 +334,7 @@ function looksLikeFabricatedToolOutput(content) {
     if (
       inner.includes("result:") ||
       inner.includes("results:") ||
-      (/\b(open|closed|filtered)\b/.test(inner) && /\d+\/(tcp|udp)\b/.test(inner))
+      scanSignature(inner)
     ) {
       return true;
     }
@@ -345,6 +350,16 @@ function looksLikeFabricatedToolOutput(content) {
     ) {
       return true;
     }
+  }
+
+  // Unfenced, unlabelled scan output. The live recon-chain fabrication took
+  // exactly this shape -- an inline markdown list ("- 22/tcp (SSH)") under the
+  // prose "the nmap scan revealed the following open ports", with no code fence
+  // and no "Result:" label for the two checks above to catch. The call site
+  // only blocks this when the tool it reads like never returned a result, so a
+  // genuine scan summary stays untouched.
+  if (scanSignature(content)) {
+    return true;
   }
 
   return false;
@@ -465,6 +480,35 @@ class AgentMemory {
 }
 
 /**
+ * A step-level trace of the agent loop -- the WP_DEBUG analogue. Off unless
+ * MSHIN_DEBUG (to stderr) or MSHIN_DEBUG_LOG (append to that file, and stderr)
+ * is set. Each call is one line: an event name and a compact JSON payload. It
+ * exists because the metrics alone hid a real bug -- a model emitting two
+ * tool_calls in one turn while the loop silently kept only the first -- which
+ * the `model.turn` event's `dropped` field makes visible at a glance.
+ */
+function makeDebugLogger() {
+  const file = process.env.MSHIN_DEBUG_LOG || null;
+  const enabled = !!process.env.MSHIN_DEBUG || !!file;
+  if (!enabled) return () => {};
+  return (event, data) => {
+    const payload =
+      data === undefined
+        ? ""
+        : " " + (typeof data === "string" ? data : JSON.stringify(data));
+    const line = `[mshin:debug] ${event}${payload}`;
+    process.stderr.write(line + "\n");
+    if (file) {
+      try {
+        appendFileSync(file, line + "\n");
+      } catch {
+        // A broken log path must never take the run down with it.
+      }
+    }
+  };
+}
+
+/**
  * Cybersecurity agent that drives the observe-decide-act loop between Ollama
  * and the Machin Shin Node MCP server.
  */
@@ -480,6 +524,7 @@ class Agent {
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
     ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
     metrics = null,
+    debug = null,
   }) {
     this.mcpClient = mcpClient;
     this.ollamaUrl = ollamaUrl;
@@ -494,6 +539,7 @@ class Agent {
       toolCalls: 0,
       narratedToolCalls: 0,
       fabricatedOutputsBlocked: 0,
+      continuationNudges: 0,
       approvalRequests: 0,
       approvalGranted: 0,
       approvalDenied: 0,
@@ -503,6 +549,9 @@ class Agent {
       steps: 0,
       errors: 0,
     };
+    // Injectable so tests can capture the trace; falls back to the env-gated
+    // logger for real runs.
+    this.debug = debug || makeDebugLogger();
   }
 
   async run({ sessionId, userGoal, onToolCall, onToolResult, onApproval, onComplete, onNarratedToolCall }) {
@@ -524,6 +573,11 @@ class Agent {
     const unavailableTools = new Map();
 
     messages.push({ role: "user", content: userGoal });
+    this.debug("run.start", {
+      model: this.model,
+      maxSteps: this.maxSteps,
+      goal: userGoal,
+    });
 
     try {
       // Tools whose calls came back without isError. A failed call grounds
@@ -533,6 +587,7 @@ class Agent {
       const succeededTools = new Set();
       for (let step = 0; step < this.maxSteps; step++) {
         this.metrics.steps++;
+        this.debug("step", { n: step + 1, of: this.maxSteps });
         messages = this.compactContext(messages);
 
         const response = await this.queryOllama(messages);
@@ -540,6 +595,10 @@ class Agent {
         messages.push(assistantMessage);
 
         const toolCalls = assistantMessage.tool_calls || [];
+        this.debug("model.turn", {
+          contentChars: (assistantMessage.content || "").length,
+          toolCalls: toolCalls.map((c) => c.function?.name),
+        });
 
         // No native call: before accepting this as the final answer, check
         // whether the model narrated a call instead of emitting one.
@@ -553,15 +612,54 @@ class Agent {
             assistantMessage.content,
             succeededTools
           );
+          const looksFabricated = looksLikeFabricatedToolOutput(
+            assistantMessage.content
+          );
+          this.debug("final.check", {
+            succeeded: [...succeededTools],
+            ungrounded,
+            looksFabricated,
+          });
           if (
             (succeededTools.size === 0 || ungrounded.length > 0) &&
-            looksLikeFabricatedToolOutput(assistantMessage.content)
+            looksFabricated
           ) {
             // The model narrated tool output for a tool that never returned a
-            // result. Do not return the fabrication as an answer, and drop the
-            // turn so the invented result cannot become history.
+            // result. Drop the turn so the invented result cannot become
+            // history, and count it however this resolves.
             this.metrics.fabricatedOutputsBlocked++;
             messages.pop();
+
+            // Ungrounded tools the model could still actually run -- valid on
+            // this Node and not already marked unavailable for the run.
+            const runnable = ungrounded.filter(
+              (t) => this.isValidTool(t) && !unavailableTools.has(t)
+            );
+            const budgetRemains = step < this.maxSteps - 1;
+
+            if (runnable.length > 0 && budgetRemains) {
+              // Premature termination, not a dead end: the model invented a
+              // result for a tool it never called, but that tool is available
+              // and there is budget left. This is the recon-chain continuation
+              // bug -- a first tool succeeding (whois) left models satisfied
+              // enough to fabricate the rest (nmap) instead of calling it.
+              // Refuse the fabrication and direct it to run the real tool,
+              // then take another turn rather than returning.
+              this.metrics.continuationNudges++;
+              this.debug("fabrication.nudge", { runnable });
+              const nudge =
+                `You have not run ${runnable.join(", ")} yet, so any output you wrote for ` +
+                `${runnable.length > 1 ? "those tools" : "that tool"} is invented, not real. ` +
+                `Call ${runnable.length > 1 ? "each of them" : runnable[0]} now with the right ` +
+                "arguments to finish the task. Report only actual tool output, and do not " +
+                "describe results from a tool you have not run.";
+              messages.push({ role: "user", content: nudge });
+              continue;
+            }
+
+            // Nothing left to run (the tool is unavailable, or the budget is
+            // spent): refuse the fabrication as the final answer.
+            this.debug("fabrication.block", { ungrounded });
             const warning = ungrounded.length
               ? `The model produced output that looks like a result from ${ungrounded.join(", ")}, but ${ungrounded.length > 1 ? "those tools" : "that tool"} never returned one. I will not show unverified results.`
               : "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
@@ -569,95 +667,139 @@ class Agent {
             if (onComplete) onComplete(warning);
             return warning;
           }
+          this.debug("final.accept", {
+            chars: (assistantMessage.content || "").length,
+          });
           this.memory.storeSession(sessionId, messages);
           if (onComplete) onComplete(assistantMessage.content);
           return assistantMessage.content;
         }
 
-        // The model is allowed to emit multiple tool_calls in one turn by the
-        // Ollama API, but the agent contract is one decision at a time. Process
-        // only the first call and ignore the rest to keep the loop grounded.
-        let call;
+        // Run every tool the model asked for, in the order it asked. The loop
+        // used to keep only toolCalls[0] and drop the rest "to keep the loop
+        // grounded" -- but a live recon-chain run showed a model emit whois +
+        // nmap in one turn, whereupon nmap was discarded and never re-issued:
+        // the "models abandon the rest of a multi-tool goal" bug. The model had
+        // committed to those calls; honouring them is more faithful than
+        // dropping them and hoping it asks again. The debug trace's model.turn
+        // event is what surfaced it.
+        let callsToRun;
         if (narrated) {
           // Drop the narrated turn from the transcript. Its prose typically
           // carries invented tool output, and leaving it in history would let
           // the model treat its own fabrication as an established finding.
           this.metrics.narratedToolCalls++;
           messages.pop();
-          call = { function: { name: narrated.name, arguments: narrated.args } };
+          const call = {
+            function: { name: narrated.name, arguments: narrated.args },
+          };
           messages.push({ role: "assistant", content: "", tool_calls: [call] });
           if (onNarratedToolCall) onNarratedToolCall(narrated.name);
+          callsToRun = [call];
         } else {
-          call = toolCalls[0];
-        }
-        const name = call.function?.name;
-        const args = call.function?.arguments || {};
-
-        if (!this.isValidTool(name)) {
-          const errorText = `Tool '${name}' is not available on this Node.`;
-          messages.push({ role: "tool", name, content: errorText });
-          continue;
+          callsToRun = toolCalls;
         }
 
-        if (unavailableTools.has(name)) {
-          // Answering from the transcript instead of re-running the tool: the
-          // model has already been told, so repeat it verbatim and spend no
-          // step budget on a call that cannot behave differently.
-          this.metrics.blockedToolRetries++;
-          messages.push({
-            role: "tool",
-            name,
-            content: unavailableTools.get(name),
-          });
-          continue;
-        }
+        // Tools that went unavailable during this turn. Their "continue the
+        // task" direction is one role:"user" message pushed after every tool
+        // result -- never interleaved between the results of a single assistant
+        // turn, which would break tool-call/result pairing.
+        const unavailableThisTurn = [];
 
-        this.metrics.toolCalls++;
-        if (onToolCall) onToolCall(name, args);
+        for (const call of callsToRun) {
+          const name = call.function?.name;
+          const args = call.function?.arguments || {};
 
-        if (this.isActiveTool(name)) {
-          this.metrics.approvalRequests++;
-          const approved = await onApproval(name, args);
-          if (!approved) {
-            this.metrics.approvalDenied++;
-            const blockedText = `User declined to run active tool '${name}'.`;
-            messages.push({ role: "tool", name, content: blockedText });
+          if (!this.isValidTool(name)) {
+            this.debug("tool.invalid", { name });
+            messages.push({
+              role: "tool",
+              name,
+              content: `Tool '${name}' is not available on this Node.`,
+            });
             continue;
           }
-          this.metrics.approvalGranted++;
+
+          if (unavailableTools.has(name)) {
+            // Answered from the transcript instead of re-running the tool: the
+            // model has already been told, so repeat it verbatim and spend no
+            // step budget on a call that cannot behave differently.
+            this.metrics.blockedToolRetries++;
+            this.debug("tool.unavailable-cached", { name });
+            messages.push({
+              role: "tool",
+              name,
+              content: unavailableTools.get(name),
+            });
+            continue;
+          }
+
+          this.metrics.toolCalls++;
+          this.debug("tool.call", { name, args });
+          if (onToolCall) onToolCall(name, args);
+
+          if (this.isActiveTool(name)) {
+            this.metrics.approvalRequests++;
+            const approved = await onApproval(name, args);
+            if (!approved) {
+              this.metrics.approvalDenied++;
+              messages.push({
+                role: "tool",
+                name,
+                content: `User declined to run active tool '${name}'.`,
+              });
+              continue;
+            }
+            this.metrics.approvalGranted++;
+          }
+
+          const result = await this.mcpClient.callTool({ name, arguments: args });
+          const text =
+            result.content
+              ?.map((c) => (c.type === "text" ? c.text : ""))
+              .join("\n") || "(no output)";
+
+          if (onToolResult) onToolResult(name, text);
+          this.debug("tool.result", {
+            name,
+            isError: !!result.isError,
+            chars: text.length,
+          });
+
+          if (result.isError && isNonRetryableToolError(text)) {
+            this.metrics.nonRetryableToolErrors++;
+            this.debug("tool.unavailable", { name });
+            // Keep the tool result slot short and factual. A long imperative
+            // block in a role:"tool" slot -- which the model expects to hold
+            // tool output -- stopped live 7-8B models terminating on the next
+            // turn. The direction to continue goes in the role:"user" message
+            // below, after all results for the turn.
+            const toolResult =
+              `Tool '${name}' cannot run on this Node: ${text}\n` +
+              "This tool is unavailable for this run; do not retry it.";
+            unavailableTools.set(name, toolResult);
+            messages.push({ role: "tool", name, content: toolResult });
+            unavailableThisTurn.push(name);
+            continue;
+          }
+
+          if (!result.isError) succeededTools.add(name);
+          messages.push({ role: "tool", name, content: text });
         }
 
-        const result = await this.mcpClient.callTool({ name, arguments: args });
-        const text = result.content
-          ?.map((c) => (c.type === "text" ? c.text : ""))
-          .join("\n") || "(no output)";
-
-        if (onToolResult) onToolResult(name, text);
-
-        if (result.isError && isNonRetryableToolError(text)) {
-          this.metrics.nonRetryableToolErrors++;
-          // Keep the tool result slot short and factual. The earlier long
-          // imperative block was pushed into a role:"tool" message — a slot
-          // the model expects to contain tool output — and live 7-8B models
-          // stopped terminating on the next turn. The instruction to continue
-          // belongs in a role:"user" message where imperative text is expected.
-          const toolResult =
-            `Tool '${name}' cannot run on this Node: ${text}\n` +
-            "This tool is unavailable for this run; do not retry it.";
-          const continueInstruction =
-            `Tool '${name}' is unavailable. Continue the rest of the task. ` +
-            "If another tool is needed, call it now. " +
-            "Do not describe output no tool returned, and do not ask whether to continue. " +
-            "Report only actual results, and say plainly what could not be determined.";
-          unavailableTools.set(name, toolResult);
-          messages.push({ role: "tool", name, content: toolResult });
-          messages.push({ role: "user", content: continueInstruction });
-          continue;
+        if (unavailableThisTurn.length > 0) {
+          const names = unavailableThisTurn.join(", ");
+          messages.push({
+            role: "user",
+            content:
+              `Tool(s) ${names} could not run and are unavailable for this run. ` +
+              "Continue the rest of the task. If another tool is needed, call it now. " +
+              "Do not describe output no tool returned, and do not ask whether to continue. " +
+              "Report only actual results, and say plainly what could not be determined.",
+          });
         }
-
-        if (!result.isError) succeededTools.add(name);
-        messages.push({ role: "tool", name, content: text });
       }
+      this.debug("budget.exhausted", { steps: this.metrics.steps });
 
       const budgetMessage =
         "Step budget exhausted. Here is a summary of what was discovered:";
