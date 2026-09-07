@@ -687,9 +687,15 @@ class FindingsMemory {
       parts.push("## Vulnerabilities");
       parts.push("");
       for (const vuln of this.aggregated.vulnerabilities) {
+        // searchsploit entries carry title/cves/edbId; nikto entries carry
+        // host/type/description instead. Render whichever fields are present
+        // so nikto findings aren't reduced to a bare "nikto" line.
         const vulnLine = [
           vuln.source,
+          vuln.host,
           vuln.title,
+          vuln.type,
+          vuln.description,
           vuln.cves?.join(", "),
           vuln.edbId ? `EDB-${vuln.edbId}` : null,
         ].filter(Boolean).join(" | ");

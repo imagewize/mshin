@@ -155,6 +155,21 @@ Potential vulnerability: CVE-2024-5678
       assert.ok(summary.includes("80/tcp"));
     });
 
+    it("includes nikto type/description, not just the source name", () => {
+      const fm = new FindingsMemory();
+      const niktoOutput = `
++ Target IP: 192.168.1.1
++ Server: Apache/2.4.52
++ 200 OSVDB-877 - GET /phpinfo.php: phpinfo() is exposed
+`;
+      fm.processToolResult("nikto", niktoOutput);
+
+      const summary = fm.getSummary();
+      assert.ok(summary.includes("## Vulnerabilities"));
+      assert.ok(summary.includes("OSVDB-877"));
+      assert.ok(summary.includes("phpinfo() is exposed"));
+    });
+
     it("respects maxTokens limit", () => {
       const fm = new FindingsMemory();
       // Add many findings
