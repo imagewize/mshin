@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-07
+
+Agent-loop patch. Running the 0.10.0 harness against live inference for the first time found a real defect: a tool that cannot run in the current environment was retried until the step budget ran out. This release stops that, reports it, and adds a case set hard enough to tell models apart.
+
+### Fixed
+
+- **A tool that cannot run is no longer retried** (`clients/mshin-cli/agent.js`). Tool failures whose text is environmental — `sudo: a password is required`, a missing binary, `no new privileges` — fail identically on every attempt, but the loop fed the raw error back and let the model try again. It now marks the tool unavailable for the rest of the run, tells the model the failure is not a bad argument, and answers any further call to it from the transcript instead of re-executing. Ordinary failures (host down, no results) stay retryable, and a successful call is never classified this way however its output reads. The record is scoped to the run, not the `Agent`, so fixing a sudoers allowlist between prompts costs one rediscovery call rather than staying wrong for the session.
+
+### Added
+
+- **Non-retryable failure metrics.** `nonRetryableToolErrors` and `blockedToolRetries` are tracked by the agent and carried into all three report formats, separating a model that respects an unavailable tool from one that keeps hammering it.
+- **A multi-tool evaluation case set** (`clients/mshin-cli/eval-config.multi-tool.example.json`). Two tools in one goal, a tool chosen conditionally on an earlier result, and a case that only passes if the model reports honestly when a tool cannot run.
+
+### Changed
+
+- **`clients/mshin-cli/README.md`**: documents the unavailable-tool rule in the agent-loop section, the two new metrics, and the harder case set.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 56/56 cases; `servers/src/kali/` passes 20/20. The five new agent cases all fail against the previous loop, checked by reverting `agent.js` alone.
+- **The defect was measured, not theorised.** On a Node whose sudoers allowlist did not cover `whois`, both the `mshin` persona and `qwen3:8b` spent their entire 3-step budget re-issuing the identical failing call. Neither invented registrar data — the honesty of the final answers was not the problem; the wasted budget was.
+- **The fix changes live behaviour.** With the same models against the same unrunnable `whois`, the call executes once instead of twice, and on the multi-tool `recon-chain` case the model pivoted to `nmap` rather than spending the rest of its budget on retries.
+
+### Still not verified
+
+- The two-machine path on real hardware, across a physical LAN.
+- A full model-comparison matrix on the multi-tool case set. No tool has yet executed successfully through live inference on the macOS authoring host: the server runs every binary except `tshark` under `sudo -n`, which needs the Linux Node's allowlist. What the local runs exercise is tool *calling* and failure handling, not tool *output*.
+
 ## [0.10.0] - 2026-09-07
 
 Agent-evaluation and transport-modernization release. Adds a model-evaluation harness to collect the measurements the roadmap calls for, and migrates both client and server from the deprecated SSE MCP transport to Streamable HTTP.
@@ -876,7 +904,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/imagewize/mshin/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/imagewize/mshin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0
