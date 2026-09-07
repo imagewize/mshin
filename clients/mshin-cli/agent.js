@@ -6,6 +6,8 @@ import readline from "node:readline";
 import http from "node:http";
 import https from "node:https";
 
+import { SessionLogger } from "./session-logger.js";
+
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_HISTORY_MESSAGES = 40;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
@@ -547,6 +549,7 @@ class Agent {
     model,
     tools,
     memory,
+    sessionLogger = null,
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
@@ -562,6 +565,7 @@ class Agent {
     this.model = model;
     this.tools = tools;
     this.memory = memory;
+    this.sessionLogger = sessionLogger;
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
@@ -612,6 +616,13 @@ class Agent {
       maxSteps: this.maxSteps,
       goal: userGoal,
     });
+    this.sessionLogger?.write(sessionId, {
+      type: "session.start",
+      model: this.model,
+      goal: userGoal,
+      tools: this.tools.map((t) => t.function.name),
+      maxSteps: this.maxSteps,
+    });
 
     try {
       // Tools whose calls came back without isError. A failed call grounds
@@ -631,6 +642,12 @@ class Agent {
         const toolCalls = assistantMessage.tool_calls || [];
         this.debug("model.turn", {
           contentChars: (assistantMessage.content || "").length,
+          toolCalls: toolCalls.map((c) => c.function?.name),
+        });
+        this.sessionLogger?.write(sessionId, {
+          type: "model.turn",
+          step: step + 1,
+          contentPreview: (assistantMessage.content || "").slice(0, 500),
           toolCalls: toolCalls.map((c) => c.function?.name),
         });
 
@@ -681,6 +698,10 @@ class Agent {
               // then take another turn rather than returning.
               this.metrics.continuationNudges++;
               this.debug("fabrication.nudge", { runnable });
+              this.sessionLogger?.write(sessionId, {
+                type: "fabrication.nudge",
+                runnable,
+              });
               const nudge =
                 `You have not run ${runnable.join(", ")} yet, so any output you wrote for ` +
                 `${runnable.length > 1 ? "those tools" : "that tool"} is invented, not real. ` +
@@ -694,10 +715,20 @@ class Agent {
             // Nothing left to run (the tool is unavailable, or the budget is
             // spent): refuse the fabrication as the final answer.
             this.debug("fabrication.block", { ungrounded });
+            this.sessionLogger?.write(sessionId, {
+              type: "fabrication.block",
+              ungrounded,
+              looksFabricated,
+            });
             const warning = ungrounded.length
               ? `The model produced output that looks like a result from ${ungrounded.join(", ")}, but ${ungrounded.length > 1 ? "those tools" : "that tool"} never returned one. I will not show unverified results.`
               : "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
             this.memory.storeSession(sessionId, messages);
+            this.sessionLogger?.write(sessionId, {
+              type: "session.end",
+              answer: warning,
+              metrics: { ...this.metrics },
+            });
             if (onComplete) onComplete(warning);
             return warning;
           }
@@ -705,6 +736,11 @@ class Agent {
             chars: (assistantMessage.content || "").length,
           });
           this.memory.storeSession(sessionId, messages);
+          this.sessionLogger?.write(sessionId, {
+            type: "session.end",
+            answer: assistantMessage.content,
+            metrics: { ...this.metrics },
+          });
           if (onComplete) onComplete(assistantMessage.content);
           return assistantMessage.content;
         }
@@ -723,6 +759,11 @@ class Agent {
           // carries invented tool output, and leaving it in history would let
           // the model treat its own fabrication as an established finding.
           this.metrics.narratedToolCalls++;
+          this.sessionLogger?.write(sessionId, {
+            type: "narrated.recovered",
+            name: narrated.name,
+            args: narrated.args,
+          });
           messages.pop();
           const call = {
             function: { name: narrated.name, arguments: narrated.args },
@@ -746,6 +787,10 @@ class Agent {
 
           if (!this.isValidTool(name)) {
             this.debug("tool.invalid", { name });
+            this.sessionLogger?.write(sessionId, {
+              type: "tool.invalid",
+              name,
+            });
             messages.push({
               role: "tool",
               name,
@@ -760,6 +805,10 @@ class Agent {
             // step budget on a call that cannot behave differently.
             this.metrics.blockedToolRetries++;
             this.debug("tool.unavailable-cached", { name });
+            this.sessionLogger?.write(sessionId, {
+              type: "tool.unavailable.cached",
+              name,
+            });
             messages.push({
               role: "tool",
               name,
@@ -770,11 +819,26 @@ class Agent {
 
           this.metrics.toolCalls++;
           this.debug("tool.call", { name, args });
+          this.sessionLogger?.write(sessionId, {
+            type: "tool.call",
+            name,
+            args,
+          });
           if (onToolCall) onToolCall(name, args);
 
           if (this.isActiveTool(name)) {
             this.metrics.approvalRequests++;
+            this.sessionLogger?.write(sessionId, {
+              type: "approval.request",
+              name,
+              args,
+            });
             const approved = await onApproval(name, args);
+            this.sessionLogger?.write(sessionId, {
+              type: "approval.response",
+              name,
+              approved,
+            });
             if (!approved) {
               this.metrics.approvalDenied++;
               messages.push({
@@ -799,10 +863,21 @@ class Agent {
             isError: !!result.isError,
             chars: text.length,
           });
+          this.sessionLogger?.write(sessionId, {
+            type: "tool.result",
+            name,
+            isError: !!result.isError,
+            text,
+          });
 
           if (result.isError && isNonRetryableToolError(text)) {
             this.metrics.nonRetryableToolErrors++;
             this.debug("tool.unavailable", { name });
+            this.sessionLogger?.write(sessionId, {
+              type: "tool.unavailable",
+              name,
+              reason: text,
+            });
             // Keep the tool result slot short and factual. A long imperative
             // block in a role:"tool" slot -- which the model expects to hold
             // tool output -- stopped live 7-8B models terminating on the next
@@ -841,11 +916,21 @@ class Agent {
       const final = await this.queryOllama(messages);
       messages.push(final.message);
       this.memory.storeSession(sessionId, messages);
+      this.sessionLogger?.write(sessionId, {
+        type: "session.end",
+        answer: final.message.content,
+        metrics: { ...this.metrics },
+      });
       if (onComplete) onComplete(final.message.content);
       return final.message.content;
     } catch (err) {
       this.metrics.errors++;
       this.memory.storeSession(sessionId, messages);
+      this.sessionLogger?.write(sessionId, {
+        type: "session.error",
+        error: err.message,
+        metrics: { ...this.metrics },
+      });
       throw err;
     }
   }
