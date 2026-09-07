@@ -134,7 +134,36 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y git curl wget
 ```
 
-### **1.3 Install Node.js**
+### **1.3 Install the Security Tools**
+
+A minimal Kali install has no tool metapackages, so the thirteen tools the MCP
+server wraps (`servers/src/kali/tools.js`) are not present yet — without this
+step, every tool call fails with `Tool binary not found`:
+
+```bash
+sudo apt install -y \
+    openssl \
+    nmap \
+    metasploit-framework \
+    exploitdb \
+    nikto \
+    whois \
+    tshark \
+    hydra \
+    sqlmap \
+    gobuster \
+    masscan \
+    dirb \
+    arping \
+    dnsenum \
+    net-tools
+```
+
+`exploitdb` is what provides the `searchsploit` binary. This mirrors the
+package list in `scripts/setup_mcp_server.sh` — keep the two in sync per the
+tool-list invariant in `AGENTS.md`.
+
+### **1.4 Install Node.js**
 
 The MCP server requires Node.js v20+:
 
@@ -146,7 +175,7 @@ fi
 node --version  # Should output v20.x.x
 ```
 
-### **1.4 Set Up the MCP Server**
+### **1.5 Set Up the MCP Server**
 
 Machin Shin ships its own Kali MCP server at `servers/src/kali`.
 
@@ -169,7 +198,7 @@ Machin Shin ships its own Kali MCP server at `servers/src/kali`.
   ```
    You should see a JSON response listing the enabled tools.
 
-### **1.5 Create a Dedicated User for Machin Shin**
+### **1.6 Create a Dedicated User for Machin Shin**
 
 For security, create a dedicated user (`mshin`) to run the MCP server:
 
@@ -178,7 +207,7 @@ sudo adduser mshin
 sudo usermod -aG sudo mshin
 ```
 
-### **1.6 Set Up SSH Access (Optional but Recommended)**
+### **1.7 Set Up SSH Access (Optional but Recommended)**
 
 1. Switch to the `mshin` user:
   ```bash
@@ -195,7 +224,7 @@ sudo usermod -aG sudo mshin
    chmod 600 ~/.ssh/authorized_keys
   ```
 
-### **1.7 Create a `systemd` Service for the MCP Server**
+### **1.8 Create a `systemd` Service for the MCP Server**
 
 To ensure the MCP server starts automatically on boot:
 
@@ -241,7 +270,7 @@ To ensure the MCP server starts automatically on boot:
    sudo journalctl -u mshin-node -f
   ```
 
-### **1.8 Restrict `mshin` User Permissions**
+### **1.9 Restrict `mshin` User Permissions**
 
 To limit the `mshin` user to only necessary tools, edit the sudoers file:
 
@@ -257,9 +286,9 @@ Add the following line:
 mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
 ```
 
-### **1.9 Verify the Node Tools**
+### **1.10 Verify the Node Tools**
 
-Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. The first five are passive; `metasploit` is destructive-by-default and the CLI will ask for approval before it runs.
+Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. `metasploit`, `hydra`, and `sqlmap` are destructive-by-default and the CLI will ask for approval before any of them runs; the rest are passive.
 
 ```
 "Scan 127.0.0.1 with nmap and list the open ports."
@@ -268,6 +297,13 @@ Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.10
 "Run nikto against http://127.0.0.1 and report any findings."
 "Use tshark to read /home/mshin/capture.pcap and summarize the traffic."
 "Run the metasploit auxiliary scanner http/http_version against 127.0.0.1."
+"Test hydra with a service scan on 127.0.0.1 for ssh."
+"Run sqlmap against http://127.0.0.1 with default settings."
+"Use gobuster to brute-force directories on http://127.0.0.1."
+"Run masscan on 127.0.0.0/8 with a fast scan."
+"Use dirb to brute-force http://127.0.0.1."
+"Run arping to discover hosts on the local network."
+"Use dnsenum to enumerate example.com."
 ```
 
 > **PCAP ownership matters.** Capture files must be readable by the `mshin` user; `tshark` is run without `sudo` because Wireshark's file-owner check rejects root-owned captures.

@@ -102,7 +102,35 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git
 ```
 
-#### **1.3 Set Up MCP Server for Kali Tools**
+#### **1.3 Install the Security Tools**
+
+A minimal Kali install has no tool metapackages, so the thirteen tools the MCP
+server wraps (`servers/src/kali/tools.js`) are not present yet — without this
+step, every tool call fails with `Tool binary not found`. `exploitdb` is what
+provides the `searchsploit` binary. This mirrors the package list in
+`scripts/setup_mcp_server.sh` — keep the two in sync per the tool-list
+invariant in `AGENTS.md`.
+
+```bash
+sudo apt install -y \
+    openssl \
+    nmap \
+    metasploit-framework \
+    exploitdb \
+    nikto \
+    whois \
+    tshark \
+    hydra \
+    sqlmap \
+    gobuster \
+    masscan \
+    dirb \
+    arping \
+    dnsenum \
+    net-tools
+```
+
+#### **1.4 Set Up MCP Server for Kali Tools**
 
 Machin Shin ships its own Kali MCP server (the upstream `modelcontextprotocol/servers` repo does not include a Kali server).
 
@@ -114,10 +142,10 @@ cd /opt/mshin/servers/src/kali
 npm install
 
 # Start the MCP server (Machin Shin Node)
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark &
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum &
 ```
 
-#### **1.4 Create a `systemd` Service for MCP Server**
+#### **1.5 Create a `systemd` Service for MCP Server**
 
 ```ini
 # /etc/systemd/system/mshin-node.service
@@ -128,13 +156,16 @@ After=network.target
 [Service]
 User=mshin
 WorkingDirectory=/opt/mshin/servers/src/kali
-ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production
 
 # Security settings
-NoNewPrivileges=true
+# NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as
+# `sudo -n <bin>` whenever the server is not root, and NoNewPrivileges=true
+# blocks exactly that: every tool call fails with "sudo: a password is
+# required". The sudoers allowlist constrains the service instead.
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
@@ -152,7 +183,25 @@ sudo systemctl start mshin-node
 sudo systemctl status mshin-node  # Verify it's running
 ```
 
-#### **1.5 Assign a Static IP**
+#### **1.6 Restrict `mshin` User Permissions**
+
+`tools.js` runs every binary as `sudo -n <tool>` whenever the server is not
+root, so without this allowlist every tool call fails with
+`sudo: a password is required`:
+
+```bash
+sudo visudo
+```
+
+Add the following line. `tshark` is omitted: it does not need root to read
+user-owned PCAP files, and running it as root triggers Wireshark's
+file-owner check.
+
+```
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+```
+
+#### **1.7 Assign a Static IP**
 
 Create `/etc/netplan/00-mshin-node.yaml`:
 
@@ -368,7 +417,7 @@ Add:
 ```
 # tshark is omitted: it does not need root to read user-owned PCAP files, and
 # running it as root triggers Wireshark's file-owner check.
-mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
 ```
 
 #### **3. Test SSH Access**
