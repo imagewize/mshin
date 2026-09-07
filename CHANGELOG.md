@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachannelog.com/en/1.1.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
@@ -39,9 +39,28 @@ in long sessions.
 - **`docs/cybersecurity-agent-roadmap.md`** marks Context Management Option B as
   complete.
 
+### Fixed
+
+- **`compactContext` could drop the original user goal.** Inserting the
+  findings-summary message shifted every later message index by one, but the
+  set of indices protected from eviction was computed before that shift, so
+  it went on protecting the wrong slot. As soon as any tool succeeded, the
+  next compaction pass could evict the user's original goal.
+- **The findings summary went stale after its first insertion.** It was only
+  ever written once, keyed off a check for a literal `## Discovered Hosts`
+  heading; later discoveries (new hosts, ports, CVEs) never updated it for
+  the rest of the run. `compactContext` now keeps a single findings message
+  and refreshes its content in place on every pass.
+- **nmap XML parsing recorded the wrong host for open ports.** `openPorts`
+  entries took `host` from a stray character of the matched `<port>` XML
+  fragment instead of the host's real IP.
+- Corrected a broken "Keep a Changelog" link introduced earlier in this file.
+
 ### Verified
 
-- `npm test` in `clients/mshin-cli/` passes 95/95 cases (74 existing + 21 new).
+- `npm test` in `clients/mshin-cli/` passes 98/98 cases (74 existing + 21 new
+  from the initial findings-memory work + 3 regression tests added for the
+  fixes above).
 
 ## [0.13.0] - 2026-09-07
 
