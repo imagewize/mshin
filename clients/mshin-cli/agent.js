@@ -3,10 +3,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
+import http from "node:http";
+import https from "node:https";
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_HISTORY_MESSAGES = 40;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
+
+// One model turn, not one run. Ten minutes is generous for an 8B on a laptop
+// and still finite, so a genuinely wedged request surfaces instead of hanging
+// the operator's session.
+const DEFAULT_OLLAMA_TIMEOUT_MS = 600_000;
 
 // Tools that can alter state or launch exploits require explicit user approval
 // before each invocation. hydra brute-forces live credentials (can lock out
@@ -14,6 +21,30 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
 // modify database contents), so both carry the same real-world risk as
 // metasploit.
 const ACTIVE_TOOLS = new Set(["metasploit", "hydra", "sqlmap"]);
+
+// Tool failures no retry can fix. Every one of these is environmental — the
+// binary is absent, the sudoers allowlist does not cover it, or systemd blocks
+// the privilege transition — so an identical second call fails identically.
+// Measured on a live run: given a whois the Node could not execute, both
+// mistral- and qwen-class models spent their entire step budget re-issuing the
+// same call, then gave up. The loop now marks the tool unavailable after the
+// first such failure instead.
+const NON_RETRYABLE_TOOL_ERROR_RE = new RegExp(
+  [
+    "sudo: a password is required",
+    "no new privileges",
+    "Tool binary not found",
+    "Unknown tool:",
+    "is not enabled",
+    "command not found",
+    "permission denied",
+  ].join("|"),
+  "i"
+);
+
+function isNonRetryableToolError(text) {
+  return NON_RETRYABLE_TOOL_ERROR_RE.test(text || "");
+}
 
 function estimateTokens(text) {
   // Fast, conservative approximation: ~4 characters per token for English text.
@@ -278,10 +309,9 @@ function parseLiteral(token) {
 /**
  * Heuristic check for a model that invented tool output instead of calling a
  * tool -- e.g. writing its own fake nmap report rather than emitting a call
- * `extractTextToolCall` could have recovered. Only meaningful before any
- * tool has actually run this turn (see the `toolWasExecuted` check at the
- * call site); once a real result is in history, similar-looking text is
- * presumably the model summarizing that real output, not fabricating it.
+ * `extractTextToolCall` could have recovered. Pair it with the grounding check
+ * at the call site: text like this is a summary when the tool it describes
+ * actually returned a result, and a fabrication when it did not.
  *
  * Looks for two shapes: a fenced code block, or a "Result:" label, either of
  * which is followed by text that reads like genuine scan output (an
@@ -318,6 +348,72 @@ function looksLikeFabricatedToolOutput(content) {
   }
 
   return false;
+}
+
+/**
+ * POST JSON and read the whole response body.
+ *
+ * Deliberately node:http rather than fetch. With `stream: false` Ollama sends
+ * no response headers until the entire generation has finished, and undici —
+ * which backs global fetch — gives up after a default headersTimeout of 300s
+ * and throws a bare `fetch failed` with no indication a timeout occurred. A
+ * single turn on a large model passes 300s easily: it killed two evaluation
+ * runs here at ~329s, at the same step, on two different models. Going through
+ * node:http lets the limit be set deliberately and reported for what it is.
+ */
+function postJson(url, body, timeoutMs, model) {
+  const payload = JSON.stringify(body);
+  const target = new URL(url);
+  const transport = target.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`Ollama returned ${res.statusCode}: ${data}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(data));
+          } catch (err) {
+            reject(new Error(`Ollama returned unparseable JSON: ${err.message}`));
+          }
+        });
+      }
+    );
+
+    // An inactivity timeout, which for a non-streaming generation is the whole
+    // wait: nothing arrives on the socket until the model is done.
+    if (timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(
+          new Error(
+            `Ollama request timed out after ${Math.round(timeoutMs / 1000)}s ` +
+              `(model '${model}'). One turn on a large model can take longer ` +
+              "than this; raise ollamaTimeoutMs if that is expected."
+          )
+        );
+      });
+    }
+
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 /**
@@ -382,6 +478,7 @@ class Agent {
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
+    ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
     metrics = null,
   }) {
     this.mcpClient = mcpClient;
@@ -392,6 +489,7 @@ class Agent {
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
+    this.ollamaTimeoutMs = ollamaTimeoutMs;
     this.metrics = metrics || {
       toolCalls: 0,
       narratedToolCalls: 0,
@@ -400,6 +498,8 @@ class Agent {
       approvalGranted: 0,
       approvalDenied: 0,
       contextHighWaterTokens: 0,
+      nonRetryableToolErrors: 0,
+      blockedToolRetries: 0,
       steps: 0,
       errors: 0,
     };
@@ -418,10 +518,19 @@ class Agent {
       messages.push({ role: "system", content: systemPrompt });
     }
 
+    // Scoped to the run, not the Agent: if the operator fixes the sudoers
+    // allowlist between prompts, the next run rediscovers the tool at the cost
+    // of one call rather than staying wrong for the life of the session.
+    const unavailableTools = new Map();
+
     messages.push({ role: "user", content: userGoal });
 
     try {
-      let toolWasExecuted = false;
+      // Tools whose calls came back without isError. A failed call grounds
+      // nothing: the run that exposed this had whois fail and nmap never run,
+      // yet a bare "a tool executed" flag was enough to let an invented
+      // "Nmap Scan Results" block through to the user.
+      const succeededTools = new Set();
       for (let step = 0; step < this.maxSteps; step++) {
         this.metrics.steps++;
         messages = this.compactContext(messages);
@@ -440,14 +549,22 @@ class Agent {
             : null;
 
         if (toolCalls.length === 0 && !narrated) {
-          if (!toolWasExecuted && looksLikeFabricatedToolOutput(assistantMessage.content)) {
-            // The model narrated tool output without ever emitting a call. Do
-            // not return the fabrication as an answer, and drop the turn so the
-            // invented result cannot become history.
+          const ungrounded = this.ungroundedToolsIn(
+            assistantMessage.content,
+            succeededTools
+          );
+          if (
+            (succeededTools.size === 0 || ungrounded.length > 0) &&
+            looksLikeFabricatedToolOutput(assistantMessage.content)
+          ) {
+            // The model narrated tool output for a tool that never returned a
+            // result. Do not return the fabrication as an answer, and drop the
+            // turn so the invented result cannot become history.
             this.metrics.fabricatedOutputsBlocked++;
             messages.pop();
-            const warning =
-              "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
+            const warning = ungrounded.length
+              ? `The model produced output that looks like a result from ${ungrounded.join(", ")}, but ${ungrounded.length > 1 ? "those tools" : "that tool"} never returned one. I will not show unverified results.`
+              : "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
             this.memory.storeSession(sessionId, messages);
             if (onComplete) onComplete(warning);
             return warning;
@@ -482,6 +599,19 @@ class Agent {
           continue;
         }
 
+        if (unavailableTools.has(name)) {
+          // Answering from the transcript instead of re-running the tool: the
+          // model has already been told, so repeat it verbatim and spend no
+          // step budget on a call that cannot behave differently.
+          this.metrics.blockedToolRetries++;
+          messages.push({
+            role: "tool",
+            name,
+            content: unavailableTools.get(name),
+          });
+          continue;
+        }
+
         this.metrics.toolCalls++;
         if (onToolCall) onToolCall(name, args);
 
@@ -498,12 +628,33 @@ class Agent {
         }
 
         const result = await this.mcpClient.callTool({ name, arguments: args });
-        toolWasExecuted = true;
         const text = result.content
           ?.map((c) => (c.type === "text" ? c.text : ""))
           .join("\n") || "(no output)";
 
         if (onToolResult) onToolResult(name, text);
+
+        if (result.isError && isNonRetryableToolError(text)) {
+          this.metrics.nonRetryableToolErrors++;
+          // The wording matters as much as the blocking. An earlier draft said
+          // only "do not retry it", and both live models read that as licence to
+          // abandon the whole goal: on a two-tool task they announced the second
+          // tool, printed a placeholder for its output, and stopped without
+          // calling it. The rest of the task has to be made explicit.
+          const guidance =
+            `Tool '${name}' cannot run on this Node: ${text}\n` +
+            "This is an environment problem, not a bad argument — calling it " +
+            "again will fail the same way, so do not retry it. Every other part " +
+            "of the task still stands: if it needs a different tool, call that " +
+            "tool now. Do not describe what a tool would return, and do not ask " +
+            "whether to continue. Report only what tools actually returned, and " +
+            "say plainly which part you could not determine.";
+          unavailableTools.set(name, guidance);
+          messages.push({ role: "tool", name, content: guidance });
+          continue;
+        }
+
+        if (!result.isError) succeededTools.add(name);
         messages.push({ role: "tool", name, content: text });
       }
 
@@ -535,18 +686,12 @@ class Agent {
       },
     };
 
-    const res = await fetch(`${this.ollamaUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Ollama returned ${res.status}: ${text}`);
-    }
-
-    return res.json();
+    return postJson(
+      `${this.ollamaUrl}/api/chat`,
+      body,
+      this.ollamaTimeoutMs,
+      this.model
+    );
   }
 
   isValidTool(name) {
@@ -555,6 +700,22 @@ class Agent {
 
   isActiveTool(name) {
     return ACTIVE_TOOLS.has(name);
+  }
+
+  /**
+   * Known tools the content talks about that never returned a result. This is
+   * what separates a summary from a fabrication once some other tool has run:
+   * a real whois result does not license an invented nmap report.
+   */
+  ungroundedToolsIn(content, succeededTools) {
+    if (!content) return [];
+    return this.tools
+      .map((t) => t.function.name)
+      .filter(
+        (name) =>
+          !succeededTools.has(name) &&
+          new RegExp(`\\b${name}\\b`, "i").test(content)
+      );
   }
 
   /**

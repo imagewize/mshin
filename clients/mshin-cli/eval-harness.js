@@ -248,6 +248,8 @@ class EvalHarness {
       approvalGranted: agent.metrics.approvalGranted,
       approvalDenied: agent.metrics.approvalDenied,
       contextHighWaterTokens: agent.metrics.contextHighWaterTokens,
+      nonRetryableToolErrors: agent.metrics.nonRetryableToolErrors,
+      blockedToolRetries: agent.metrics.blockedToolRetries,
       errors: agent.metrics.errors,
       expectedTools,
       missingTools,
@@ -310,6 +312,7 @@ function writeMarkdownReport(results, outputDir) {
 - **Fabricated outputs blocked:** ${r.fabricatedOutputsBlocked}
 - **Approval requests:** ${r.approvalRequests} granted / ${r.approvalDenied} denied
 - **Context high-water:** ${r.contextHighWaterTokens} tokens
+- **Unavailable tools:** ${r.nonRetryableToolErrors} non-retryable error(s), ${r.blockedToolRetries} retry/retries refused
 - **Expected tools:** ${expectedDetail(r)}
 
 **Final answer:**
@@ -361,6 +364,8 @@ function writeCsvReport(results, outputDir) {
     "approvalGranted",
     "approvalDenied",
     "contextHighWaterTokens",
+    "nonRetryableToolErrors",
+    "blockedToolRetries",
     "errors",
     "expectedTools",
     "expectedToolsMet",
@@ -383,6 +388,8 @@ function writeCsvReport(results, outputDir) {
       r.approvalGranted,
       r.approvalDenied,
       r.contextHighWaterTokens,
+      r.nonRetryableToolErrors,
+      r.blockedToolRetries,
       r.errors,
       r.expectedTools ? r.expectedTools.join(",") : "",
       r.expectedToolsMet === null ? "" : r.expectedToolsMet,

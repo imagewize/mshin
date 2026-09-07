@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-07
+
+Agent-loop patch. Running the 0.10.0 harness against live inference for the first time found a real defect: a tool that cannot run in the current environment was retried until the step budget ran out. This release stops that, reports it, and adds a case set hard enough to tell models apart.
+
+### Fixed
+
+- **A tool that cannot run is no longer retried** (`clients/mshin-cli/agent.js`). Tool failures whose text is environmental — `sudo: a password is required`, a missing binary, `no new privileges` — fail identically on every attempt, but the loop fed the raw error back and let the model try again. It now marks the tool unavailable for the rest of the run, tells the model the failure is not a bad argument, and answers any further call to it from the transcript instead of re-executing. Ordinary failures (host down, no results) stay retryable, and a successful call is never classified this way however its output reads. The record is scoped to the run, not the `Agent`, so fixing a sudoers allowlist between prompts costs one rediscovery call rather than staying wrong for the session.
+
+- **A model turn longer than five minutes no longer kills the run** (`clients/mshin-cli/agent.js`). `queryOllama` used global `fetch` with `stream: false`. Ollama sends no response headers until the whole generation has finished, and undici — which backs `fetch` — aborts after a default `headersTimeout` of 300s, throwing a bare `fetch failed` that names neither a timeout nor a duration. The request now goes through `node:http` with an explicit inactivity timeout, configurable as `ollamaTimeoutMs` and defaulting to ten minutes; an overrun names the timeout, the model and the option to raise. This matters most on the hardware the roadmap is aiming at, where a single turn on a 70B passes 300s routinely.
+- **The fabricated-output backstop is grounded in real results** (`clients/mshin-cli/agent.js`). It only fired when no tool had executed for the whole run, and the flag it read was set by any call that returned — including a failed one. A single failed call therefore disarmed it, and anything invented afterwards reached the user unchallenged. Seen live: `whois` failed under `sudo`, `nmap` was never called, and both models printed a placeholder `Nmap Scan Results for 127.0.0.1` block while `fabricatedOutputsBlocked` stayed 0. The loop now records which tools returned without `isError` and blocks output that reads like a report from a tool that never returned one. A real `whois` result does not license an invented `nmap` report, an honest error is not a result, and summarising output a tool genuinely returned is untouched.
+
+### Added
+
+- **Non-retryable failure metrics.** `nonRetryableToolErrors` and `blockedToolRetries` are tracked by the agent and carried into all three report formats, separating a model that respects an unavailable tool from one that keeps hammering it.
+- **A multi-tool evaluation case set** (`clients/mshin-cli/eval-config.multi-tool.example.json`). Two tools in one goal, a tool chosen conditionally on an earlier result, and a case that only passes if the model reports honestly when a tool cannot run.
+
+### Changed
+
+- **`clients/mshin-cli/README.md`**: documents the unavailable-tool rule in the agent-loop section, the two new metrics, and the harder case set.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 62/62 cases; `servers/src/kali/` passes 20/20. Every new agent case was checked against the unfixed loop by reverting `agent.js` alone: the five non-retry cases fail without that fix, and three of the four backstop cases fail without theirs — the fourth guards the summary path and must pass either way.
+- **The defect was measured, not theorised.** On a Node whose sudoers allowlist did not cover `whois`, both the `mshin` persona and `qwen3:8b` spent their entire 3-step budget re-issuing the identical failing call. Neither invented registrar data — the honesty of the final answers was not the problem; the wasted budget was.
+- **The 300s ceiling was measured, then reproduced in isolation.** Two evaluation runs died at 329163ms and 328580ms — different models, within 600ms of each other, on an idle machine, both at the same step with no answer. A standalone probe against a server that accepts a request and never answers then reproduced the mechanism exactly: `failed after 301.2s`, `message: fetch failed`, `cause: UND_ERR_HEADERS_TIMEOUT`. Every existing agent case already drove a real HTTP server, so they cover the replacement transport unchanged.
+- **The fix changes live behaviour.** With the same models against the same unrunnable `whois`, the call executes once instead of twice and the case ends in 2 steps rather than 3. The suppression comes from the guidance message itself — `blockedToolRetries` stayed 0, so neither model even attempted the retry the short-circuit exists to catch.
+- **The first wording of that guidance caused a regression, caught before merge.** Told only "do not retry it", both models abandoned the rest of a two-tool goal: on `recon-chain` they announced `nmap`, printed a placeholder for its output, and stopped without ever calling it. The guidance now names the remaining work explicitly and forbids describing output no tool returned.
+
+### Still not verified
+
+- The two-machine path on real hardware, across a physical LAN.
+- A full model-comparison matrix on the multi-tool case set. It has been run once against `mshin` and `qwen3:8b` — which it does separate, on `recon-chain` — and not against anything larger than 8B.
+- The reworded unavailable-tool guidance against live inference. The wording change is pinned by tests; whether it actually recovers the second tool on a two-tool goal is a live-model question, and no run has yet produced an answer for that case — two died on the 300s ceiling above, and the re-run against the fixed transport was stopped part-way to keep the authoring machine quiet. No tool has yet executed successfully through live inference on the macOS authoring host: the server runs every binary except `tshark` under `sudo -n`, which needs the Linux Node's allowlist. What the local runs exercise is tool *calling* and failure handling, not tool *output*.
+
 ## [0.10.0] - 2026-09-07
 
 Agent-evaluation and transport-modernization release. Adds a model-evaluation harness to collect the measurements the roadmap calls for, and migrates both client and server from the deprecated SSE MCP transport to Streamable HTTP.
@@ -876,7 +910,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/imagewize/mshin/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/imagewize/mshin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0

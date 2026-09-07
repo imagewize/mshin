@@ -678,3 +678,227 @@ test("askYesNo treats anything but a leading y as a denial", async () => {
   assert.equal(await askYesNo("q", () => "  YES  "), true);
   assert.equal(await askYesNo("q", () => "nope"), false);
 });
+
+// -----------------------------------------------------------------------------
+// Non-retryable tool failures
+// -----------------------------------------------------------------------------
+
+/** MCP error content, shaped like the server's handler-throw path. */
+function errorContent(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+test("a non-retryable tool error is not retried", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () =>
+      errorContent("Error: Command failed: sudo -n /usr/bin/nmap 127.0.0.1\nsudo: a password is required"),
+  });
+
+  // The model asks for the same tool three times, as both live models did.
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("I could not run nmap on this Node.");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // Executed once; the two repeats were answered from the transcript.
+  assert.equal(mcp.calls.length, 1);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 1);
+  assert.equal(agent.metrics.blockedToolRetries, 2);
+  assert.equal(answer, "I could not run nmap on this Node.");
+});
+
+test("the model is told the failure is environmental, not a bad argument", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Tool binary not found: /usr/bin/nikto. Is nikto installed?"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  const toolMessage = ollama.requests
+    .at(-1)
+    .body.messages.find((m) => m.role === "tool");
+  assert.match(toolMessage.content, /cannot run on this Node/);
+  assert.match(toolMessage.content, /do not retry it/);
+  // The remaining work must be named explicitly: told only to stop retrying,
+  // live models abandoned the rest of a two-tool goal and printed a placeholder.
+  assert.match(toolMessage.content, /call that tool now/);
+  assert.match(toolMessage.content, /Do not describe what a tool would return/);
+  // The underlying error is preserved, not swallowed.
+  assert.match(toolMessage.content, /Tool binary not found/);
+});
+
+test("an ordinary tool error stays retryable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
+  });
+
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueFinal("host is down");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // A transient failure must not disable the tool: both calls reached MCP.
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 0);
+  assert.equal(agent.metrics.blockedToolRetries, 0);
+});
+
+test("a successful call is never treated as non-retryable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    // Output that merely mentions permissions, without isError.
+    mcpHandler: () => textContent("22/tcp open ssh — permission denied banner seen"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 0);
+});
+
+test("blocking one tool leaves the others usable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: (name) =>
+      name === "nmap"
+        ? errorContent("Error: sudo: a password is required")
+        : textContent("metasploit ran"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("metasploit", {});
+  ollama.queueFinal("done");
+
+  await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onApproval: async () => true,
+  });
+
+  assert.deepEqual(mcp.calls.map((c) => c.name), ["nmap", "metasploit"]);
+  assert.equal(agent.metrics.blockedToolRetries, 1);
+});
+
+// -----------------------------------------------------------------------------
+// Fabricated output after a tool has already run
+// -----------------------------------------------------------------------------
+
+test("a fabricated report is blocked even after another tool succeeded", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: (name) =>
+      name === "metasploit" ? textContent("module completed") : textContent("ok"),
+  });
+
+  // metasploit really runs, then the model invents an nmap report.
+  ollama.queueToolCall("metasploit", {});
+  ollama.queueFinal(
+    "Here are the results:\n\n```\nNmap scan report for 127.0.0.1\n22/tcp open ssh\n80/tcp open http\n```"
+  );
+
+  const answer = await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onApproval: async () => true,
+  });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.match(answer, /never returned one/);
+  assert.match(answer, /nmap/);
+  assert.doesNotMatch(answer, /22\/tcp/);
+});
+
+test("a failed tool call does not ground a fabricated report", async (t) => {
+  // The live case: whois fails non-retryably, nmap is never called, and the
+  // model prints a placeholder "Nmap Scan Results" block anyway.
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: sudo: a password is required"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal(
+    "The whois lookup could not run. Here's the result:\n\n" +
+      "**Nmap Scan Results for 127.0.0.1:**\n- 22/tcp open ssh"
+  );
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "recon it" });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.doesNotMatch(answer, /22\/tcp/);
+});
+
+test("summarising a tool's real output is not blocked", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh\n80/tcp open http"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("Result: nmap found 22/tcp open (ssh) and 80/tcp open (http).");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // The tool really ran and really returned this, so the summary must survive.
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 0);
+  assert.match(answer, /22\/tcp open/);
+});
+
+test("a tool that returned nothing usable cannot ground its own report", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
+  });
+
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueFinal("Result:\n```\n10.0.0.1\n443/tcp open https\n```");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // The error is honest output, but it is not a scan result.
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.doesNotMatch(answer, /443\/tcp/);
+});
+
+// -----------------------------------------------------------------------------
+// Ollama request timeout
+// -----------------------------------------------------------------------------
+
+test("a stalled Ollama request fails with a timeout that names itself", async (t) => {
+  // A server that accepts the request and never answers — what a non-streaming
+  // generation looks like on the wire while the model is still working.
+  const server = http.createServer(() => {});
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address();
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  t.after(async () => {
+    await new Promise((r) => server.close(r));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const agent = new Agent({
+    mcpClient: new MockMcpClient(() => textContent("ok")),
+    ollamaUrl: `http://127.0.0.1:${port}`,
+    model: "mshin",
+    tools: OLLAMA_TOOLS,
+    memory: new AgentMemory(dir),
+    ollamaTimeoutMs: 150,
+  });
+
+  // Before this, undici's 300s default produced a bare "fetch failed" with no
+  // hint that a timeout was involved — it killed two live eval runs at ~329s.
+  await assert.rejects(
+    agent.run({ sessionId: "s1", userGoal: "hello" }),
+    /timed out after 0s \(model 'mshin'\).*raise ollamaTimeoutMs/s
+  );
+});
+
+test("the request timeout is generous by default", async (t) => {
+  const { agent } = await setup(t);
+  // A single turn on a 70B can run for minutes; the default must not be tight.
+  assert.equal(agent.ollamaTimeoutMs, 600_000);
+});
