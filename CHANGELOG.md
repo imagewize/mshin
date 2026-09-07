@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-07
+
+Context-management release. Implements Option A from the roadmap — smarter
+in-context compaction — and documents the full A→B→C context-management plan.
+
 ### Added
 
 - **Smarter in-context compaction** (`clients/mshin-cli/agent.js`).
@@ -32,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliverable.
 - **`clients/mshin-cli/README.md`** documents the new tool-result compression
   behaviour.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 69/69 cases; `servers/src/kali/` was
+  not changed in this release.
 
 ## [0.11.0] - 2026-09-07
 
