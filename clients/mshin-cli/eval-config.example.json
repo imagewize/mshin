@@ -1,0 +1,23 @@
+{
+  "models": ["mshin", "mistral-small"],
+  "ollamaUrl": "http://localhost:11434",
+  "nodeUrl": "http://192.168.1.100:3000",
+  "cases": [
+    {
+      "name": "nmap-localhost",
+      "prompt": "Scan 127.0.0.1 with nmap and list any open ports.",
+      "maxSteps": 5,
+      "approveActiveTools": true
+    },
+    {
+      "name": "searchsploit-openssh",
+      "prompt": "Use searchsploit to look up known exploits for OpenSSH 8.9.",
+      "maxSteps": 5
+    },
+    {
+      "name": "whois-rfc5737",
+      "prompt": "Run a whois lookup for 192.0.2.1 and summarize the registrant.",
+      "maxSteps": 5
+    }
+  ]
+}
