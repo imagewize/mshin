@@ -7,9 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-07
+
+Agent-evaluation and transport-modernization release. Adds a model-evaluation harness to collect the measurements the roadmap calls for, and migrates both client and server from the deprecated SSE MCP transport to Streamable HTTP.
+
+### Added
+
+- **Model evaluation harness** (`clients/mshin-cli/eval-harness.js`). Runs a scripted set of prompts against one or more Ollama models and records duration, steps, tool-call success, narrated calls, fabricated outputs blocked, active-tool approvals, and context-window high-water mark. Output formats: JSON, Markdown, CSV.
+- **Agent metrics collection** (`clients/mshin-cli/agent.js`). The `Agent` constructor accepts an optional `metrics` object and now tracks the same counters the harness reports.
+- **Example evaluation config** (`clients/mshin-cli/eval-config.example.json`).
+
+### Changed
+
+- **MCP transport migrated from SSE to Streamable HTTP.** Both `clients/mshin-cli/index.js` and `clients/mshin-cli/eval-harness.js` now use `StreamableHTTPClientTransport` against `/mcp`. `servers/src/kali/index.js` now uses `StreamableHTTPServerTransport` with stateful sessions on `/mcp`; the old `/sse` and `/messages` endpoints are removed.
+- **`docs/cybersecurity-agent-roadmap.md`**: noted the planned Mac Mini + Raspberry Pi deployment and the new model-evaluation harness under Phase 2.
+- **`clients/mshin-cli/README.md`**: documented the evaluation harness and config format.
+- **`CONTRIBUTING.md`** and **`CLAUDE.md`**: updated project-structure listings for `clients/mshin-cli/`.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 44/44 cases.
+- `npm test` in `servers/src/kali/` passes 16/16 cases.
+- **Streamable HTTP transport handshake works end to end.** Started `servers/src/kali/index.js` on port 3001 with `--tools nmap,whois` and connected a real MCP `Client` using `StreamableHTTPClientTransport` against `/mcp`. `client.connect()` completed initialize, `client.listTools()` returned the two enabled tool schemas, and `client.close()` cleaned up the session.
+
 ### Still not verified
 
 - The two-machine path on real hardware, across a physical LAN.
+- The new transport path through the full CLI + Ollama agent loop on a live Node.
 
 ## [0.9.0] - 2026-09-07
 
@@ -844,7 +868,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/imagewize/mshin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3
