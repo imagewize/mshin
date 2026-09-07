@@ -54,12 +54,18 @@ in long sessions.
 - **nmap XML parsing recorded the wrong host for open ports.** `openPorts`
   entries took `host` from a stray character of the matched `<port>` XML
   fragment instead of the host's real IP.
+- **nikto vulnerabilities collapsed to a bare `- nikto` line in the findings
+  summary.** `getSummary()` only rendered `title`/`cves`/`edbId`, which
+  searchsploit entries carry but nikto entries don't (nikto sets
+  `host`/`type`/`description` instead), so the vulnerability's actual content
+  never reached the LLM context. Now renders whichever fields a source
+  populates.
 - Corrected a broken "Keep a Changelog" link introduced earlier in this file.
 
 ### Verified
 
-- `npm test` in `clients/mshin-cli/` passes 98/98 cases (74 existing + 21 new
-  from the initial findings-memory work + 3 regression tests added for the
+- `npm test` in `clients/mshin-cli/` passes 99/99 cases (74 existing + 21 new
+  from the initial findings-memory work + 4 regression tests added for the
   fixes above).
 
 ## [0.13.0] - 2026-09-07
