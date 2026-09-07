@@ -25,6 +25,11 @@ const DEFAULT_MAX_TOOL_RESULT_LINES = 60;
 const DEFAULT_TOOL_RESULT_HEAD_LINES = 25;
 const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
 
+// Marker prefix identifying the findings-summary message compactContext()
+// maintains (Option B). Used both to find and refresh that single message
+// and to keep it out of eviction.
+const FINDINGS_SUMMARY_MARKER = "[Findings Summary";
+
 // Tools that can alter state or launch exploits require explicit user approval
 // before each invocation. hydra brute-forces live credentials (can lock out
 // real accounts) and sqlmap actively exploits SQL injection (can read or
@@ -1005,19 +1010,13 @@ class Agent {
    * truncated to its head and tail rather than evicting the entire result.
    * The full output remains in AgentMemory; only the LLM-facing copy is slimmed.
    *
-   * Option B: Structured findings memory - if there are findings, insert a
-   * findings summary message after the system prompt. This ensures critical
-   * facts (hosts, ports, services, CVEs) remain addressable even when raw tool
-   * outputs are compressed or dropped.
+   * Option B: Structured findings memory - if there are findings, keep a single
+   * findings summary message right after the system prompt, refreshed on every
+   * pass. This ensures critical facts (hosts, ports, services, CVEs) remain
+   * addressable, and current, even when raw tool outputs are compressed or
+   * dropped.
    */
   compactContext(messages) {
-    const systemIdx = messages.findIndex((m) => m.role === "system");
-    const userGoalIdx = messages.findIndex((m) => m.role === "user");
-
-    const preserved = [];
-    if (systemIdx !== -1) preserved.push(systemIdx);
-    if (userGoalIdx !== -1) preserved.push(userGoalIdx);
-
     // First pass: compress long tool results in place rather than dropping the
     // whole message. If this alone brings the budget under the limit, nothing
     // is lost from the transcript.
@@ -1032,29 +1031,43 @@ class Agent {
       return { ...m, content: compressed };
     });
 
-    // Option B: Insert findings summary after system message if we have findings
-    // The findings summary is added as an assistant message so it's part of the
-    // conversation history the model can reference, but it's separate from the
-    // raw tool outputs that may be compressed or dropped.
-    if (this.findingsMemory.hasFindings() && systemIdx !== -1) {
-      const findingsSummary = this.findingsMemory.getSummary(this.findingsTokenBudget);
-      // Check if we already have a findings summary in the working messages
-      const hasFindingsSummary = working.some(
-        (m) => m.role === "assistant" && m.content?.includes("## Discovered Hosts")
-      );
-      
-      if (!hasFindingsSummary) {
-        // Insert findings summary right after the system message
-        const findingsMessage = {
-          role: "assistant",
-          content: `[Findings Summary - Do not edit this section, only reference it]\n${findingsSummary}`,
-        };
-        working.splice(systemIdx + 1, 0, findingsMessage);
-        
-        // Mark this position as preserved so it doesn't get dropped
-        preserved.push(systemIdx + 1);
+    // Option B: keep exactly one findings-summary message, refreshed with the
+    // latest aggregated findings on every pass so it never goes stale, and
+    // never duplicated across compaction passes. It's added as an assistant
+    // message so it's part of the conversation history the model can
+    // reference, but it's separate from the raw tool outputs that may be
+    // compressed or dropped.
+    if (this.findingsMemory.hasFindings()) {
+      const systemIdx = working.findIndex((m) => m.role === "system");
+      if (systemIdx !== -1) {
+        const findingsSummary = this.findingsMemory.getSummary(this.findingsTokenBudget);
+        const findingsContent = `${FINDINGS_SUMMARY_MARKER} - Do not edit this section, only reference it]\n${findingsSummary}`;
+        const existingIdx = working.findIndex(
+          (m) => m.role === "assistant" && m.content?.startsWith(FINDINGS_SUMMARY_MARKER)
+        );
+
+        if (existingIdx !== -1) {
+          // Refresh in place -- same index, so nothing else shifts.
+          working[existingIdx] = { ...working[existingIdx], content: findingsContent };
+        } else {
+          working.splice(systemIdx + 1, 0, { role: "assistant", content: findingsContent });
+        }
       }
     }
+
+    // Preserved indices are computed from the final shape of `working`, after
+    // any findings-message insertion/refresh above, so they always point at
+    // the system prompt, the original user goal, and the findings summary --
+    // never at whatever happens to have shifted into their old slot.
+    const preserved = [];
+    const systemIdx = working.findIndex((m) => m.role === "system");
+    const userGoalIdx = working.findIndex((m) => m.role === "user");
+    const findingsIdx = working.findIndex(
+      (m) => m.role === "assistant" && m.content?.startsWith(FINDINGS_SUMMARY_MARKER)
+    );
+    if (systemIdx !== -1) preserved.push(systemIdx);
+    if (userGoalIdx !== -1) preserved.push(userGoalIdx);
+    if (findingsIdx !== -1) preserved.push(findingsIdx);
 
     let tokens = working.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
 

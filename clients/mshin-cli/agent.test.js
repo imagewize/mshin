@@ -447,6 +447,57 @@ test("compactContext keeps the system prompt and original goal while trimming hi
   assert.ok(compacted.some((m) => m.content === "ORIGINAL GOAL"));
 });
 
+test("compactContext keeps the original goal even once a findings summary is inserted", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: { maxHistoryMessages: 3, contextTokenBudget: 1 },
+  });
+  agent.findingsMemory.processToolResult(
+    "nmap",
+    "Nmap scan report for 10.0.0.5\n22/tcp open ssh OpenSSH 8.9"
+  );
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+    { role: "tool", name: "nmap", content: "tool output 1" },
+    { role: "tool", name: "nmap", content: "tool output 2" },
+    { role: "tool", name: "nmap", content: "tool output 3" },
+  ];
+
+  const compacted = agent.compactContext(messages);
+  assert.ok(
+    compacted.some((m) => m.role === "user" && m.content === "ORIGINAL GOAL"),
+    "the original goal must survive compaction once a findings summary occupies a slot"
+  );
+});
+
+test("compactContext refreshes the findings summary instead of freezing it", async (t) => {
+  const { agent } = await setup(t);
+  agent.findingsMemory.processToolResult(
+    "nmap",
+    "Nmap scan report for 10.0.0.5\n22/tcp open ssh OpenSSH 8.9"
+  );
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+  ];
+  const firstPass = agent.compactContext(messages);
+  const firstSummary = firstPass.find((m) => m.content?.startsWith("[Findings Summary"));
+  assert.ok(firstSummary.content.includes("10.0.0.5"));
+
+  agent.findingsMemory.processToolResult(
+    "nmap",
+    "Nmap scan report for 10.0.0.9\n80/tcp open http nginx 1.18"
+  );
+  const secondPass = agent.compactContext(firstPass);
+  const findingsMessages = secondPass.filter((m) =>
+    m.content?.startsWith("[Findings Summary")
+  );
+  assert.equal(findingsMessages.length, 1, "the findings summary must not be duplicated");
+  assert.ok(findingsMessages[0].content.includes("10.0.0.9"), "the summary must include newly discovered hosts");
+});
+
 test("compressToolResult keeps short output unchanged", () => {
   const text = "line one\nline two\nline three";
   assert.equal(compressToolResult(text), text);
