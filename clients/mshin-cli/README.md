@@ -68,11 +68,11 @@ A few things about that loop aren't obvious from skimming it:
   `ACTIVE_TOOLS` triggers `onApproval` before it runs; declining is fed back
   to the model as a tool result (`User declined to run active tool ...`) so
   it can adjust rather than silently retry.
-- **History is compacted, not just capped.** `compactContext` estimates
-  token usage (~4 chars/token) and drops the oldest non-preserved messages
-  once either `DEFAULT_MAX_HISTORY_MESSAGES` (40) or
-  `DEFAULT_CONTEXT_TOKEN_BUDGET` (24,000 tokens) is exceeded, always keeping
-  the system prompt and the original user goal.
+- **History is compacted, not just capped.** `compactContext` first
+  compresses long tool results to a head/tail window (default 60 lines, keeping
+  25 head and 25 tail) rather than dropping whole messages. If the budget is
+  still exceeded, it drops the oldest non-preserved messages. The system prompt
+  and original user goal are always preserved.
 - **Sessions persist to disk.** `AgentMemory` stores each session's message
   history as JSON under `~/.mshin/memory.json`, keyed by session ID, so a
   conversation survives a CLI restart.

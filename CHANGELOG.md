@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Smarter in-context compaction** (`clients/mshin-cli/agent.js`).
+  `compactContext` now compresses long tool results to a head/tail window
+  before dropping whole messages. Defaults: 60 lines max, 25 head, 25 tail,
+  configurable via `maxToolResultLines`, `toolResultHeadLines`, and
+  `toolResultTailLines`. The full result remains in `AgentMemory`; only the
+  LLM-facing copy is truncated. This is Option A from the roadmap's Context
+  Management section.
+
 ### Fixed
 
 - **`clients/mshin-cli/README.md`** no longer claims only the first tool call in
@@ -20,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Option A), structured findings memory (Option B), and an external session
   store (Option C). Phase 2 now lists Option A as the first context-management
   deliverable.
+- **`clients/mshin-cli/README.md`** documents the new tool-result compression
+  behaviour.
 
 ## [0.11.0] - 2026-09-07
 

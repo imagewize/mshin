@@ -15,6 +15,13 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
 // the operator's session.
 const DEFAULT_OLLAMA_TIMEOUT_MS = 600_000;
 
+// Long tool results (nmap/masscan/whois output) can dominate the context window.
+// Compression keeps the first and last N lines and omits the middle, rather
+// than dropping the whole message. The full output remains in AgentMemory.
+const DEFAULT_MAX_TOOL_RESULT_LINES = 60;
+const DEFAULT_TOOL_RESULT_HEAD_LINES = 25;
+const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
+
 // Tools that can alter state or launch exploits require explicit user approval
 // before each invocation. hydra brute-forces live credentials (can lock out
 // real accounts) and sqlmap actively exploits SQL injection (can read or
@@ -54,6 +61,27 @@ function estimateTokens(text) {
 function estimateMessageTokens(message) {
   const text = message.content || "";
   return estimateTokens(text) + 4; // small overhead for role/name
+}
+
+/**
+ * Compress a long tool result down to a head/tail window so the LLM context
+ * stays usable without dropping the entire message. The full output remains in
+ * AgentMemory; only the copy sent to the model is truncated.
+ */
+function compressToolResult(text, {
+  maxLines = DEFAULT_MAX_TOOL_RESULT_LINES,
+  headLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
+  tailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
+} = {}) {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return text;
+
+  const omitted = lines.length - headLines - tailLines;
+  return [
+    ...lines.slice(0, headLines),
+    `... (${omitted} lines omitted) ...`,
+    ...lines.slice(-tailLines),
+  ].join("\n");
 }
 
 /**
@@ -523,6 +551,9 @@ class Agent {
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
     ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
+    maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
+    toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
+    toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
     metrics = null,
     debug = null,
   }) {
@@ -535,6 +566,9 @@ class Agent {
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
     this.ollamaTimeoutMs = ollamaTimeoutMs;
+    this.maxToolResultLines = maxToolResultLines;
+    this.toolResultHeadLines = toolResultHeadLines;
+    this.toolResultTailLines = toolResultTailLines;
     this.metrics = metrics || {
       toolCalls: 0,
       narratedToolCalls: 0,
@@ -862,11 +896,13 @@ class Agent {
   }
 
   /**
-   * Keep the context window healthy by dropping the oldest tool-result pairs
-   * while preserving the system prompt and the original user goal.
+   * Keep the context window healthy by compressing long tool results and, only
+   * if necessary, dropping the oldest tool-result pairs. The system prompt and
+   * the original user goal are always preserved.
    *
-   * This is intentionally simple: a production version can swap in a
-   * summarization pass or vector memory here.
+   * Compression is the first line of defence: a 500-line nmap output gets
+   * truncated to its head and tail rather than evicting the entire result.
+   * The full output remains in AgentMemory; only the LLM-facing copy is slimmed.
    */
   compactContext(messages) {
     const systemIdx = messages.findIndex((m) => m.role === "system");
@@ -876,7 +912,20 @@ class Agent {
     if (systemIdx !== -1) preserved.push(systemIdx);
     if (userGoalIdx !== -1) preserved.push(userGoalIdx);
 
-    let working = messages.slice();
+    // First pass: compress long tool results in place rather than dropping the
+    // whole message. If this alone brings the budget under the limit, nothing
+    // is lost from the transcript.
+    let working = messages.map((m) => {
+      if (m.role !== "tool" || !m.content) return m;
+      const compressed = compressToolResult(m.content, {
+        maxLines: this.maxToolResultLines,
+        headLines: this.toolResultHeadLines,
+        tailLines: this.toolResultTailLines,
+      });
+      if (compressed === m.content) return m;
+      return { ...m, content: compressed };
+    });
+
     let tokens = working.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
 
     if (tokens > this.metrics.contextHighWaterTokens) {
@@ -935,5 +984,5 @@ function askYesNo(question, ask = readLineFromStdin) {
   );
 }
 
-export { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo };
+export { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, compressToolResult };
 export default Agent;
