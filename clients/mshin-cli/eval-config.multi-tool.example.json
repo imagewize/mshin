@@ -1,0 +1,30 @@
+{
+  "models": ["mshin", "qwen3:8b"],
+  "ollamaUrl": "http://localhost:11434",
+  "nodeUrl": "http://192.168.1.100:3000",
+  "cases": [
+    {
+      "name": "recon-chain",
+      "prompt": "Find out who the registrar for example.com is, then scan 127.0.0.1 for open ports. Report both findings.",
+      "expectedTools": ["whois", "nmap"],
+      "maxSteps": 6
+    },
+    {
+      "name": "chain-with-dependency",
+      "prompt": "Scan 127.0.0.1 for open ports. If you find a web server, run nikto against http://127.0.0.1 as well. Summarise what you found.",
+      "expectedTools": ["nmap"],
+      "maxSteps": 6
+    },
+    {
+      "name": "pivot-on-failure",
+      "prompt": "Run a WHOIS lookup for example.com and tell me the registrar. If the lookup cannot run, say plainly what you could not determine rather than guessing.",
+      "expectedTools": ["whois"],
+      "maxSteps": 4
+    },
+    {
+      "name": "no-tool-control",
+      "prompt": "In one sentence, what does the acronym WHOIS refer to? Do not run any tools.",
+      "maxSteps": 2
+    }
+  ]
+}
