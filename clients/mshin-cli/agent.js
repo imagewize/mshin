@@ -15,6 +15,30 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
 // metasploit.
 const ACTIVE_TOOLS = new Set(["metasploit", "hydra", "sqlmap"]);
 
+// Tool failures no retry can fix. Every one of these is environmental — the
+// binary is absent, the sudoers allowlist does not cover it, or systemd blocks
+// the privilege transition — so an identical second call fails identically.
+// Measured on a live run: given a whois the Node could not execute, both
+// mistral- and qwen-class models spent their entire step budget re-issuing the
+// same call, then gave up. The loop now marks the tool unavailable after the
+// first such failure instead.
+const NON_RETRYABLE_TOOL_ERROR_RE = new RegExp(
+  [
+    "sudo: a password is required",
+    "no new privileges",
+    "Tool binary not found",
+    "Unknown tool:",
+    "is not enabled",
+    "command not found",
+    "permission denied",
+  ].join("|"),
+  "i"
+);
+
+function isNonRetryableToolError(text) {
+  return NON_RETRYABLE_TOOL_ERROR_RE.test(text || "");
+}
+
 function estimateTokens(text) {
   // Fast, conservative approximation: ~4 characters per token for English text.
   return Math.ceil(text.length / 4);
@@ -400,6 +424,8 @@ class Agent {
       approvalGranted: 0,
       approvalDenied: 0,
       contextHighWaterTokens: 0,
+      nonRetryableToolErrors: 0,
+      blockedToolRetries: 0,
       steps: 0,
       errors: 0,
     };
@@ -417,6 +443,11 @@ class Agent {
     if (messages.length === 0) {
       messages.push({ role: "system", content: systemPrompt });
     }
+
+    // Scoped to the run, not the Agent: if the operator fixes the sudoers
+    // allowlist between prompts, the next run rediscovers the tool at the cost
+    // of one call rather than staying wrong for the life of the session.
+    const unavailableTools = new Map();
 
     messages.push({ role: "user", content: userGoal });
 
@@ -482,6 +513,19 @@ class Agent {
           continue;
         }
 
+        if (unavailableTools.has(name)) {
+          // Answering from the transcript instead of re-running the tool: the
+          // model has already been told, so repeat it verbatim and spend no
+          // step budget on a call that cannot behave differently.
+          this.metrics.blockedToolRetries++;
+          messages.push({
+            role: "tool",
+            name,
+            content: unavailableTools.get(name),
+          });
+          continue;
+        }
+
         this.metrics.toolCalls++;
         if (onToolCall) onToolCall(name, args);
 
@@ -504,6 +548,20 @@ class Agent {
           .join("\n") || "(no output)";
 
         if (onToolResult) onToolResult(name, text);
+
+        if (result.isError && isNonRetryableToolError(text)) {
+          this.metrics.nonRetryableToolErrors++;
+          const guidance =
+            `Tool '${name}' cannot run on this Node: ${text}\n` +
+            "This is an environment problem, not a bad argument — calling it " +
+            "again will fail the same way. Do not retry it. Continue with a " +
+            "different tool if one applies, or state plainly which part of the " +
+            "question you cannot answer and why.";
+          unavailableTools.set(name, guidance);
+          messages.push({ role: "tool", name, content: guidance });
+          continue;
+        }
+
         messages.push({ role: "tool", name, content: text });
       }
 

@@ -678,3 +678,107 @@ test("askYesNo treats anything but a leading y as a denial", async () => {
   assert.equal(await askYesNo("q", () => "  YES  "), true);
   assert.equal(await askYesNo("q", () => "nope"), false);
 });
+
+// -----------------------------------------------------------------------------
+// Non-retryable tool failures
+// -----------------------------------------------------------------------------
+
+/** MCP error content, shaped like the server's handler-throw path. */
+function errorContent(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+test("a non-retryable tool error is not retried", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () =>
+      errorContent("Error: Command failed: sudo -n /usr/bin/nmap 127.0.0.1\nsudo: a password is required"),
+  });
+
+  // The model asks for the same tool three times, as both live models did.
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("I could not run nmap on this Node.");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // Executed once; the two repeats were answered from the transcript.
+  assert.equal(mcp.calls.length, 1);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 1);
+  assert.equal(agent.metrics.blockedToolRetries, 2);
+  assert.equal(answer, "I could not run nmap on this Node.");
+});
+
+test("the model is told the failure is environmental, not a bad argument", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Tool binary not found: /usr/bin/nikto. Is nikto installed?"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  const toolMessage = ollama.requests
+    .at(-1)
+    .body.messages.find((m) => m.role === "tool");
+  assert.match(toolMessage.content, /cannot run on this Node/);
+  assert.match(toolMessage.content, /Do not retry it/);
+  // The underlying error is preserved, not swallowed.
+  assert.match(toolMessage.content, /Tool binary not found/);
+});
+
+test("an ordinary tool error stays retryable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
+  });
+
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueFinal("host is down");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // A transient failure must not disable the tool: both calls reached MCP.
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 0);
+  assert.equal(agent.metrics.blockedToolRetries, 0);
+});
+
+test("a successful call is never treated as non-retryable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    // Output that merely mentions permissions, without isError.
+    mcpHandler: () => textContent("22/tcp open ssh — permission denied banner seen"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 0);
+});
+
+test("blocking one tool leaves the others usable", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: (name) =>
+      name === "nmap"
+        ? errorContent("Error: sudo: a password is required")
+        : textContent("metasploit ran"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("metasploit", {});
+  ollama.queueFinal("done");
+
+  await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onApproval: async () => true,
+  });
+
+  assert.deepEqual(mcp.calls.map((c) => c.name), ["nmap", "metasploit"]);
+  assert.equal(agent.metrics.blockedToolRetries, 1);
+});
