@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, extractTextToolCall, compressToolResult } from "./agent.js";
+import { SessionLogger } from "./session-logger.js";
 
 // -----------------------------------------------------------------------------
 // Test doubles
@@ -145,6 +146,7 @@ async function setup(t, { mcpHandler = () => textContent("ok"), agentOptions = {
     model: "mshin",
     tools: OLLAMA_TOOLS,
     memory,
+    sessionLogger: null,
     ...agentOptions,
   });
   t.after(async () => {
@@ -1023,4 +1025,110 @@ test("the request timeout is generous by default", async (t) => {
   const { agent } = await setup(t);
   // A single turn on a 70B can run for minutes; the default must not be tight.
   assert.equal(agent.ollamaTimeoutMs, 600_000);
+});
+
+// -----------------------------------------------------------------------------
+// Session JSONL logging
+// -----------------------------------------------------------------------------
+
+test("SessionLogger writes append-only JSONL events", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  const logger = new SessionLogger(dir);
+  logger.write("s1", { type: "test.a", value: 1 });
+  logger.write("s1", { type: "test.b", value: 2 });
+
+  const lines = readFileSync(join(dir, "sessions", "s1.jsonl"), "utf8")
+    .trim()
+    .split("\n");
+  assert.equal(lines.length, 2);
+
+  const first = JSON.parse(lines[0]);
+  assert.equal(first.type, "test.a");
+  assert.equal(first.value, 1);
+  assert.equal(first.sessionId, "s1");
+  assert.ok(first.timestamp);
+
+  const second = JSON.parse(lines[1]);
+  assert.equal(second.type, "test.b");
+  assert.equal(second.value, 2);
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("agent logs session.start, tool calls, results, and session.end", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  const logger = new SessionLogger(dir);
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => textContent("PORT 22/tcp open ssh"),
+    agentOptions: { sessionLogger: logger },
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("Port 22 is open.");
+
+  await agent.run({ sessionId: "s-logged", userGoal: "scan localhost" });
+
+  const events = readFileSync(join(dir, "sessions", "s-logged.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  assert.ok(events.some((e) => e.type === "session.start" && e.goal === "scan localhost"));
+  assert.ok(events.some((e) => e.type === "tool.call" && e.name === "nmap" && e.args.target === "127.0.0.1"));
+  assert.ok(events.some((e) => e.type === "tool.result" && e.name === "nmap" && e.text.includes("22/tcp open ssh")));
+  assert.ok(events.some((e) => e.type === "session.end" && e.answer === "Port 22 is open."));
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("agent logs session.error when Ollama fails", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  const logger = new SessionLogger(dir);
+  const { agent } = await setup(t, {
+    agentOptions: { sessionLogger: logger },
+  });
+
+  // No responses queued -> the mock returns HTTP 500.
+  await assert.rejects(agent.run({ sessionId: "s-error", userGoal: "will fail" }), /Ollama returned 500/);
+
+  const events = readFileSync(join(dir, "sessions", "s-error.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  assert.ok(events.some((e) => e.type === "session.start"));
+  assert.ok(events.some((e) => e.type === "session.error" && /Ollama returned 500/.test(e.error)));
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("SessionLogger prunes files older than maxAgeDays", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  const logger = new SessionLogger(dir, { maxSessions: 100, maxAgeDays: 1 });
+  logger.write("old-session", { type: "session.start" });
+
+  const oldPath = join(dir, "sessions", "old-session.jsonl");
+  const ancient = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  utimesSync(oldPath, new Date(ancient), new Date(ancient));
+
+  // Creating a second logger re-runs prune with the same policy.
+  new SessionLogger(dir, { maxSessions: 100, maxAgeDays: 1 });
+
+  assert.ok(!existsSync(oldPath), "ancient session file should be pruned");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("SessionLogger keeps only the most recent maxSessions files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  const logger = new SessionLogger(dir, { maxSessions: 2, maxAgeDays: 30 });
+  logger.write("first", { type: "session.start" });
+  logger.write("second", { type: "session.start" });
+  logger.write("third", { type: "session.start" });
+
+  new SessionLogger(dir, { maxSessions: 2, maxAgeDays: 30 });
+
+  assert.ok(!existsSync(join(dir, "sessions", "first.jsonl")), "oldest file should be pruned");
+  assert.ok(existsSync(join(dir, "sessions", "second.jsonl")));
+  assert.ok(existsSync(join(dir, "sessions", "third.jsonl")));
+  rmSync(dir, { recursive: true, force: true });
 });

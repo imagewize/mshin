@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-07
+
+Session-logging release. Adds append-only JSONL session logs so operator
+prompts, tool calls, and results can be reviewed or converted into reports after
+the CLI exits.
+
+### Added
+
+- **`SessionLogger` module** (`clients/mshin-cli/session-logger.js`). Writes one
+  append-only JSONL file per run under `~/.mshin/sessions/<sessionId>.jsonl`.
+  Events include `session.start`, `model.turn`, `tool.call`, `tool.result`,
+  `approval.request` / `approval.response`, `fabrication.block` / `nudge`, and
+  `session.end` / `session.error`. Disabled with `MSHIN_NO_SESSION_LOG=1`.
+  Prunes old files on startup: keeps the 100 most recent sessions and deletes
+  anything older than 30 days; configurable with `MSHIN_MAX_SESSIONS` and
+  `MSHIN_MAX_SESSION_AGE_DAYS`.
+- **Agent integration** (`clients/mshin-cli/agent.js`). `Agent` accepts an
+  injectable `sessionLogger` and writes the events above during `run()`. Tests
+  pass `sessionLogger: null` so the suite does not write to `~/.mshin`.
+- **CLI wiring** (`clients/mshin-cli/index.js`). The interactive harness creates
+  a `SessionLogger` sharing the `AgentMemory` data directory and prints the log
+  path at startup. `MSHIN_DATA_DIR` overrides the default `~/.mshin` location
+  so logs can live on a host-mounted or shared path.
+
+### Changed
+
+- **`clients/mshin-cli/README.md`** documents the new JSONL session logs, the
+  event types, and the `MSHIN_NO_SESSION_LOG` opt-out.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 74/74 cases; `servers/src/kali/` was
+  not changed in this release.
+
 ## [0.12.0] - 2026-09-07
 
 Context-management release. Implements Option A from the roadmap — smarter
@@ -1048,7 +1082,9 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/imagewize/mshin/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/imagewize/mshin/compare/v0.10.1...v0.12.0
 [0.10.1]: https://github.com/imagewize/mshin/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/imagewize/mshin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0

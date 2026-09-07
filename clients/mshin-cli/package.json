@@ -9,8 +9,8 @@
   },
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check agent.js && node --check eval-harness.js",
-    "test": "node --check index.js && node --check agent.js && node --check eval-harness.js && node --test --test-timeout=15000"
+    "check": "node --check index.js && node --check agent.js && node --check eval-harness.js && node --check session-logger.js",
+    "test": "node --check index.js && node --check agent.js && node --check eval-harness.js && node --check session-logger.js && node --test --test-timeout=15000"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"

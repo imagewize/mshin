@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import readline from "node:readline";
 import { Agent, AgentMemory, askYesNo } from "./agent.js";
+import { SessionLogger } from "./session-logger.js";
 
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
@@ -95,15 +96,20 @@ async function main() {
   console.log(`Connected. Node is exposing ${ollamaTools.length} tool(s):`);
   console.log(`  ${ollamaTools.map((t) => t.function.name).join(", ")}`);
   console.log("");
-  console.log('Type a prompt, or "exit" to quit.\n');
+  const dataDir = process.env.MSHIN_DATA_DIR;
+  const memory = new AgentMemory(dataDir);
+  const sessionLogger = new SessionLogger(memory.dataDir);
 
-  const memory = new AgentMemory();
+  console.log('Type a prompt, or "exit" to quit.\n');
+  console.log(`Session logs: ${sessionLogger.sessionsDir}\n`);
+
   const agent = new Agent({
     mcpClient: client,
     ollamaUrl,
     model,
     tools: ollamaTools,
     memory,
+    sessionLogger,
   });
 
   const rl = readline.createInterface({
