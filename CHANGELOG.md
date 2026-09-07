@@ -16,10 +16,11 @@ Agent-evaluation and transport-modernization release. Adds a model-evaluation ha
 - **Model evaluation harness** (`clients/mshin-cli/eval-harness.js`). Runs a scripted set of prompts against one or more Ollama models and records duration, steps, tool-call success, narrated calls, fabricated outputs blocked, active-tool approvals, and context-window high-water mark. Output formats: JSON, Markdown, CSV.
 - **Agent metrics collection** (`clients/mshin-cli/agent.js`). The `Agent` constructor accepts an optional `metrics` object and now tracks the same counters the harness reports.
 - **Example evaluation config** (`clients/mshin-cli/eval-config.example.json`).
+- **Transport lifecycle tests** (`servers/src/kali/transport.test.js`). Boots the server as a child process and drives it with a real MCP client: initialize, `listTools`, explicit session termination, and rejection of unknown session ids.
 
 ### Changed
 
-- **MCP transport migrated from SSE to Streamable HTTP.** Both `clients/mshin-cli/index.js` and `clients/mshin-cli/eval-harness.js` now use `StreamableHTTPClientTransport` against `/mcp`. `servers/src/kali/index.js` now uses `StreamableHTTPServerTransport` with stateful sessions on `/mcp`; the old `/sse` and `/messages` endpoints are removed.
+- **MCP transport migrated from SSE to Streamable HTTP.** Both `clients/mshin-cli/index.js` and `clients/mshin-cli/eval-harness.js` now use `StreamableHTTPClientTransport` against `/mcp`. `servers/src/kali/index.js` now uses `StreamableHTTPServerTransport` with stateful sessions on `/mcp`, serving GET for the server-to-client stream, POST for requests, and DELETE for session termination; the old `/sse` and `/messages` endpoints are removed. DELETE is the only request that fires `onsessionclosed`, so without its route the server would hold every session it ever opened.
 - **`docs/cybersecurity-agent-roadmap.md`**: noted the planned Mac Mini + Raspberry Pi deployment and the new model-evaluation harness under Phase 2.
 - **`clients/mshin-cli/README.md`**: documented the evaluation harness and config format.
 - **`CONTRIBUTING.md`** and **`CLAUDE.md`**: updated project-structure listings for `clients/mshin-cli/`.
@@ -27,8 +28,8 @@ Agent-evaluation and transport-modernization release. Adds a model-evaluation ha
 ### Verified
 
 - `npm test` in `clients/mshin-cli/` passes 44/44 cases.
-- `npm test` in `servers/src/kali/` passes 16/16 cases.
-- **Streamable HTTP transport handshake works end to end.** Started `servers/src/kali/index.js` on port 3001 with `--tools nmap,whois` and connected a real MCP `Client` using `StreamableHTTPClientTransport` against `/mcp`. `client.connect()` completed initialize, `client.listTools()` returned the two enabled tool schemas, and `client.close()` cleaned up the session.
+- `npm test` in `servers/src/kali/` passes 20/20 cases.
+- **Streamable HTTP transport handshake works end to end.** Started `servers/src/kali/index.js` with `--tools nmap,whois` and connected a real MCP `Client` using `StreamableHTTPClientTransport` against `/mcp`. `client.connect()` completed initialize, `client.listTools()` returned the two enabled tool schemas, and `transport.terminateSession()` released the session server-side — confirmed by a follow-up DELETE for the same id answering 404. (An earlier draft of this entry credited `client.close()` with the cleanup; it does not contact the server at all.)
 
 ### Still not verified
 
