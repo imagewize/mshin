@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a turn is executed. The 0.11.0 loop runs every tool call the model emits; the
   README now describes that behaviour.
 
+### Changed
+
+- **`docs/cybersecurity-agent-roadmap.md`** expands the Context Management
+  section into three concrete, ordered options: smarter in-context compaction
+  (Option A), structured findings memory (Option B), and an external session
+  store (Option C). Phase 2 now lists Option A as the first context-management
+  deliverable.
+
 ## [0.11.0] - 2026-09-07
 
 Agent-loop observability and the real fix for the multi-tool bug. Adding a
