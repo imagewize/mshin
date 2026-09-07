@@ -79,7 +79,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Connect to the Machin Shin Node MCP server via SSE.
+  // Connect to the Machin Shin Node MCP server over Streamable HTTP.
   const client = new Client(
     { name: "mshin-cli", version: "1.0.0" },
     { capabilities: { tools: {} } }

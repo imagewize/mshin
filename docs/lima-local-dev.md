@@ -44,7 +44,7 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │  │  └──────────────────────┘│               │ dirb, arping, dnsenum,             │  │
 │  │      │                   │               │ metasploit, searchsploit           │  │
 │  │  ┌──────────────────────┐│               │                                    │  │
-│  │  │ Machin Shin CLI      ││  ─── SSE ──▶  │                                    │  │
+│  │  │ Machin Shin CLI      ││  ── HTTP ──▶  │                                    │  │
 │  │  │ (MCP client)         ││               │                                    │  │
 │  │  └──────────────────────┘│               │                                    │  │
 │  └──────────────────────────┘               └────────────────────────────────────┘  │
