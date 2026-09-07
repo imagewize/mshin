@@ -21,8 +21,7 @@ the tool result so each sits in the message role the model expects.
   never returned from the following turn. The loop now emits a short tool result
   (`Tool 'x' cannot run: <error>. This tool is unavailable; do not retry it.`) and
   puts the direction to continue the task in a separate `role: "user"` message.
-  Mock tests verify the split and the shorter tool slot. Whether this recovers
-  the two-tool `recon-chain` case under live inference is still to be measured.
+  Mock tests verify the split and the shorter tool slot.
 
 ### Verified
 
@@ -30,12 +29,19 @@ the tool result so each sits in the message role the model expects.
 - The agent test for non-retryable failures asserts that the tool slot no longer
   carries the imperative instruction and that the instruction appears in a user
   message.
+- **Live inference, `recon-chain`, `mshin` and `qwen3:8b`: termination is fixed.**
+  Both models returned in ~45s with no hang (46095 ms and 44154 ms), against a Node
+  whose `whois` fails under `sudo -n`. The next-turn wedge is gone.
 
 ### Still not verified
 
-- The split-message guidance against a live Ollama model. The fix is designed
-  around the measured symptom; the `recon-chain` case needs a live run to confirm
-  the model both continues the task and terminates.
+- **Multi-tool continuation.** In the same live run, neither model advanced to
+  `nmap` after `whois` went unavailable — both stopped at 2 of 6 steps and returned
+  a placeholder claiming a scan that never ran. The `role: "user"` instruction to
+  continue the task did not, on this case, get either model to the second tool. The
+  split shipped termination and continuation together; only termination is
+  confirmed. Tracked in `docs/AGENT-LOOP-INVESTIGATIONS.md` under "models abandon
+  the rest of a multi-tool goal" (reopened).
 
 ## [0.10.1] - 2026-09-07
 
