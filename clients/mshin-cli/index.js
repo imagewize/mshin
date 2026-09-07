@@ -96,7 +96,8 @@ async function main() {
   console.log(`Connected. Node is exposing ${ollamaTools.length} tool(s):`);
   console.log(`  ${ollamaTools.map((t) => t.function.name).join(", ")}`);
   console.log("");
-  const memory = new AgentMemory();
+  const dataDir = process.env.MSHIN_DATA_DIR;
+  const memory = new AgentMemory(dataDir);
   const sessionLogger = new SessionLogger(memory.dataDir);
 
   console.log('Type a prompt, or "exit" to quit.\n');
