@@ -81,7 +81,14 @@ const app = express();
 // (and reconnects) each get their own message channel.
 const transports = new Map();
 
-app.get("/mcp", async (req, res) => {
+// GET opens the server-to-client stream and DELETE terminates the session.
+// Both address a session that already exists, so they share one lookup and let
+// the transport dispatch on the method. Without the DELETE route a client's
+// terminateSession() gets Express's 404 (the SDK only tolerates 405), and the
+// session is never dropped from the map: DELETE is the only path that fires
+// onsessionclosed, so a long-lived Node would leak a transport and a Server
+// instance per CLI run.
+async function routeToSession(req, res) {
   const sessionId = req.headers["mcp-session-id"];
   const transport = sessionId ? transports.get(sessionId) : null;
   if (!transport) {
@@ -89,7 +96,10 @@ app.get("/mcp", async (req, res) => {
     return;
   }
   await transport.handleRequest(req, res);
-});
+}
+
+app.get("/mcp", routeToSession);
+app.delete("/mcp", routeToSession);
 
 app.post("/mcp", express.json(), async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
@@ -117,10 +127,13 @@ app.post("/mcp", express.json(), async (req, res) => {
     },
   });
 
+  // A DELETE closes the transport right after onsessionclosed has already
+  // dropped the entry; only log here when this handler is the one removing it,
+  // so an explicit termination reports once rather than twice.
   transport.onclose = () => {
-    if (transport.sessionId) {
-      transports.delete(transport.sessionId);
-      console.error(`[INFO] MCP client disconnected (session ${transport.sessionId})`);
+    const sid = transport.sessionId;
+    if (sid && transports.delete(sid)) {
+      console.error(`[INFO] MCP client disconnected (session ${sid})`);
     }
   };
 
