@@ -62,17 +62,19 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 
 ### Option A: Pure Local — Hardware You Already Own (Start Here)
 ```
-┌──────────────────────┐     ┌───────────────────┐
-│ Existing desktop/Mac │     │ Kali Node         │
-│ - 32GB+ RAM          │<───>│ - Kali + MCP      │
-│ - Mistral Small 24B  │     │ - Static IP       │
-│ - Ollama + CLI       │     │ (cheap box or VM) │
-└──────────────────────┘     └───────────────────┘
+┌──────────────────────┐      ┌───────────────────┐
+│ Existing desktop/Mac │      │ Kali Node         │
+│ - 32GB RAM           │<───> │ - Kali + MCP      │
+│ - Mistral Small 24B  │      │ - Static IP       │
+│ - Ollama + CLI       │      │ (cheap box or VM) │
+└──────────────────────┘      └───────────────────┘
 ```
 - **Cost**: **$150–350** (the Kali Node only — the Core is hardware you have)
 - **Pros**: Zero inference spend; 24B tool-callers are reliable and fast; no exposure to the RAM-price surge; proves the harness before it costs anything
 - **Cons**: No 70B/120B headroom; long, noisy agent sessions will eventually pressure a 32GB context budget
 - **Graduate when**: you measure context overflow, or a 24–32B model demonstrably fails the tool-calling reliability bar your loop needs — not before
+
+> **Planned personal deployment (late 2026):** Mac Mini as the Core and a Raspberry Pi as the Kali Node. This keeps the two-machine separation while using small, quiet hardware. A Raspberry Pi is sufficient for light recon tools (`nmap`, `whois`, `nikto`) but will struggle with heavier workloads such as Metasploit or large `sqlmap` runs; treat it as a low-cost entry point, not a full-speed offensive platform. Verification of this pairing is on the backlog under *Phase 2*.
 
 ### Option A′: Pure Local — Unified-Memory APU (The Upgrade Target)
 ```
@@ -338,6 +340,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 
 - [ ] **Verify physical two-machine deployment** — the Lima local-dev path is verified; the production path (real Kali Node + Core on physical LAN) still needs end-to-end testing
 - [ ] **Hardware Decision** — make it *after* Phase 1, using measurements from the harness (tokens/session, context high-water mark, tool-call success rate), not before:
+  - A model-evaluation harness is implemented in `clients/mshin-cli/eval-harness.js`; run it against candidate models and compare JSON/CSV reports before buying hardware
   - **Stay on Option A**: if a 24–32B model is clearing your reliability bar, buy nothing
   - **Option A′**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE; the right buy if you need a bigger *model*
   - **Option A″**: RTX 6000 Ada (48GB) + DIMM RAM (~$7k–8k) — only if you need raw throughput
