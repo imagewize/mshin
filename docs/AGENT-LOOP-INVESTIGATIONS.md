@@ -30,16 +30,17 @@ Models used: `mshin` (the persona, 7B-class) and `qwen3:8b`.
 
 ---
 
-## Open: the unavailable-tool guidance may prevent termination
+## Addressed: the unavailable-tool guidance may prevent termination
 
-**Status: unresolved. Do not treat the reworded guidance as verified.**
+**Status: fix implemented; live verification pending.**
 
 ### What the loop does now
 
 When a tool fails for an environmental reason — `sudo: a password is required`, a
-missing binary, `no new privileges` — the loop marks it unavailable for the run and
-pushes a `role: "tool"` message telling the model not to retry it, that the rest of
-the task still stands, and not to describe output no tool returned.
+missing binary, `no new privileges` — the loop marks it unavailable for the run,
+pushes a short `role: "tool"` message with the error and a retry-suppression
+line, and then pushes the direction to continue as a separate `role: "user"`
+message.
 
 ### What was measured
 
@@ -73,20 +74,35 @@ message — a slot the model expects to contain tool *output*, not instructions.
 7-8B model may fail to terminate on that. The pre-fix run, with short error text in
 the same slot, completed the same step in ~95s.
 
-### Next diagnostic
+### Fix
 
-Cheap, and needs no long run: POST the exact step-2 message set to
-`/api/chat` directly, once with a short guidance string and once with the long one,
-and compare whether generation terminates. That isolates wording from transport in
-about a minute of inference. If wording is the cause, candidates are a much shorter
-tool message, or moving the instruction to a `role: "user"` or `system` message
-where imperative text belongs.
+`clients/mshin-cli/agent.js` now splits the response:
+
+- The `role: "tool"` message is short: the original error plus `This tool is
+  unavailable for this run; do not retry it.`
+- The imperative direction — continue the task, call another tool if needed, do
+  not describe output no tool returned — is pushed as a `role: "user"` message
+  immediately after the tool result.
+
+This keeps the retry suppression and the explicit task continuation while putting
+each kind of text in the message role it belongs in. The mock-based tests verify
+that the split happens and that the tool slot no longer carries the long
+instruction.
 
 ### Why it is not simply reverted
 
 The defect the guidance fixes is real and measured: without it, both models spent
 their **entire step budget re-issuing an identical failing call**. The retry
-suppression itself works. It is the wording that is suspect.
+suppression itself works. It was the wording's *location*, not the instruction
+itself, that was suspect.
+
+### Next diagnostic
+
+Re-run the two-tool `recon-chain` case against a live 7-8B model. The expected
+outcome is that the unavailable tool is called once, the second tool is attempted,
+and the run returns an answer within the transport timeout. If it still hangs,
+the problem is not the slot-length hypothesis and the transcript order needs to be
+re-examined.
 
 ---
 

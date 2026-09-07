@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-07
+
+Agent-loop follow-up. The 0.10.1 unavailable-tool guidance worked in mock tests
+but hung live 7-8B models on the next turn. The instruction is now separated from
+the tool result so each sits in the message role the model expects.
+
+### Fixed
+
+- **Unavailable-tool guidance no longer lives in the tool-result slot**
+  (`clients/mshin-cli/agent.js`). The retry-suppression message was a long block
+  of imperative prose pushed into `role: "tool"`; live inference on 7-8B models
+  never returned from the following turn. The loop now emits a short tool result
+  (`Tool 'x' cannot run: <error>. This tool is unavailable; do not retry it.`) and
+  puts the direction to continue the task in a separate `role: "user"` message.
+  Mock tests verify the split and the shorter tool slot. Whether this recovers
+  the two-tool `recon-chain` case under live inference is still to be measured.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 62/62 cases; `servers/src/kali/` passes 20/20.
+- The agent test for non-retryable failures asserts that the tool slot no longer
+  carries the imperative instruction and that the instruction appears in a user
+  message.
+
+### Still not verified
+
+- The split-message guidance against a live Ollama model. The fix is designed
+  around the measured symptom; the `recon-chain` case needs a live run to confirm
+  the model both continues the task and terminates.
+
 ## [0.10.1] - 2026-09-07
 
 Agent-loop patch. Running the 0.10.0 harness against live inference for the first time found a real defect: a tool that cannot run in the current environment was retried until the step budget ran out. This release stops that, reports it, and adds a case set hard enough to tell models apart.
