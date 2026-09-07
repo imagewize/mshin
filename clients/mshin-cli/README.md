@@ -74,6 +74,15 @@ A few things about that loop aren't obvious from skimming it:
 - **Sessions persist to disk.** `AgentMemory` stores each session's message
   history as JSON under `~/.mshin/memory.json`, keyed by session ID, so a
   conversation survives a CLI restart.
+- **A tool that cannot run is not retried.** When a call comes back as an
+  error whose text is environmental — `sudo: a password is required`, a missing
+  binary, `no new privileges` — the loop marks that tool unavailable for the
+  rest of the run, tells the model the failure is not a bad argument, and
+  answers any further call to it from the transcript instead of re-running it.
+  Ordinary tool errors (host down, no results) stay retryable. This is measured
+  behaviour, not a guess: on a Node whose sudoers allowlist did not cover
+  `whois`, both a mistral- and a qwen-class 8B model spent their entire step
+  budget re-issuing the identical failing call.
 
 See the doc comments in `agent.js` for the parsing details (the
 Python-like-argument and balanced-brace-JSON extraction the narrated-call
@@ -96,6 +105,7 @@ hardware.
 - Active-tool approval requests (granted / denied)
 - Context-window high-water mark in tokens
 - Whether the case called every tool it declared in `expectedTools`
+- Non-retryable tool failures, and how many retries of them the loop refused
 - Final answer and any error
 
 ### Config format
@@ -124,6 +134,13 @@ Create a JSON file like `eval-config.json`:
   ]
 }
 ```
+
+### A harder case set
+
+`eval-config.multi-tool.example.json` carries cases that need more than one
+tool, a tool chosen conditionally on an earlier result, and a case that only
+passes if the model reports honestly when a tool cannot run. Use it once a
+model clears the single-tool set — that is where models start to separate.
 
 ### Run the harness
 
