@@ -302,10 +302,9 @@ function parseLiteral(token) {
 /**
  * Heuristic check for a model that invented tool output instead of calling a
  * tool -- e.g. writing its own fake nmap report rather than emitting a call
- * `extractTextToolCall` could have recovered. Only meaningful before any
- * tool has actually run this turn (see the `toolWasExecuted` check at the
- * call site); once a real result is in history, similar-looking text is
- * presumably the model summarizing that real output, not fabricating it.
+ * `extractTextToolCall` could have recovered. Pair it with the grounding check
+ * at the call site: text like this is a summary when the tool it describes
+ * actually returned a result, and a fabrication when it did not.
  *
  * Looks for two shapes: a fenced code block, or a "Result:" label, either of
  * which is followed by text that reads like genuine scan output (an
@@ -452,7 +451,11 @@ class Agent {
     messages.push({ role: "user", content: userGoal });
 
     try {
-      let toolWasExecuted = false;
+      // Tools whose calls came back without isError. A failed call grounds
+      // nothing: the run that exposed this had whois fail and nmap never run,
+      // yet a bare "a tool executed" flag was enough to let an invented
+      // "Nmap Scan Results" block through to the user.
+      const succeededTools = new Set();
       for (let step = 0; step < this.maxSteps; step++) {
         this.metrics.steps++;
         messages = this.compactContext(messages);
@@ -471,14 +474,22 @@ class Agent {
             : null;
 
         if (toolCalls.length === 0 && !narrated) {
-          if (!toolWasExecuted && looksLikeFabricatedToolOutput(assistantMessage.content)) {
-            // The model narrated tool output without ever emitting a call. Do
-            // not return the fabrication as an answer, and drop the turn so the
-            // invented result cannot become history.
+          const ungrounded = this.ungroundedToolsIn(
+            assistantMessage.content,
+            succeededTools
+          );
+          if (
+            (succeededTools.size === 0 || ungrounded.length > 0) &&
+            looksLikeFabricatedToolOutput(assistantMessage.content)
+          ) {
+            // The model narrated tool output for a tool that never returned a
+            // result. Do not return the fabrication as an answer, and drop the
+            // turn so the invented result cannot become history.
             this.metrics.fabricatedOutputsBlocked++;
             messages.pop();
-            const warning =
-              "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
+            const warning = ungrounded.length
+              ? `The model produced output that looks like a result from ${ungrounded.join(", ")}, but ${ungrounded.length > 1 ? "those tools" : "that tool"} never returned one. I will not show unverified results.`
+              : "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
             this.memory.storeSession(sessionId, messages);
             if (onComplete) onComplete(warning);
             return warning;
@@ -542,7 +553,6 @@ class Agent {
         }
 
         const result = await this.mcpClient.callTool({ name, arguments: args });
-        toolWasExecuted = true;
         const text = result.content
           ?.map((c) => (c.type === "text" ? c.text : ""))
           .join("\n") || "(no output)";
@@ -569,6 +579,7 @@ class Agent {
           continue;
         }
 
+        if (!result.isError) succeededTools.add(name);
         messages.push({ role: "tool", name, content: text });
       }
 
@@ -622,6 +633,21 @@ class Agent {
     return ACTIVE_TOOLS.has(name);
   }
 
+  /**
+   * Known tools the content talks about that never returned a result. This is
+   * what separates a summary from a fabrication once some other tool has run:
+   * a real whois result does not license an invented nmap report.
+   */
+  ungroundedToolsIn(content, succeededTools) {
+    if (!content) return [];
+    return this.tools
+      .map((t) => t.function.name)
+      .filter(
+        (name) =>
+          !succeededTools.has(name) &&
+          new RegExp(`\\b${name}\\b`, "i").test(content)
+      );
+  }
 
   /**
    * Keep the context window healthy by dropping the oldest tool-result pairs

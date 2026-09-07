@@ -786,3 +786,80 @@ test("blocking one tool leaves the others usable", async (t) => {
   assert.deepEqual(mcp.calls.map((c) => c.name), ["nmap", "metasploit"]);
   assert.equal(agent.metrics.blockedToolRetries, 1);
 });
+
+// -----------------------------------------------------------------------------
+// Fabricated output after a tool has already run
+// -----------------------------------------------------------------------------
+
+test("a fabricated report is blocked even after another tool succeeded", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: (name) =>
+      name === "metasploit" ? textContent("module completed") : textContent("ok"),
+  });
+
+  // metasploit really runs, then the model invents an nmap report.
+  ollama.queueToolCall("metasploit", {});
+  ollama.queueFinal(
+    "Here are the results:\n\n```\nNmap scan report for 127.0.0.1\n22/tcp open ssh\n80/tcp open http\n```"
+  );
+
+  const answer = await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onApproval: async () => true,
+  });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.match(answer, /never returned one/);
+  assert.match(answer, /nmap/);
+  assert.doesNotMatch(answer, /22\/tcp/);
+});
+
+test("a failed tool call does not ground a fabricated report", async (t) => {
+  // The live case: whois fails non-retryably, nmap is never called, and the
+  // model prints a placeholder "Nmap Scan Results" block anyway.
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: sudo: a password is required"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal(
+    "The whois lookup could not run. Here's the result:\n\n" +
+      "**Nmap Scan Results for 127.0.0.1:**\n- 22/tcp open ssh"
+  );
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "recon it" });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.doesNotMatch(answer, /22\/tcp/);
+});
+
+test("summarising a tool's real output is not blocked", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh\n80/tcp open http"),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("Result: nmap found 22/tcp open (ssh) and 80/tcp open (http).");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // The tool really ran and really returned this, so the summary must survive.
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 0);
+  assert.match(answer, /22\/tcp open/);
+});
+
+test("a tool that returned nothing usable cannot ground its own report", async (t) => {
+  const { ollama, agent } = await setup(t, {
+    mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
+  });
+
+  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
+  ollama.queueFinal("Result:\n```\n10.0.0.1\n443/tcp open https\n```");
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // The error is honest output, but it is not a scan result.
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.doesNotMatch(answer, /443\/tcp/);
+});
