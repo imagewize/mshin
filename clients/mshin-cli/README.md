@@ -118,6 +118,11 @@ Session files are pruned on CLI startup to keep disk usage bounded. The default
 keeps the 100 most recent sessions and deletes anything older than 30 days.
 Override with `MSHIN_MAX_SESSIONS` and `MSHIN_MAX_SESSION_AGE_DAYS`.
 
+To store logs outside the default `~/.mshin` directory — for example on a
+host-mounted volume inside a Lima guest, or on a shared path on the Core — set
+`MSHIN_DATA_DIR` before starting the CLI. Both `memory.json` and the
+`sessions/` directory will live under that path.
+
 ## Model evaluation harness
 
 `eval-harness.js` runs a scripted set of prompts against one or more models and
