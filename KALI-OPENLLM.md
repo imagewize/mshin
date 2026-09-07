@@ -407,7 +407,7 @@ With the CLI pointed at the Node, these prompts exercise all thirteen tools agai
 "Use dnsenum to enumerate example.com."
 ```
 
-> **`metasploit` requires approval.** It is the only active tool in the approval gate; the CLI will prompt you before it runs.
+> **`metasploit`, `hydra`, and `sqlmap` require approval.** They are the active tools in the approval gate; the CLI will prompt you before any of them runs.
 >
 > **`tshark` needs user-owned PCAP files.** The server runs `tshark` without `sudo`; capture files must be readable by the `mshin` user.
 
