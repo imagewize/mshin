@@ -8,7 +8,7 @@
 
 This document outlines the path to transforming Machin Shin from a **local LLM + Kali tool integration** system into a **full-fledged cybersecurity agent** akin to Claude Code but specialized for penetration testing, threat analysis, and incident response.
 
-The existing Machin Shin architecture (two-machine setup with Ollama + MCP + Kali Linux) gets the **plumbing** right: secure, local tool execution wired to an LLM. But be honest about what's done. The plumbing is maybe 80% there; the **value** of a Claude Code–style agent lives in the *harness* — the agent loop, context management, safety gating, and reporting — and that's the 80% still to build. Getting an open-weight model to tool-call reliably through long, noisy security sessions is the hard part, not the wiring.
+The existing Machin Shin architecture (two-machine setup with Ollama + MCP + Kali Linux) gets the **plumbing** right: secure, local tool execution wired to an LLM. **Phase 1 (Foundation) is now complete** — the agent loop, session memory, and basic tool-calling harness are implemented and verified on Lima. The remaining work is scaling (Phase 2) and production hardening (Phase 3). Getting an open-weight model to tool-call reliably through long, noisy security sessions *was* the hard part — and it is now working on the Lima local-dev path.
 
 ---
 
@@ -17,11 +17,11 @@ The existing Machin Shin architecture (two-machine setup with Ollama + MCP + Kal
 | **Aspect**               | **Current (Machin Shin)**                          | **Target (Cybersecurity Agent)**                     |
 |--------------------------|--------------------------------------------------|----------------------------------------------------|
 | **Architecture**         | Two-machine (Core + Node)                        | Same, with optional cloud/hybrid                    |
-| **LLM Integration**      | Ollama + MCP Client                              | Enhanced with agent loops                           |
+| **LLM Integration**      | Ollama + MCP Client + **agent loop**            | Enhanced with longer context, better tool selection |
 | **Tool Execution**       | MCP Server + Kali tools                          | Sandboxed, audited, with safety constraints          |
 | **User Interface**       | CLI (mcp-client)                                 | CLI + Web UI (optional)                             |
-| **Workflow**             | Manual prompts                                   | Multi-step, context-aware, autonomous                |
-| **State Management**     | Stateless                                       | Session persistence (Redis/PostgreSQL)             |
+| **Workflow**             | **Observe-decide-act loop**, one tool at a time   | Multi-step, context-aware, autonomous                |
+| **State Management**     | **JSON session persistence**                    | Session persistence (Redis/PostgreSQL)             |
 | **Reporting**            | Raw tool output                                  | Structured, actionable insights                     |
 
 ---
@@ -320,23 +320,23 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 
 ## Implementation Roadmap
 
-### Phase 1: Foundation (1–2 Weeks)
+### Phase 1: Foundation (1–2 Weeks) — **COMPLETE**
 **Goal**: Harden existing setup and add basic agent capabilities.
 
-- [ ] Fix bash scripts (`setup_mcp_server.sh`, `setup_ollama.sh`):
-  - Add missing `#` prefixes to comments
-  - Add `\` line continuations for multi-line commands
-- [ ] Add **agent loop** (Python class as shown above)
-- [ ] Implement **session memory** (SQLite is plenty for a single operator; Redis only if you go multi-user)
-- [ ] Test with **`mistral-small` (24B)** (lower resource requirements, good tool-caller)
+- [x] Fix bash scripts (`setup_mcp_server.sh`, `setup_ollama.sh`):
+  - Scripts pass `shellcheck` and `bash -n`; all comments properly prefixed
+- [x] Add **agent loop** (implemented in JavaScript in `clients/mshin-cli/agent.js`)
+- [x] Implement **session memory** (JSON-based in `AgentMemory` class; SQLite/Redis for multi-user later)
+- [x] Test with **`mistral-small` (24B)** (verified on Lima VMs with native tool-calling)
 
-**Deliverable**: A working agent that can chain 2–3 tools together.
+**Deliverable**: A working agent that can chain 2–3 tools together — verified end-to-end on Lima local-dev path.
 
 ---
 
 ### Phase 2: Scale & Specialization (1–2 Months)
 **Goal**: Scale to larger models and add security-specific features.
 
+- [ ] **Verify physical two-machine deployment** — the Lima local-dev path is verified; the production path (real Kali Node + Core on physical LAN) still needs end-to-end testing
 - [ ] **Hardware Decision** — make it *after* Phase 1, using measurements from the harness (tokens/session, context high-water mark, tool-call success rate), not before:
   - **Stay on Option A**: if a 24–32B model is clearing your reliability bar, buy nothing
   - **Option A′**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE; the right buy if you need a bigger *model*
@@ -495,6 +495,6 @@ Machin Shin has the **foundation** right — the Ollama + MCP + Kali architectur
 
 ---
 
-*Document Status: Draft*
-*Last Updated: 2026-09-05*
+*Document Status: Draft (Phase 1 complete)*
+*Last Updated: 2026-09-07*
 *Author: Jasper Frumau (with Mistral Vibe)*
