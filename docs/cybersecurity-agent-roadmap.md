@@ -231,14 +231,41 @@ Key differences from a naive plan-then-run agent:
 - **A hard step budget** and an **active-tool approval gate** so an autonomous loop can't run away or fire an exploit unprompted.
 
 ### 2. Context Management
+
 - **Problem**: LLMs have limited context windows (~32K–128K tokens). Long-running security tasks (e.g., full network scans) generate too much data.
-- **Solution**: Use **external memory** (Redis, PostgreSQL) to store:
-  - Session history
-  - Tool results (compressed/summarized)
-  - Intermediate findings
+- **Solution**: Compress what stays in the active context, keep the rest reachable, and never drop a finding that the next tool decision depends on.
+
+There are three complementary ways to do this. They are listed in the order to tackle them.
+
+#### Option A: Smarter in-context compaction (start here)
+
+Improve `compactContext` so it **compresses** old messages instead of deleting them outright.
+
+- **Truncate long tool outputs** while keeping the lines the model actually needs: IPs, ports, service names, CVEs, and status words like `open`/`closed`/`filtered`.
+- **Preserve tool-call metadata** but drop verbose assistant reasoning.
+- **No new dependencies**: it works inside the existing `AgentMemory` JSON store.
+- **Best for**: getting more mileage out of the current token budget before adding infrastructure.
+
+#### Option B: Structured findings memory
+
+Extract key facts from tool output into a separate, queryable summary that survives compaction.
+
+- Stores a running list of **hosts, open ports, services/versions, CVEs, and blockers**.
+- The LLM prompt includes both the recent raw transcript and the findings summary, so an early `nmap` result is still addressable ten steps later.
+- More complex than Option A because it needs tool-aware extraction, but it prevents the worst kind of context loss: a critical finding that changes the next decision.
+- **Best for**: long recon chains where earlier results must remain reachable.
+
+#### Option C: External session store
+
+Move session history out of the JSON file and into a real database.
+
+- **SQLite** is the practical first step: single-file, no separate service, supports concurrent reads and larger sessions than a flat JSON file.
+- **Redis / PostgreSQL** come later for multi-user or multi-Core deployments.
+- Can be combined with Options A and B: the database is the backing store; the compaction logic still decides what fits in the LLM context window.
+- **Best for**: production or team use where JSON persistence becomes a bottleneck.
 
 ```python
-# Example: Redis-based memory
+# Example: Redis-based memory (Option C backend)
 import redis
 
 r = redis.Redis(host='localhost', port=6379, db=0)
@@ -248,13 +275,15 @@ class AgentMemory:
         key = f"session:{session_id}:step:{step}"
         r.set(key, json.dumps(result))
         r.lpush(f"session:{session_id}:history", key)
-    
+
     def get_context(self, session_id: str, max_tokens: int = 32000) -> str:
         """Retrieve context-aware history for the LLM."""
         history = r.lrange(f"session:{session_id}:history", 0, -1)
-        # Summarize history to fit within max_tokens
+        # Summarize history to fit within max_tokens (see Option A/B)
         return self.summarize(history, max_tokens)
 ```
+
+**Recommended path**: implement Option A first, then add Option B once sessions routinely exceed the budget, then Option C when persistence needs to outgrow a single JSON file.
 
 ### 3. Tool Safety & Sandboxing
 - **Problem**: Kali tools (e.g., Metasploit) are powerful and potentially destructive.
@@ -349,6 +378,10 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 - [ ] **Fine-tuning (optional, only if a knowledge gap shows up)**:
   - Collect cybersecurity datasets (CVE, MITRE ATT&CK, Exploit-DB)
   - LoRA-tune `mistral-small` on security-specific tasks — after the harness is proven, not before
+- [ ] **Context Management**:
+  - Option A: smarter in-context compaction in `clients/mshin-cli/agent.js` (compress tool output instead of dropping whole messages)
+  - Option B (later): structured findings memory so critical hosts/ports/CVEs survive long sessions
+  - Option C (later): replace JSON `memory.json` with SQLite, then Redis/PostgreSQL if multi-user is needed
 - [ ] **Tool Expansion**:
   - Add 5–10 new Kali tools to MCP server
   - Implement tool safety constraints (sudoers, sandboxing)

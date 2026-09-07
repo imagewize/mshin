@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, extractTextToolCall } from "./agent.js";
+import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, extractTextToolCall, compressToolResult } from "./agent.js";
 
 // -----------------------------------------------------------------------------
 // Test doubles
@@ -443,6 +443,55 @@ test("compactContext keeps the system prompt and original goal while trimming hi
   assert.ok(compacted.length < messages.length);
   assert.ok(compacted.some((m) => m.content === "SYSTEM PROMPT"));
   assert.ok(compacted.some((m) => m.content === "ORIGINAL GOAL"));
+});
+
+test("compressToolResult keeps short output unchanged", () => {
+  const text = "line one\nline two\nline three";
+  assert.equal(compressToolResult(text), text);
+});
+
+test("compressToolResult truncates long output to head and tail", () => {
+  const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
+  const compressed = compressToolResult(lines.join("\n"), {
+    maxLines: 60,
+    headLines: 5,
+    tailLines: 5,
+  });
+
+  const compressedLines = compressed.split("\n");
+  assert.equal(compressedLines[0], "line 1");
+  assert.equal(compressedLines[5], "... (90 lines omitted) ...");
+  assert.equal(compressedLines[6], "line 96");
+  assert.equal(compressedLines.at(-1), "line 100");
+});
+
+test("compactContext compresses long tool results before dropping messages", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: {
+      maxHistoryMessages: 100,
+      contextTokenBudget: 1000,
+      maxToolResultLines: 10,
+      toolResultHeadLines: 3,
+      toolResultTailLines: 3,
+    },
+  });
+
+  const longResult = Array.from({ length: 200 }, (_, i) => `scan line ${i + 1}`).join("\n");
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "scan everything" },
+    { role: "assistant", content: "", tool_calls: [{ function: { name: "nmap", arguments: { target: "127.0.0.1" } } }] },
+    { role: "tool", name: "nmap", content: longResult },
+  ];
+
+  const compacted = agent.compactContext(messages);
+  const toolMessage = compacted.find((m) => m.role === "tool");
+  assert.ok(toolMessage);
+  assert.ok(toolMessage.content.includes("scan line 1"));
+  assert.ok(toolMessage.content.includes("scan line 200"));
+  assert.ok(toolMessage.content.includes("lines omitted"));
+  assert.ok(toolMessage.content.split("\n").length <= 10);
+  assert.equal(compacted.length, messages.length);
 });
 
 // -----------------------------------------------------------------------------
