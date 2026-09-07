@@ -79,3 +79,63 @@ See the doc comments in `agent.js` for the parsing details (the
 Python-like-argument and balanced-brace-JSON extraction the narrated-call
 recovery relies on) and `agent.test.js` for the behavior these rules are
 pinned against.
+
+## Model evaluation harness
+
+`eval-harness.js` runs a scripted set of prompts against one or more models and
+records measurable agent behaviour. Use it to compare `mistral-small`,
+`qwen3:32b`, `llama3.3:70b`, or any other Ollama model before deciding on
+hardware.
+
+### Measured metrics
+
+- Wall-clock duration
+- Steps taken and step budget
+- Tool-call count and narrated-call count
+- Fabricated outputs blocked by the backstop
+- Active-tool approval requests (granted / denied)
+- Context-window high-water mark in tokens
+- Final answer and any error
+
+### Config format
+
+Create a JSON file like `eval-config.json`:
+
+```json
+{
+  "models": ["mshin", "mistral-small"],
+  "ollamaUrl": "http://localhost:11434",
+  "nodeUrl": "http://192.168.1.100:3000",
+  "cases": [
+    {
+      "name": "nmap-localhost",
+      "prompt": "Scan 127.0.0.1 with nmap and list open ports.",
+      "maxSteps": 5,
+      "approveActiveTools": true
+    },
+    {
+      "name": "searchsploit-openssh",
+      "prompt": "Use searchsploit to look up OpenSSH 8.9 exploits.",
+      "maxSteps": 5
+    }
+  ]
+}
+```
+
+### Run the harness
+
+```bash
+# JSON report (default)
+node eval-harness.js eval-config.json
+
+# Markdown summary
+node eval-harness.js -f md eval-config.json
+
+# CSV for spreadsheet analysis
+node eval-harness.js -f csv -o ./eval-results eval-config.json
+```
+
+Reports are written to `--output-dir` (default `./eval-results`). The harness
+connects to the same Node and Ollama URLs as the interactive CLI, auto-approves
+active tools when `approveActiveTools` is true, and exits non-zero if any case
+fails.

@@ -99,9 +99,15 @@ mshin/
 │       ├── index.js
 │       └── tools.js
 ├── clients/
-│   └── mshin-cli/        # Ollama + MCP client harness
+│   └── mshin-cli/             # Ollama + MCP client harness
 │       ├── package.json
-│       └── index.js
+│       ├── index.js
+│       ├── agent.js
+│       ├── agent.test.js
+│       ├── eval-harness.js
+│       ├── eval-harness.test.js
+│       ├── eval-config.example.json
+│       └── README.md
 └── assets/
     └── logo.txt               # ASCII logo
 ```
