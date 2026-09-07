@@ -97,7 +97,9 @@ mshin/
 │   └── src/kali/              # Custom Kali MCP server
 │       ├── package.json
 │       ├── index.js
-│       └── tools.js
+│       ├── tools.js
+│       ├── tools.test.js
+│       └── transport.test.js
 ├── clients/
 │   └── mshin-cli/             # Ollama + MCP client harness
 │       ├── package.json
