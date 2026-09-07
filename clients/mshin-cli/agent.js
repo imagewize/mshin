@@ -3,10 +3,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
+import http from "node:http";
+import https from "node:https";
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_HISTORY_MESSAGES = 40;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
+
+// One model turn, not one run. Ten minutes is generous for an 8B on a laptop
+// and still finite, so a genuinely wedged request surfaces instead of hanging
+// the operator's session.
+const DEFAULT_OLLAMA_TIMEOUT_MS = 600_000;
 
 // Tools that can alter state or launch exploits require explicit user approval
 // before each invocation. hydra brute-forces live credentials (can lock out
@@ -344,6 +351,72 @@ function looksLikeFabricatedToolOutput(content) {
 }
 
 /**
+ * POST JSON and read the whole response body.
+ *
+ * Deliberately node:http rather than fetch. With `stream: false` Ollama sends
+ * no response headers until the entire generation has finished, and undici —
+ * which backs global fetch — gives up after a default headersTimeout of 300s
+ * and throws a bare `fetch failed` with no indication a timeout occurred. A
+ * single turn on a large model passes 300s easily: it killed two evaluation
+ * runs here at ~329s, at the same step, on two different models. Going through
+ * node:http lets the limit be set deliberately and reported for what it is.
+ */
+function postJson(url, body, timeoutMs, model) {
+  const payload = JSON.stringify(body);
+  const target = new URL(url);
+  const transport = target.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`Ollama returned ${res.statusCode}: ${data}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(data));
+          } catch (err) {
+            reject(new Error(`Ollama returned unparseable JSON: ${err.message}`));
+          }
+        });
+      }
+    );
+
+    // An inactivity timeout, which for a non-streaming generation is the whole
+    // wait: nothing arrives on the socket until the model is done.
+    if (timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(
+          new Error(
+            `Ollama request timed out after ${Math.round(timeoutMs / 1000)}s ` +
+              `(model '${model}'). One turn on a large model can take longer ` +
+              "than this; raise ollamaTimeoutMs if that is expected."
+          )
+        );
+      });
+    }
+
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/**
  * Persistent session memory for the Machin Shin agent.
  *
  * Sessions are stored as JSON so the operator can review, delete, or migrate
@@ -405,6 +478,7 @@ class Agent {
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
+    ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
     metrics = null,
   }) {
     this.mcpClient = mcpClient;
@@ -415,6 +489,7 @@ class Agent {
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
+    this.ollamaTimeoutMs = ollamaTimeoutMs;
     this.metrics = metrics || {
       toolCalls: 0,
       narratedToolCalls: 0,
@@ -611,18 +686,12 @@ class Agent {
       },
     };
 
-    const res = await fetch(`${this.ollamaUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Ollama returned ${res.status}: ${text}`);
-    }
-
-    return res.json();
+    return postJson(
+      `${this.ollamaUrl}/api/chat`,
+      body,
+      this.ollamaTimeoutMs,
+      this.model
+    );
   }
 
   isValidTool(name) {

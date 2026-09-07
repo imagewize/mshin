@@ -863,3 +863,42 @@ test("a tool that returned nothing usable cannot ground its own report", async (
   assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
   assert.doesNotMatch(answer, /443\/tcp/);
 });
+
+// -----------------------------------------------------------------------------
+// Ollama request timeout
+// -----------------------------------------------------------------------------
+
+test("a stalled Ollama request fails with a timeout that names itself", async (t) => {
+  // A server that accepts the request and never answers — what a non-streaming
+  // generation looks like on the wire while the model is still working.
+  const server = http.createServer(() => {});
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address();
+  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
+  t.after(async () => {
+    await new Promise((r) => server.close(r));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const agent = new Agent({
+    mcpClient: new MockMcpClient(() => textContent("ok")),
+    ollamaUrl: `http://127.0.0.1:${port}`,
+    model: "mshin",
+    tools: OLLAMA_TOOLS,
+    memory: new AgentMemory(dir),
+    ollamaTimeoutMs: 150,
+  });
+
+  // Before this, undici's 300s default produced a bare "fetch failed" with no
+  // hint that a timeout was involved — it killed two live eval runs at ~329s.
+  await assert.rejects(
+    agent.run({ sessionId: "s1", userGoal: "hello" }),
+    /timed out after 0s \(model 'mshin'\).*raise ollamaTimeoutMs/s
+  );
+});
+
+test("the request timeout is generous by default", async (t) => {
+  const { agent } = await setup(t);
+  // A single turn on a 70B can run for minutes; the default must not be tight.
+  assert.equal(agent.ollamaTimeoutMs, 600_000);
+});
