@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-07
+
+Structured findings memory release. Implements Option B from the roadmap -
+a separate, queryable summary of key facts extracted from tool output that
+survives context compaction and prevents critical findings from being lost
+in long sessions.
+
+### Added
+
+- **`FindingsMemory` module** (`clients/mshin-cli/findings-memory.js`). Extracts
+  structured findings (hosts, ports, services, CVEs, vulnerabilities, OS info)
+  from tool outputs. Parsers for nmap, whois, searchsploit, nikto, plus a
+  generic fallback for other tools. Aggregates findings across all tool calls
+  in a run and generates a token-budgeted summary for inclusion in the LLM
+  context window.
+- **Agent integration** (`clients/mshin-cli/agent.js`). `Agent` accepts an
+  injectable `findingsMemory` and processes each successful tool result
+  through it. The `compactContext` method now inserts a findings summary after
+  the system prompt, ensuring critical facts remain addressable even when
+  raw tool outputs are compressed or dropped. `findingsTokenBudget` parameter
+  controls the summary size (default 2000 tokens).
+- **`findings-memory.test.js`**. 21 new tests covering the FindingsMemory class
+  and all tool parsers.
+
+### Changed
+
+- **`clients/mshin-cli/agent.js`** now clears findings at the start of each run,
+  processes successful tool results, and includes the findings summary in the
+  compacted context.
+- **`docs/cybersecurity-agent-roadmap.md`** marks Context Management Option B as
+  complete.
+
+### Fixed
+
+- **`compactContext` could drop the original user goal.** Inserting the
+  findings-summary message shifted every later message index by one, but the
+  set of indices protected from eviction was computed before that shift, so
+  it went on protecting the wrong slot. As soon as any tool succeeded, the
+  next compaction pass could evict the user's original goal.
+- **The findings summary went stale after its first insertion.** It was only
+  ever written once, keyed off a check for a literal `## Discovered Hosts`
+  heading; later discoveries (new hosts, ports, CVEs) never updated it for
+  the rest of the run. `compactContext` now keeps a single findings message
+  and refreshes its content in place on every pass.
+- **nmap XML parsing recorded the wrong host for open ports.** `openPorts`
+  entries took `host` from a stray character of the matched `<port>` XML
+  fragment instead of the host's real IP.
+- **nikto vulnerabilities collapsed to a bare `- nikto` line in the findings
+  summary.** `getSummary()` only rendered `title`/`cves`/`edbId`, which
+  searchsploit entries carry but nikto entries don't (nikto sets
+  `host`/`type`/`description` instead), so the vulnerability's actual content
+  never reached the LLM context. Now renders whichever fields a source
+  populates.
+- Corrected a broken "Keep a Changelog" link introduced earlier in this file.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 99/99 cases (74 existing + 21 new
+  from the initial findings-memory work + 4 regression tests added for the
+  fixes above).
+
 ## [0.13.0] - 2026-09-07
 
 Session-logging release. Adds append-only JSONL session logs so operator

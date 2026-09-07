@@ -7,6 +7,7 @@ import http from "node:http";
 import https from "node:https";
 
 import { SessionLogger } from "./session-logger.js";
+import { FindingsMemory } from "./findings-memory.js";
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_HISTORY_MESSAGES = 40;
@@ -23,6 +24,11 @@ const DEFAULT_OLLAMA_TIMEOUT_MS = 600_000;
 const DEFAULT_MAX_TOOL_RESULT_LINES = 60;
 const DEFAULT_TOOL_RESULT_HEAD_LINES = 25;
 const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
+
+// Marker prefix identifying the findings-summary message compactContext()
+// maintains (Option B). Used both to find and refresh that single message
+// and to keep it out of eviction.
+const FINDINGS_SUMMARY_MARKER = "[Findings Summary";
 
 // Tools that can alter state or launch exploits require explicit user approval
 // before each invocation. hydra brute-forces live credentials (can lock out
@@ -550,6 +556,7 @@ class Agent {
     tools,
     memory,
     sessionLogger = null,
+    findingsMemory = null,
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
@@ -557,6 +564,7 @@ class Agent {
     maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
     toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
     toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
+    findingsTokenBudget = 2000,
     metrics = null,
     debug = null,
   }) {
@@ -566,6 +574,7 @@ class Agent {
     this.tools = tools;
     this.memory = memory;
     this.sessionLogger = sessionLogger;
+    this.findingsMemory = findingsMemory || new FindingsMemory();
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
@@ -573,6 +582,7 @@ class Agent {
     this.maxToolResultLines = maxToolResultLines;
     this.toolResultHeadLines = toolResultHeadLines;
     this.toolResultTailLines = toolResultTailLines;
+    this.findingsTokenBudget = findingsTokenBudget;
     this.metrics = metrics || {
       toolCalls: 0,
       narratedToolCalls: 0,
@@ -609,6 +619,10 @@ class Agent {
     // allowlist between prompts, the next run rediscovers the tool at the cost
     // of one call rather than staying wrong for the life of the session.
     const unavailableTools = new Map();
+    
+    // Clear findings memory for this new run - Option B: structured findings memory
+    // Each run gets its own findings summary that builds up as tools execute
+    this.findingsMemory.clear();
 
     messages.push({ role: "user", content: userGoal });
     this.debug("run.start", {
@@ -870,6 +884,13 @@ class Agent {
             text,
           });
 
+          // Process tool result with FindingsMemory (Option B: structured findings memory)
+          // This extracts key facts that will survive context compaction
+          if (!result.isError) {
+            this.findingsMemory.processToolResult(name, text, args);
+            succeededTools.add(name);
+          }
+
           if (result.isError && isNonRetryableToolError(text)) {
             this.metrics.nonRetryableToolErrors++;
             this.debug("tool.unavailable", { name });
@@ -988,15 +1009,14 @@ class Agent {
    * Compression is the first line of defence: a 500-line nmap output gets
    * truncated to its head and tail rather than evicting the entire result.
    * The full output remains in AgentMemory; only the LLM-facing copy is slimmed.
+   *
+   * Option B: Structured findings memory - if there are findings, keep a single
+   * findings summary message right after the system prompt, refreshed on every
+   * pass. This ensures critical facts (hosts, ports, services, CVEs) remain
+   * addressable, and current, even when raw tool outputs are compressed or
+   * dropped.
    */
   compactContext(messages) {
-    const systemIdx = messages.findIndex((m) => m.role === "system");
-    const userGoalIdx = messages.findIndex((m) => m.role === "user");
-
-    const preserved = [];
-    if (systemIdx !== -1) preserved.push(systemIdx);
-    if (userGoalIdx !== -1) preserved.push(userGoalIdx);
-
     // First pass: compress long tool results in place rather than dropping the
     // whole message. If this alone brings the budget under the limit, nothing
     // is lost from the transcript.
@@ -1010,6 +1030,44 @@ class Agent {
       if (compressed === m.content) return m;
       return { ...m, content: compressed };
     });
+
+    // Option B: keep exactly one findings-summary message, refreshed with the
+    // latest aggregated findings on every pass so it never goes stale, and
+    // never duplicated across compaction passes. It's added as an assistant
+    // message so it's part of the conversation history the model can
+    // reference, but it's separate from the raw tool outputs that may be
+    // compressed or dropped.
+    if (this.findingsMemory.hasFindings()) {
+      const systemIdx = working.findIndex((m) => m.role === "system");
+      if (systemIdx !== -1) {
+        const findingsSummary = this.findingsMemory.getSummary(this.findingsTokenBudget);
+        const findingsContent = `${FINDINGS_SUMMARY_MARKER} - Do not edit this section, only reference it]\n${findingsSummary}`;
+        const existingIdx = working.findIndex(
+          (m) => m.role === "assistant" && m.content?.startsWith(FINDINGS_SUMMARY_MARKER)
+        );
+
+        if (existingIdx !== -1) {
+          // Refresh in place -- same index, so nothing else shifts.
+          working[existingIdx] = { ...working[existingIdx], content: findingsContent };
+        } else {
+          working.splice(systemIdx + 1, 0, { role: "assistant", content: findingsContent });
+        }
+      }
+    }
+
+    // Preserved indices are computed from the final shape of `working`, after
+    // any findings-message insertion/refresh above, so they always point at
+    // the system prompt, the original user goal, and the findings summary --
+    // never at whatever happens to have shifted into their old slot.
+    const preserved = [];
+    const systemIdx = working.findIndex((m) => m.role === "system");
+    const userGoalIdx = working.findIndex((m) => m.role === "user");
+    const findingsIdx = working.findIndex(
+      (m) => m.role === "assistant" && m.content?.startsWith(FINDINGS_SUMMARY_MARKER)
+    );
+    if (systemIdx !== -1) preserved.push(systemIdx);
+    if (userGoalIdx !== -1) preserved.push(userGoalIdx);
+    if (findingsIdx !== -1) preserved.push(findingsIdx);
 
     let tokens = working.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
 
@@ -1063,10 +1121,9 @@ function readLineFromStdin(prompt) {
  * prompt while the question it was meant for never resolves. Callers with no
  * interface of their own get the default reader.
  */
-function askYesNo(question, ask = readLineFromStdin) {
-  return Promise.resolve(ask(`${question} (y/n): `)).then((answer) =>
-    String(answer).trim().toLowerCase().startsWith("y")
-  );
+async function askYesNo(question, ask = readLineFromStdin) {
+  const answer = await ask(`${question} (y/n): `);
+  return String(answer).trim().toLowerCase().startsWith("y");
 }
 
 export { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, compressToolResult };

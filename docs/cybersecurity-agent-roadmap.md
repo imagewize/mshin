@@ -360,7 +360,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 - [x] Implement **session memory** (JSON-based in `AgentMemory` class; SQLite/Redis for multi-user later)
 - [x] Test with **`mistral-small` (24B)** (verified on Lima VMs with native tool-calling)
 
-**Deliverable**: A working agent that can chain 2–3 tools together — verified end-to-end on Lima local-dev path.
+**Deliverable**: A working agent that can chain 2–3 tools together — verified end-to-end on Lima local-dev path. Now supports 12 integrated Kali tools with full tool-calling reliability.
 
 ---
 
@@ -378,13 +378,17 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 - [ ] **Fine-tuning (optional, only if a knowledge gap shows up)**:
   - Collect cybersecurity datasets (CVE, MITRE ATT&CK, Exploit-DB)
   - LoRA-tune `mistral-small` on security-specific tasks — after the harness is proven, not before
-- [ ] **Context Management**:
+- [x] **Context Management**:
   - Option A: smarter in-context compaction in `clients/mshin-cli/agent.js` (compress tool output instead of dropping whole messages)
-  - Option B (later): structured findings memory so critical hosts/ports/CVEs survive long sessions
+  - Option B: structured findings memory in `clients/mshin-cli/findings-memory.js` so critical hosts/ports/CVEs survive long sessions
   - Option C (later): replace JSON `memory.json` with SQLite, then Redis/PostgreSQL if multi-user is needed
-- [ ] **Tool Expansion**:
-  - Add 5–10 new Kali tools to MCP server
-  - Implement tool safety constraints (sudoers, sandboxing)
+- [x] **Tool Expansion** — 12 Kali tools currently integrated:
+  - `nmap`, `searchsploit`, `nikto`, `whois`, `tshark` (passive/recon)
+  - `metasploit`, `hydra`, `sqlmap` (active/destructive, require approval)
+  - `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum` (scanning/enumeration)
+  - All documented in `docs/setup.md`; sudoers configured in `scripts/setup_mcp_server.sh`
+  - Tool safety: `ACTIVE_TOOLS` set tracks destructive tools; explicit approval required before execution
+  - [ ] Implement sandboxing (Docker Compose config in roadmap; not yet integrated)
 
 **Deliverable**: A scalable agent capable of running complex security workflows.
 
