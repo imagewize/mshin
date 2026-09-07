@@ -722,7 +722,11 @@ test("the model is told the failure is environmental, not a bad argument", async
     .at(-1)
     .body.messages.find((m) => m.role === "tool");
   assert.match(toolMessage.content, /cannot run on this Node/);
-  assert.match(toolMessage.content, /Do not retry it/);
+  assert.match(toolMessage.content, /do not retry it/);
+  // The remaining work must be named explicitly: told only to stop retrying,
+  // live models abandoned the rest of a two-tool goal and printed a placeholder.
+  assert.match(toolMessage.content, /call that tool now/);
+  assert.match(toolMessage.content, /Do not describe what a tool would return/);
   // The underlying error is preserved, not swallowed.
   assert.match(toolMessage.content, /Tool binary not found/);
 });

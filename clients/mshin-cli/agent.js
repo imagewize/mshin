@@ -551,12 +551,19 @@ class Agent {
 
         if (result.isError && isNonRetryableToolError(text)) {
           this.metrics.nonRetryableToolErrors++;
+          // The wording matters as much as the blocking. An earlier draft said
+          // only "do not retry it", and both live models read that as licence to
+          // abandon the whole goal: on a two-tool task they announced the second
+          // tool, printed a placeholder for its output, and stopped without
+          // calling it. The rest of the task has to be made explicit.
           const guidance =
             `Tool '${name}' cannot run on this Node: ${text}\n` +
             "This is an environment problem, not a bad argument — calling it " +
-            "again will fail the same way. Do not retry it. Continue with a " +
-            "different tool if one applies, or state plainly which part of the " +
-            "question you cannot answer and why.";
+            "again will fail the same way, so do not retry it. Every other part " +
+            "of the task still stands: if it needs a different tool, call that " +
+            "tool now. Do not describe what a tool would return, and do not ask " +
+            "whether to continue. Report only what tools actually returned, and " +
+            "say plainly which part you could not determine.";
           unavailableTools.set(name, guidance);
           messages.push({ role: "tool", name, content: guidance });
           continue;
@@ -614,6 +621,7 @@ class Agent {
   isActiveTool(name) {
     return ACTIVE_TOOLS.has(name);
   }
+
 
   /**
    * Keep the context window healthy by dropping the oldest tool-result pairs
