@@ -7,6 +7,7 @@ import http from "node:http";
 import https from "node:https";
 
 import { SessionLogger } from "./session-logger.js";
+import { FindingsMemory } from "./findings-memory.js";
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_HISTORY_MESSAGES = 40;
@@ -550,6 +551,7 @@ class Agent {
     tools,
     memory,
     sessionLogger = null,
+    findingsMemory = null,
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
@@ -557,6 +559,7 @@ class Agent {
     maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
     toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
     toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
+    findingsTokenBudget = 2000,
     metrics = null,
     debug = null,
   }) {
@@ -566,6 +569,7 @@ class Agent {
     this.tools = tools;
     this.memory = memory;
     this.sessionLogger = sessionLogger;
+    this.findingsMemory = findingsMemory || new FindingsMemory();
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
@@ -573,6 +577,7 @@ class Agent {
     this.maxToolResultLines = maxToolResultLines;
     this.toolResultHeadLines = toolResultHeadLines;
     this.toolResultTailLines = toolResultTailLines;
+    this.findingsTokenBudget = findingsTokenBudget;
     this.metrics = metrics || {
       toolCalls: 0,
       narratedToolCalls: 0,
@@ -609,6 +614,10 @@ class Agent {
     // allowlist between prompts, the next run rediscovers the tool at the cost
     // of one call rather than staying wrong for the life of the session.
     const unavailableTools = new Map();
+    
+    // Clear findings memory for this new run - Option B: structured findings memory
+    // Each run gets its own findings summary that builds up as tools execute
+    this.findingsMemory.clear();
 
     messages.push({ role: "user", content: userGoal });
     this.debug("run.start", {
@@ -870,6 +879,13 @@ class Agent {
             text,
           });
 
+          // Process tool result with FindingsMemory (Option B: structured findings memory)
+          // This extracts key facts that will survive context compaction
+          if (!result.isError) {
+            this.findingsMemory.processToolResult(name, text, args);
+            succeededTools.add(name);
+          }
+
           if (result.isError && isNonRetryableToolError(text)) {
             this.metrics.nonRetryableToolErrors++;
             this.debug("tool.unavailable", { name });
@@ -988,6 +1004,11 @@ class Agent {
    * Compression is the first line of defence: a 500-line nmap output gets
    * truncated to its head and tail rather than evicting the entire result.
    * The full output remains in AgentMemory; only the LLM-facing copy is slimmed.
+   *
+   * Option B: Structured findings memory - if there are findings, insert a
+   * findings summary message after the system prompt. This ensures critical
+   * facts (hosts, ports, services, CVEs) remain addressable even when raw tool
+   * outputs are compressed or dropped.
    */
   compactContext(messages) {
     const systemIdx = messages.findIndex((m) => m.role === "system");
@@ -1010,6 +1031,30 @@ class Agent {
       if (compressed === m.content) return m;
       return { ...m, content: compressed };
     });
+
+    // Option B: Insert findings summary after system message if we have findings
+    // The findings summary is added as an assistant message so it's part of the
+    // conversation history the model can reference, but it's separate from the
+    // raw tool outputs that may be compressed or dropped.
+    if (this.findingsMemory.hasFindings() && systemIdx !== -1) {
+      const findingsSummary = this.findingsMemory.getSummary(this.findingsTokenBudget);
+      // Check if we already have a findings summary in the working messages
+      const hasFindingsSummary = working.some(
+        (m) => m.role === "assistant" && m.content?.includes("## Discovered Hosts")
+      );
+      
+      if (!hasFindingsSummary) {
+        // Insert findings summary right after the system message
+        const findingsMessage = {
+          role: "assistant",
+          content: `[Findings Summary - Do not edit this section, only reference it]\n${findingsSummary}`,
+        };
+        working.splice(systemIdx + 1, 0, findingsMessage);
+        
+        // Mark this position as preserved so it doesn't get dropped
+        preserved.push(systemIdx + 1);
+      }
+    }
 
     let tokens = working.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
 
