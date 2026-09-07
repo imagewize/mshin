@@ -389,7 +389,7 @@ Prompt the LLM to run SSH commands:
 
 #### **5. Verify Every MCP Tool**
 
-With the CLI pointed at the Node, these prompts exercise all six tools against safe targets. Only run scans against systems you own or are authorised to test.
+With the CLI pointed at the Node, these prompts exercise all thirteen tools against safe targets. Only run scans against systems you own or are authorised to test.
 
 ```
 "Scan 127.0.0.1 with nmap and list the open ports."
@@ -398,9 +398,16 @@ With the CLI pointed at the Node, these prompts exercise all six tools against s
 "Run nikto against http://127.0.0.1 and report any findings."
 "Use tshark to read /home/mshin/capture.pcap and summarize the traffic."
 "Run the metasploit auxiliary scanner http/http_version against 127.0.0.1."
+"Test hydra with a service scan on 127.0.0.1 for ssh."
+"Run sqlmap against http://127.0.0.1 with default settings."
+"Use gobuster to brute-force directories on http://127.0.0.1."
+"Run masscan on 127.0.0.0/8 with a fast scan."
+"Use dirb to brute-force http://127.0.0.1."
+"Run arping to discover hosts on the local network."
+"Use dnsenum to enumerate example.com."
 ```
 
-> **`metasploit` requires approval.** It is the only active tool in the approval gate; the CLI will prompt you before it runs.
+> **`metasploit`, `hydra`, and `sqlmap` require approval.** They are the active tools in the approval gate; the CLI will prompt you before any of them runs.
 >
 > **`tshark` needs user-owned PCAP files.** The server runs `tshark` without `sudo`; capture files must be readable by the `mshin` user.
 

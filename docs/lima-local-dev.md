@@ -36,17 +36,17 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │                                                                │
 │  ┌───────────────────────────┐   ┌──────────────────────────┐  │
 │  │   Lima: mshin-core        │   │  Lima: mshin-node        │  │
-│  │   Ubuntu, aarch64         │   │  Debian, all six tools   │  │
+│  │   Ubuntu, aarch64         │   │  Debian, all 13 tools  │  │
 │  │                           │   │  ┌────────────────────┐  │  │
 │  │  ┌─────────────────────┐  │   │  │ MCP server   :3000 │  │  │
-│  │  │ Ollama       :11434 │  │   │  │ nmap, nikto,       │  │  │
-│  │  │ mistral (7B, ~4GB)  │  │   │  │ whois, tshark,     │  │  │
-│  │  └──────────▲──────────┘  │   │  │ metasploit,        │  │  │
-│  │             │             │   │  │ searchsploit       │  │  │
-│  │  ┌──────────▼──────────┐  │   │  └─────────▲──────────┘  │  │
+│  │  │ Ollama       :11434 │  │   │  │ nmap, hydra,      │  │  │
+│  │  │ mistral (7B, ~4GB)  │  │   │  │ sqlmap, gobuster,  │  │  │
+│  │  └──────────▲──────────┘  │   │  │ masscan, dirb,     │  │  │
+│  │             │             │   │  │ arping, dnsenum,   │  │  │
+│  │  ┌──────────▼──────────┐  │   │  │ metasploit,        │  │  │
 │  │  │ Machin Shin CLI     │──┼───┼──── SSE ───┘             │  │
-│  │  │ (MCP client)        │  │   │                          │  │
-│  │  └─────────────────────┘  │   │                          │  │
+│  │  │ (MCP client)        │  │   │  │ searchsploit       │  │  │
+│  │  └─────────────────────┘  │   │  └─────────▲──────────┘  │  │
 │  └───────────────────────────┘   └──────────────────────────┘  │
 │                                                                │
 │        lima shared network (vmnet) — 192.168.105.0/24          │
@@ -154,14 +154,15 @@ limactl start mshin-node
 
 That is the whole step. On first boot the template:
 
-1. Installs all six tools — `nmap`, `nikto`, `whois`, `tshark` from Debian,
+1. Installs all thirteen tools — `nmap`, `nikto`, `whois`, `tshark`, `hydra`,
+   `sqlmap`, `gobuster`, `masscan`, `dirb`, `arping` and `dnsenum` from Debian,
    `searchsploit` from exploit-db's git repo and `metasploit` from Rapid7's apt
    repo — plus `git` and Node.js 20, and warms metasploit's one-time setup.
 2. Clones this repo to `/opt/mshin` and runs `npm install` for the MCP server.
 3. Writes the `NOPASSWD` sudoers allowlist those tools need (all but `tshark`,
    which runs unprivileged).
 4. Installs `configs/mcp-kali.service` as `mshin-node`, rewritten for the Lima
-   login user, exposing all six tools.
+   login user, exposing all thirteen tools.
 
 Lima then waits on a probe until `curl :3000/health` answers, so `limactl start` returning means the MCP server is up. It prints the command that reads the guest's address on the shared network.
 
@@ -295,11 +296,11 @@ Then install the unit the repo already ships:
 sudo cp /opt/mshin/configs/mcp-kali.service /etc/systemd/system/mshin-node.service
 
 # The shipped unit runs as a dedicated 'mshin' user. In a throwaway Lima VM,
-# run as your own login user instead; the tool list is the same six, since the
-# steps above installed metasploit and searchsploit from upstream.
+# run as your own login user instead; the tool list is the same thirteen, since the
+# steps above installed metasploit, searchsploit and the new tools from upstream.
 sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/mshin-node.service
 sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin $HOME|" /etc/systemd/system/mshin-node.service
-sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark|" /etc/systemd/system/mshin-node.service
+sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum|" /etc/systemd/system/mshin-node.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now mshin-node
@@ -765,7 +766,7 @@ The two templates live in this repo:
 
 | File | Guest |
 | ---- | ----- |
-| `lima/mshin-node.yaml` | Debian 13 + all six tools + `mshin-node` MCP server |
+| `lima/mshin-node.yaml` | Debian 13 + all thirteen tools + `mshin-node` MCP server |
 | `lima/mshin-core.yaml` | Ubuntu LTS + Ollama + the `mshin` persona and CLI |
 
 Copy one, edit it, and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)

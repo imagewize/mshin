@@ -36,7 +36,7 @@ fi
 
 MSHIN_DIR="/opt/mshin"
 MSHIN_USER="mshin"
-TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark"
+TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
 # Needed while the repository is private; the HTTPS default is correct once it
 # is public. Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
@@ -57,6 +57,13 @@ apt-get install -y \
     nikto \
     whois \
     tshark \
+    hydra \
+    sqlmap \
+    gobuster \
+    masscan \
+    dirb \
+    arping \
+    dnsenum \
     net-tools
 
 # --- Install Node.js 20+ ---
@@ -129,7 +136,7 @@ echo "[+] Configuring sudoers for '${MSHIN_USER}'..."
 # triggers Wireshark's file-owner check, and tshark needs no privileges to
 # analyze existing captures.
 cat > /etc/sudoers.d/mshin <<EOF
-${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois
+${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
 EOF
 chmod 440 /etc/sudoers.d/mshin
 

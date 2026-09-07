@@ -9,8 +9,11 @@ const DEFAULT_MAX_HISTORY_MESSAGES = 40;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
 
 // Tools that can alter state or launch exploits require explicit user approval
-// before each invocation.
-const ACTIVE_TOOLS = new Set(["metasploit"]);
+// before each invocation. hydra brute-forces live credentials (can lock out
+// real accounts) and sqlmap actively exploits SQL injection (can read or
+// modify database contents), so both carry the same real-world risk as
+// metasploit.
+const ACTIVE_TOOLS = new Set(["metasploit", "hydra", "sqlmap"]);
 
 function estimateTokens(text) {
   // Fast, conservative approximation: ~4 characters per token for English text.
