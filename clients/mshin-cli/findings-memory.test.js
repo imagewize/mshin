@@ -250,6 +250,20 @@ Nmap scan report for 192.168.1.1
     assert.equal(findings.hosts[0].ports[1].service, "http");
   });
 
+  it("records the real host IP for open ports parsed from XML output", () => {
+    const output = `<?xml version="1.0"?>
+<nmaprun>
+<host><address addr="10.0.0.5" addrtype="ipv4"/>
+<ports><port protocol="tcp" portid="22"><state state="open"/><service name="ssh"/></port></ports>
+</host>
+</nmaprun>`;
+    const findings = parseNmapOutput(output);
+
+    assert.equal(findings.openPorts.length, 1);
+    assert.equal(findings.openPorts[0].host, "10.0.0.5");
+    assert.equal(findings.openPorts[0].port, 22);
+  });
+
   it("handles empty output", () => {
     const findings = parseNmapOutput("");
     assert.deepEqual(findings.hosts, []);

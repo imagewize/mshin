@@ -65,7 +65,7 @@ function parseNmapOutput(output) {
               if (stateMatch && stateMatch[1] === "open") {
                 host.ports.push(port);
                 findings.openPorts.push({
-                  host: portMatch[1],
+                  host: host.ip,
                   port: port.number,
                   protocol: port.protocol,
                   service: port.service,
