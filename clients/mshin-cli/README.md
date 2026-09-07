@@ -91,6 +91,33 @@ Python-like-argument and balanced-brace-JSON extraction the narrated-call
 recovery relies on) and `agent.test.js` for the behavior these rules are
 pinned against.
 
+## Session logs
+
+Every agent run is recorded as an append-only JSONL event log under
+`~/.mshin/sessions/<sessionId>.jsonl`. This is separate from the conversation
+transcript stored in `~/.mshin/memory.json`: the JSONL file is an immutable
+audit trail built for reporting and replay, while `memory.json` is the model's
+working context.
+
+Each line is a JSON object with `type`, `timestamp`, `sessionId`, and a
+payload. Key event types:
+
+- `session.start` — model, user goal, available tools, and step budget.
+- `model.turn` — each assistant turn, including any tool calls requested.
+- `tool.call` / `tool.result` — tool name, arguments, and the full text output.
+- `approval.request` / `approval.response` — active-tool approval decisions.
+- `fabrication.block` / `fabrication.nudge` — when invented tool output is caught.
+- `session.end` — final answer and the run's metrics.
+- `session.error` — error message and metrics if the run threw.
+
+To disable session logging, set `MSHIN_NO_SESSION_LOG=1` before running the
+CLI. The files are ordinary JSONL: they can be grepped, streamed, or converted
+into a report with standard tools.
+
+Session files are pruned on CLI startup to keep disk usage bounded. The default
+keeps the 100 most recent sessions and deletes anything older than 30 days.
+Override with `MSHIN_MAX_SESSIONS` and `MSHIN_MAX_SESSION_AGE_DAYS`.
+
 ## Model evaluation harness
 
 `eval-harness.js` runs a scripted set of prompts against one or more models and

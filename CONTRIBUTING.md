@@ -107,6 +107,7 @@ mshin/
 │       ├── index.js
 │       ├── agent.js
 │       ├── agent.test.js
+│       ├── session-logger.js
 │       ├── eval-harness.js
 │       ├── eval-harness.test.js
 │       ├── eval-config.example.json
