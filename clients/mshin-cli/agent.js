@@ -382,6 +382,7 @@ class Agent {
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
+    metrics = null,
   }) {
     this.mcpClient = mcpClient;
     this.ollamaUrl = ollamaUrl;
@@ -391,6 +392,17 @@ class Agent {
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
+    this.metrics = metrics || {
+      toolCalls: 0,
+      narratedToolCalls: 0,
+      fabricatedOutputsBlocked: 0,
+      approvalRequests: 0,
+      approvalGranted: 0,
+      approvalDenied: 0,
+      contextHighWaterTokens: 0,
+      steps: 0,
+      errors: 0,
+    };
   }
 
   async run({ sessionId, userGoal, onToolCall, onToolResult, onApproval, onComplete, onNarratedToolCall }) {
@@ -411,6 +423,7 @@ class Agent {
     try {
       let toolWasExecuted = false;
       for (let step = 0; step < this.maxSteps; step++) {
+        this.metrics.steps++;
         messages = this.compactContext(messages);
 
         const response = await this.queryOllama(messages);
@@ -431,6 +444,7 @@ class Agent {
             // The model narrated tool output without ever emitting a call. Do
             // not return the fabrication as an answer, and drop the turn so the
             // invented result cannot become history.
+            this.metrics.fabricatedOutputsBlocked++;
             messages.pop();
             const warning =
               "The model produced output that looks like a tool result, but no tool executed. I will not show unverified results.";
@@ -451,6 +465,7 @@ class Agent {
           // Drop the narrated turn from the transcript. Its prose typically
           // carries invented tool output, and leaving it in history would let
           // the model treat its own fabrication as an established finding.
+          this.metrics.narratedToolCalls++;
           messages.pop();
           call = { function: { name: narrated.name, arguments: narrated.args } };
           messages.push({ role: "assistant", content: "", tool_calls: [call] });
@@ -467,15 +482,19 @@ class Agent {
           continue;
         }
 
+        this.metrics.toolCalls++;
         if (onToolCall) onToolCall(name, args);
 
         if (this.isActiveTool(name)) {
+          this.metrics.approvalRequests++;
           const approved = await onApproval(name, args);
           if (!approved) {
+            this.metrics.approvalDenied++;
             const blockedText = `User declined to run active tool '${name}'.`;
             messages.push({ role: "tool", name, content: blockedText });
             continue;
           }
+          this.metrics.approvalGranted++;
         }
 
         const result = await this.mcpClient.callTool({ name, arguments: args });
@@ -497,6 +516,7 @@ class Agent {
       if (onComplete) onComplete(final.message.content);
       return final.message.content;
     } catch (err) {
+      this.metrics.errors++;
       this.memory.storeSession(sessionId, messages);
       throw err;
     }
@@ -554,6 +574,10 @@ class Agent {
 
     let working = messages.slice();
     let tokens = working.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
+
+    if (tokens > this.metrics.contextHighWaterTokens) {
+      this.metrics.contextHighWaterTokens = tokens;
+    }
 
     while (
       (working.length > this.maxHistoryMessages || tokens > this.contextTokenBudget) &&

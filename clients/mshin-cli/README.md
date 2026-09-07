@@ -79,3 +79,79 @@ See the doc comments in `agent.js` for the parsing details (the
 Python-like-argument and balanced-brace-JSON extraction the narrated-call
 recovery relies on) and `agent.test.js` for the behavior these rules are
 pinned against.
+
+## Model evaluation harness
+
+`eval-harness.js` runs a scripted set of prompts against one or more models and
+records measurable agent behaviour. Use it to compare `mistral-small`,
+`qwen3:32b`, `llama3.3:70b`, or any other Ollama model before deciding on
+hardware.
+
+### Measured metrics
+
+- Wall-clock duration
+- Steps taken and step budget
+- Tool-call count and narrated-call count
+- Fabricated outputs blocked by the backstop
+- Active-tool approval requests (granted / denied)
+- Context-window high-water mark in tokens
+- Whether the case called every tool it declared in `expectedTools`
+- Final answer and any error
+
+### Config format
+
+Create a JSON file like `eval-config.json`:
+
+```json
+{
+  "models": ["mshin", "mistral-small"],
+  "ollamaUrl": "http://localhost:11434",
+  "nodeUrl": "http://192.168.1.100:3000",
+  "cases": [
+    {
+      "name": "nmap-localhost",
+      "prompt": "Scan 127.0.0.1 with nmap and list open ports.",
+      "expectedTools": ["nmap"],
+      "maxSteps": 5,
+      "approveActiveTools": true
+    },
+    {
+      "name": "searchsploit-openssh",
+      "prompt": "Use searchsploit to look up OpenSSH 8.9 exploits.",
+      "expectedTools": ["searchsploit"],
+      "maxSteps": 5
+    }
+  ]
+}
+```
+
+### Run the harness
+
+```bash
+# JSON report (default)
+node eval-harness.js eval-config.json
+
+# Markdown summary
+node eval-harness.js -f md eval-config.json
+
+# CSV for spreadsheet analysis
+node eval-harness.js -f csv -o ./eval-results eval-config.json
+```
+
+Reports are written to `--output-dir` (default `./eval-results`). The harness
+connects to the same Node and Ollama URLs as the interactive CLI and
+auto-approves active tools when `approveActiveTools` is true. An unknown
+`--format` is rejected before the first model runs, so a typo cannot discard a
+finished suite.
+
+### expectedTools and the exit code
+
+`expectedTools` is optional. When a case declares it, the report records
+`expectedToolsMet` and the `missingTools` the model never called, and the run
+prints a summary of the misses.
+
+This does **not** change the exit code, which stays non-zero only when a case
+throws. A model that skips a tool it should have reached is the measurement the
+suite exists to take — the number you compare between models — not a broken
+run. Keeping the two apart means a clean comparison of a weak model still exits
+zero, and a non-zero exit always means the harness itself hit trouble.

@@ -7,9 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-07
+
+Agent-evaluation and transport-modernization release. Adds a model-evaluation harness to collect the measurements the roadmap calls for, and migrates both client and server from the deprecated SSE MCP transport to Streamable HTTP.
+
+### Added
+
+- **Model evaluation harness** (`clients/mshin-cli/eval-harness.js`). Runs a scripted set of prompts against one or more Ollama models and records duration, steps, tool-call success, narrated calls, fabricated outputs blocked, active-tool approvals, and context-window high-water mark. Output formats: JSON, Markdown, CSV.
+- **Agent metrics collection** (`clients/mshin-cli/agent.js`). The `Agent` constructor accepts an optional `metrics` object and now tracks the same counters the harness reports.
+- **Example evaluation config** (`clients/mshin-cli/eval-config.example.json`).
+- **Expected-tool scoring in the evaluation harness.** A case may declare `expectedTools`; the report then carries `expectedToolsMet` and the `missingTools` the model never called, and the run prints the misses. The exit code is unchanged by this — non-zero still means a case threw, not that a model underperformed.
+- **Transport lifecycle tests** (`servers/src/kali/transport.test.js`). Boots the server as a child process and drives it with a real MCP client: initialize, `listTools`, explicit session termination, and rejection of unknown session ids.
+
+### Changed
+
+- **MCP transport migrated from SSE to Streamable HTTP.** Both `clients/mshin-cli/index.js` and `clients/mshin-cli/eval-harness.js` now use `StreamableHTTPClientTransport` against `/mcp`. `servers/src/kali/index.js` now uses `StreamableHTTPServerTransport` with stateful sessions on `/mcp`, serving GET for the server-to-client stream, POST for requests, and DELETE for session termination; the old `/sse` and `/messages` endpoints are removed. DELETE is the only request that fires `onsessionclosed`, so without its route the server would hold every session it ever opened.
+- **`docs/cybersecurity-agent-roadmap.md`**: noted the planned Mac Mini + Raspberry Pi deployment and the new model-evaluation harness under Phase 2.
+- **`clients/mshin-cli/README.md`**: documented the evaluation harness and config format.
+- **`CONTRIBUTING.md`** and **`CLAUDE.md`**: updated project-structure listings for `clients/mshin-cli/`.
+
+### Fixed
+
+- **`--format` is validated before the suite runs.** It was only checked inside `writeReport`, so a typo discarded every result after a full multi-model run. Client and writer now share one alias table (`json`, `md`/`markdown`, `csv`).
+- **CSV cells are quoted per RFC 4180.** Only `error` was quoted, so a comma in a model or case name shifted every column after it.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 51/51 cases.
+- `npm test` in `servers/src/kali/` passes 20/20 cases.
+- **Streamable HTTP transport handshake works end to end.** Started `servers/src/kali/index.js` with `--tools nmap,whois` and connected a real MCP `Client` using `StreamableHTTPClientTransport` against `/mcp`. `client.connect()` completed initialize, `client.listTools()` returned the two enabled tool schemas, and `transport.terminateSession()` released the session server-side — confirmed by a follow-up DELETE for the same id answering 404. (An earlier draft of this entry credited `client.close()` with the cleanup; it does not contact the server at all.)
+
 ### Still not verified
 
 - The two-machine path on real hardware, across a physical LAN.
+- The new transport path through the full CLI + Ollama agent loop on a live Node.
+- The harness against a real Ollama model; its CLI paths (format rejection, report writing, expected-tool scoring) are exercised, but no case has run end to end through live inference.
 
 ## [0.9.0] - 2026-09-07
 
@@ -844,7 +876,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/imagewize/mshin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/imagewize/mshin/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/imagewize/mshin/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/imagewize/mshin/compare/v0.7.2...v0.7.3

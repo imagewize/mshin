@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { tools } from "./tools.js";
 
 const PORT = process.env.MSHIN_NODE_PORT
@@ -76,32 +77,69 @@ function createServer() {
 
 const app = express();
 
-// Active SSE transports keyed by session id, so concurrent clients (and
-// reconnects) each get their own message channel.
+// Active Streamable HTTP transports keyed by session id, so concurrent clients
+// (and reconnects) each get their own message channel.
 const transports = new Map();
 
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  transports.set(transport.sessionId, transport);
-  console.error(`[INFO] MCP client connected via SSE (session ${transport.sessionId})`);
+// GET opens the server-to-client stream and DELETE terminates the session.
+// Both address a session that already exists, so they share one lookup and let
+// the transport dispatch on the method. Without the DELETE route a client's
+// terminateSession() gets Express's 404 (the SDK only tolerates 405), and the
+// session is never dropped from the map: DELETE is the only path that fires
+// onsessionclosed, so a long-lived Node would leak a transport and a Server
+// instance per CLI run.
+async function routeToSession(req, res) {
+  const sessionId = req.headers["mcp-session-id"];
+  const transport = sessionId ? transports.get(sessionId) : null;
+  if (!transport) {
+    res.status(404).send("Session not found");
+    return;
+  }
+  await transport.handleRequest(req, res);
+}
 
-  res.on("close", () => {
-    transports.delete(transport.sessionId);
-    console.error(`[INFO] MCP client disconnected (session ${transport.sessionId})`);
+app.get("/mcp", routeToSession);
+app.delete("/mcp", routeToSession);
+
+app.post("/mcp", express.json(), async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"];
+
+  if (sessionId) {
+    const transport = transports.get(sessionId);
+    if (!transport) {
+      res.status(404).send("Session not found");
+      return;
+    }
+    await transport.handleRequest(req, res, req.body);
+    return;
+  }
+
+  // New session: this must be the initialize request.
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    onsessioninitialized: (sid) => {
+      transports.set(sid, transport);
+      console.error(`[INFO] MCP client connected via Streamable HTTP (session ${sid})`);
+    },
+    onsessionclosed: (sid) => {
+      transports.delete(sid);
+      console.error(`[INFO] MCP client session closed (session ${sid})`);
+    },
   });
+
+  // A DELETE closes the transport right after onsessionclosed has already
+  // dropped the entry; only log here when this handler is the one removing it,
+  // so an explicit termination reports once rather than twice.
+  transport.onclose = () => {
+    const sid = transport.sessionId;
+    if (sid && transports.delete(sid)) {
+      console.error(`[INFO] MCP client disconnected (session ${sid})`);
+    }
+  };
 
   const server = createServer();
   await server.connect(transport);
-});
-
-app.post("/messages", async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = sessionId ? transports.get(sessionId) : null;
-  if (!transport) {
-    res.status(425).send("No active SSE session for the given sessionId");
-    return;
-  }
-  await transport.handlePostMessage(req, res);
+  await transport.handleRequest(req, res, req.body);
 });
 
 app.get("/health", (_req, res) => {

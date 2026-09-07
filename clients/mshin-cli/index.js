@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import readline from "node:readline";
 import { Agent, AgentMemory, askYesNo } from "./agent.js";
 
@@ -79,14 +79,14 @@ async function main() {
     process.exit(1);
   }
 
-  // Connect to the Machin Shin Node MCP server via SSE.
+  // Connect to the Machin Shin Node MCP server over Streamable HTTP.
   const client = new Client(
     { name: "mshin-cli", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 
-  const sseUrl = new URL("/sse", nodeUrl);
-  const transport = new SSEClientTransport(sseUrl);
+  const mcpUrl = new URL("/mcp", nodeUrl);
+  const transport = new StreamableHTTPClientTransport(mcpUrl);
   await client.connect(transport);
 
   const mcpTools = await client.listTools();

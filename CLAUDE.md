@@ -44,7 +44,7 @@ The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 - `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
 - `lima/` holds the two Lima templates for the macOS local-dev path: `mshin-node.yaml` (Node guest) and `mshin-core.yaml` (Core guest). The Node guest is named **mshin-node**, not mshin-kali: it is Debian, not Kali Linux, so it is named for its architectural role (pairing with mshin-core) rather than the OS (the production Node still runs real Kali). It now provisions the full six-tool set — nmap, whois, tshark and nikto from Debian, metasploit and searchsploit from their upstream vendors (Rapid7's apt repo and exploit-db's git repo, not Kali's repo). The persona is built on a 7B model rather than the Modelfile's `mistral-small`.
 - `servers/src/kali/` holds the custom Kali MCP server (`index.js`, `tools.js`, `package.json`).
-- `clients/mshin-cli/` holds the Ollama + MCP CLI harness (`index.js`, `package.json`).
+- `clients/mshin-cli/` holds the Ollama + MCP CLI harness (`index.js`, `agent.js`, `eval-harness.js`, `package.json`).
 - `KALI-OPENLLM.md` at the repo root is the most complete single-file master guide, superseding the split docs.
 
 If you add or move files, keep `README.md`'s Documentation links and `CONTRIBUTING.md`'s "Project Structure" section in sync.
