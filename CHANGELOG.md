@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`clients/mshin-cli/README.md`** no longer claims only the first tool call in
+  a turn is executed. The 0.11.0 loop runs every tool call the model emits; the
+  README now describes that behaviour.
+
 ## [0.11.0] - 2026-09-07
 
 Agent-loop observability and the real fix for the multi-tool bug. Adding a

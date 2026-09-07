@@ -47,10 +47,12 @@ model to summarize what it found so far.
 
 A few things about that loop aren't obvious from skimming it:
 
-- **Only the first tool call per turn is executed.** Ollama's API lets a
-  response carry multiple `tool_calls`, but the agent's contract is one
-  decision at a time -- the rest of that turn's calls are dropped so every
-  decision is grounded in a real result before the next one is made.
+- **Every tool call in a turn is executed, in order.** Ollama's API lets a
+  response carry multiple `tool_calls`; the loop runs all of them rather than
+  keeping only the first. A live `recon-chain` run showed models emitting
+  `whois` and `nmap` in one turn, and dropping the second call made the model
+  believe the scan had already run. Honouring every call the model emits keeps
+  the transcript faithful to what actually happened.
 - **A narrated tool call is recovered, not trusted as a final answer.**
   Smaller models (this is tuned for Mistral Small 3 / 7B-class models, not
   frontier ones) sometimes write out `nmap(target="...")` or a JSON blob as
