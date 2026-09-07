@@ -1121,10 +1121,9 @@ function readLineFromStdin(prompt) {
  * prompt while the question it was meant for never resolves. Callers with no
  * interface of their own get the default reader.
  */
-function askYesNo(question, ask = readLineFromStdin) {
-  return Promise.resolve(ask(`${question} (y/n): `)).then((answer) =>
-    String(answer).trim().toLowerCase().startsWith("y")
-  );
+async function askYesNo(question, ask = readLineFromStdin) {
+  const answer = await ask(`${question} (y/n): `);
+  return String(answer).trim().toLowerCase().startsWith("y");
 }
 
 export { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, compressToolResult };
