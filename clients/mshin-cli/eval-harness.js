@@ -8,6 +8,28 @@ import { Agent, AgentMemory } from "./agent.js";
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 const DEFAULT_OUTPUT_DIR = "./eval-results";
+const FORMATS = new Map([
+  ["json", "json"],
+  ["md", "md"],
+  ["markdown", "md"],
+  ["csv", "csv"],
+]);
+
+/**
+ * Resolve a report format alias, throwing on anything unknown. Called from
+ * parseArgs so a typo costs nothing: a suite can run for many minutes across
+ * several models, and discovering the bad flag only at write time would throw
+ * all of that away.
+ */
+function normalizeFormat(format) {
+  const resolved = FORMATS.get(format);
+  if (!resolved) {
+    throw new Error(
+      `Unknown output format: ${format}. Expected one of: ${[...FORMATS.keys()].join(", ")}.`
+    );
+  }
+  return resolved;
+}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -49,6 +71,13 @@ function parseArgs() {
 
   if (!configPath) {
     printUsage();
+    process.exit(1);
+  }
+
+  try {
+    format = normalizeFormat(format);
+  } catch (err) {
+    console.error(`[ERROR] ${err.message}`);
     process.exit(1);
   }
 
@@ -191,6 +220,15 @@ class EvalHarness {
 
     const endTime = Date.now();
 
+    // expectedTools is a behavioural expectation, not a harness assertion: a
+    // model that skips a tool is a result worth recording, not a broken run.
+    // It is scored separately from `success` so the two never blur together.
+    const expectedTools = testCase.expectedTools || null;
+    const calledTools = toolCalls.map((c) => c.name);
+    const missingTools = expectedTools
+      ? expectedTools.filter((name) => !calledTools.includes(name))
+      : [];
+
     return {
       model,
       case: testCase.name,
@@ -211,7 +249,9 @@ class EvalHarness {
       approvalDenied: agent.metrics.approvalDenied,
       contextHighWaterTokens: agent.metrics.contextHighWaterTokens,
       errors: agent.metrics.errors,
-      expectedTools: testCase.expectedTools || null,
+      expectedTools,
+      missingTools,
+      expectedToolsMet: expectedTools ? missingTools.length === 0 : null,
       maxSteps: testCase.maxSteps || 25,
     };
   }
@@ -230,6 +270,22 @@ function writeJsonReport(results, outputDir) {
   return path;
 }
 
+function expectedLabel(result) {
+  if (!result.expectedTools) return "—";
+  return result.expectedToolsMet ? "met" : `missing ${result.missingTools.join(", ")}`;
+}
+
+function expectedDetail(result) {
+  if (!result.expectedTools) return "_(none declared)_";
+  if (result.expectedToolsMet) {
+    return `all called (${result.expectedTools.join(", ")})`;
+  }
+  const missed = `never called: ${result.missingTools.join(", ")}`;
+  // Only worth naming the full expectation when part of it was met.
+  if (result.missingTools.length === result.expectedTools.length) return missed;
+  return `${missed} (expected ${result.expectedTools.join(", ")})`;
+}
+
 function writeMarkdownReport(results, outputDir) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const path = join(outputDir, `eval-${timestamp}.md`);
@@ -237,7 +293,7 @@ function writeMarkdownReport(results, outputDir) {
   const summaryRows = results
     .map(
       (r) =>
-        `| ${r.model} | ${r.case} | ${r.success ? "PASS" : "FAIL"} | ${r.durationMs} | ${r.steps} | ${r.toolCallCount} | ${r.narratedToolCallCount} | ${r.fabricatedOutputsBlocked} | ${r.contextHighWaterTokens} |`
+        `| ${r.model} | ${r.case} | ${r.success ? "PASS" : "FAIL"} | ${expectedLabel(r)} | ${r.durationMs} | ${r.steps} | ${r.toolCallCount} | ${r.narratedToolCallCount} | ${r.fabricatedOutputsBlocked} | ${r.contextHighWaterTokens} |`
     )
     .join("\n");
 
@@ -254,6 +310,7 @@ function writeMarkdownReport(results, outputDir) {
 - **Fabricated outputs blocked:** ${r.fabricatedOutputsBlocked}
 - **Approval requests:** ${r.approvalRequests} granted / ${r.approvalDenied} denied
 - **Context high-water:** ${r.contextHighWaterTokens} tokens
+- **Expected tools:** ${expectedDetail(r)}
 
 **Final answer:**
 ${r.finalAnswer ? "```\n" + r.finalAnswer + "\n```" : "_(none)_"}
@@ -263,8 +320,8 @@ ${r.finalAnswer ? "```\n" + r.finalAnswer + "\n```" : "_(none)_"}
 
   const markdown = `# Machin Shin Model Evaluation Report
 
-| Model | Case | Result | Duration (ms) | Steps | Tool Calls | Narrated | Fabricated | Context Tokens |
-|-------|------|--------|--------------:|------:|-----------:|---------:|-----------:|---------------:|
+| Model | Case | Result | Expected Tools | Duration (ms) | Steps | Tool Calls | Narrated | Fabricated | Context Tokens |
+|-------|------|--------|----------------|--------------:|------:|-----------:|---------:|-----------:|---------------:|
 ${summaryRows}
 
 ${details}
@@ -272,6 +329,17 @@ ${details}
 
   writeFileSync(path, markdown);
   return path;
+}
+
+/**
+ * RFC 4180 cell: quote only when the value carries a comma, quote or newline,
+ * so plain values stay readable. Model and case names are author-supplied and
+ * a comma in either used to shift every column that followed it.
+ */
+function csvCell(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function writeCsvReport(results, outputDir) {
@@ -294,6 +362,9 @@ function writeCsvReport(results, outputDir) {
     "approvalDenied",
     "contextHighWaterTokens",
     "errors",
+    "expectedTools",
+    "expectedToolsMet",
+    "missingTools",
   ];
 
   const rows = results.map((r) =>
@@ -301,7 +372,7 @@ function writeCsvReport(results, outputDir) {
       r.model,
       r.case,
       r.success,
-      r.error ? `"${r.error.replace(/"/g, '""')}"` : "",
+      r.error,
       r.durationMs,
       r.steps,
       r.maxSteps,
@@ -313,7 +384,12 @@ function writeCsvReport(results, outputDir) {
       r.approvalDenied,
       r.contextHighWaterTokens,
       r.errors,
-    ].join(",")
+      r.expectedTools ? r.expectedTools.join(",") : "",
+      r.expectedToolsMet === null ? "" : r.expectedToolsMet,
+      r.missingTools ? r.missingTools.join(",") : "",
+    ]
+      .map(csvCell)
+      .join(",")
   );
 
   writeFileSync(path, [headers.join(","), ...rows].join("\n"));
@@ -323,16 +399,13 @@ function writeCsvReport(results, outputDir) {
 function writeReport(results, { outputDir, format }) {
   ensureDir(outputDir);
 
-  switch (format) {
+  switch (normalizeFormat(format)) {
     case "json":
       return writeJsonReport(results, outputDir);
     case "md":
-    case "markdown":
       return writeMarkdownReport(results, outputDir);
-    case "csv":
-      return writeCsvReport(results, outputDir);
     default:
-      throw new Error(`Unknown output format: ${format}`);
+      return writeCsvReport(results, outputDir);
   }
 }
 
@@ -383,6 +456,16 @@ async function main() {
   const reportPath = writeReport(results, { outputDir, format });
   console.log(`\nWrote ${format} report: ${reportPath}`);
 
+  const missed = results.filter((r) => r.expectedToolsMet === false);
+  if (missed.length > 0) {
+    console.log(`\n${missed.length} case(s) did not call every expected tool:`);
+    for (const r of missed) {
+      console.log(`  ${r.model} / ${r.case}: missing ${r.missingTools.join(", ")}`);
+    }
+  }
+
+  // The exit code tracks harness errors only. A model that skips an expected
+  // tool is the measurement the suite exists to take, not a failed run.
   const failures = results.filter((r) => !r.success);
   if (failures.length > 0) {
     console.log(`\n${failures.length} case(s) failed.`);
@@ -399,4 +482,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { EvalHarness, loadConfig, writeReport, mcpToolsToOllama };
+export { EvalHarness, loadConfig, writeReport, mcpToolsToOllama, normalizeFormat };

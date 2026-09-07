@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { EvalHarness, loadConfig, writeReport } from "./eval-harness.js";
+import { EvalHarness, loadConfig, writeReport, normalizeFormat } from "./eval-harness.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -18,6 +18,33 @@ function configFile(dir, contents) {
   const path = join(dir, "config.json");
   writeFileSync(path, JSON.stringify(contents));
   return path;
+}
+
+/** A result row with sensible defaults, for tests about report rendering. */
+function makeResult(overrides = {}) {
+  return {
+    model: "mshin",
+    case: "scan",
+    prompt: "scan it",
+    success: true,
+    error: null,
+    durationMs: 100,
+    steps: 1,
+    maxSteps: 25,
+    toolCallCount: 1,
+    narratedToolCallCount: 0,
+    fabricatedOutputsBlocked: 0,
+    approvalRequests: 0,
+    approvalGranted: 0,
+    approvalDenied: 0,
+    contextHighWaterTokens: 120,
+    errors: 0,
+    finalAnswer: "done",
+    expectedTools: null,
+    missingTools: [],
+    expectedToolsMet: null,
+    ...overrides,
+  };
 }
 
 /** Stand-in agent that replays a scripted interaction. */
@@ -320,5 +347,180 @@ test("writeReport writes a CSV report", () => {
   const csv = readFileSync(path, "utf8");
   assert.match(csv, /model,case,success/);
   assert.match(csv, /mshin,scan,true/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Report format resolution
+// ---------------------------------------------------------------------------
+
+test("normalizeFormat resolves aliases and rejects unknown formats", () => {
+  assert.equal(normalizeFormat("json"), "json");
+  assert.equal(normalizeFormat("csv"), "csv");
+  assert.equal(normalizeFormat("md"), "md");
+  assert.equal(normalizeFormat("markdown"), "md");
+  // Rejected up front so a typo cannot discard a finished multi-model suite.
+  assert.throws(() => normalizeFormat("xml"), /Unknown output format: xml/);
+  assert.throws(() => normalizeFormat("MD"), /Unknown output format/);
+});
+
+// ---------------------------------------------------------------------------
+// Expected-tool scoring
+// ---------------------------------------------------------------------------
+
+test("harness scores a case that calls every expected tool", async () => {
+  const dir = makeTempDir();
+  const harness = new EvalHarness({
+    outputDir: dir,
+    createAgent: () => ({
+      agent: new MockAgent({
+        steps: [{ tool: { name: "nmap", args: {}, result: "open: 22" } }],
+        answer: "port 22 is open",
+      }),
+      sessionId: "s1",
+    }),
+  });
+
+  const [result] = await harness.runSuite({
+    models: ["mshin"],
+    cases: [{ name: "scan", prompt: "scan it", expectedTools: ["nmap"] }],
+  });
+
+  assert.equal(result.expectedToolsMet, true);
+  assert.deepEqual(result.missingTools, []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("harness records expected tools the model never called", async () => {
+  const dir = makeTempDir();
+  const harness = new EvalHarness({
+    outputDir: dir,
+    createAgent: () => ({
+      agent: new MockAgent({
+        steps: [{ tool: { name: "nmap", args: {}, result: "open: 22" } }],
+        answer: "done",
+      }),
+      sessionId: "s1",
+    }),
+  });
+
+  const [result] = await harness.runSuite({
+    models: ["mshin"],
+    cases: [{ name: "scan", prompt: "scan it", expectedTools: ["nmap", "whois"] }],
+  });
+
+  // A skipped tool is a measurement, not a harness error: success stays true.
+  assert.equal(result.success, true);
+  assert.equal(result.expectedToolsMet, false);
+  assert.deepEqual(result.missingTools, ["whois"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("harness leaves scoring null when a case declares no expectations", async () => {
+  const dir = makeTempDir();
+  const harness = new EvalHarness({
+    outputDir: dir,
+    createAgent: () => ({
+      agent: new MockAgent({ steps: [], answer: "done" }),
+      sessionId: "s1",
+    }),
+  });
+
+  const [result] = await harness.runSuite({
+    models: ["mshin"],
+    cases: [{ name: "chat", prompt: "hello" }],
+  });
+
+  assert.equal(result.expectedTools, null);
+  assert.equal(result.expectedToolsMet, null);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// CSV quoting
+// ---------------------------------------------------------------------------
+
+test("writeReport quotes CSV fields containing commas, quotes or newlines", () => {
+  const dir = makeTempDir();
+  const results = [
+    {
+      model: "mshin",
+      case: "scan, then lookup",
+      success: false,
+      error: 'boom: said "no"',
+      durationMs: 100,
+      steps: 1,
+      maxSteps: 25,
+      toolCallCount: 1,
+      narratedToolCallCount: 0,
+      fabricatedOutputsBlocked: 0,
+      approvalRequests: 0,
+      approvalGranted: 0,
+      approvalDenied: 0,
+      contextHighWaterTokens: 120,
+      errors: 1,
+      expectedTools: ["nmap", "whois"],
+      missingTools: ["whois"],
+      expectedToolsMet: false,
+      finalAnswer: null,
+    },
+  ];
+  const path = writeReport(results, { outputDir: dir, format: "csv" });
+  const csv = readFileSync(path, "utf8");
+  const [header, row] = csv.split("\n");
+
+  // A comma inside a value must not shift the columns that follow it.
+  assert.match(row, /"scan, then lookup"/);
+  assert.match(row, /"boom: said ""no"""/);
+  assert.match(row, /"nmap,whois"/);
+  assert.equal(header.split(",").length, 18);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("writeReport rejects an unknown format", () => {
+  const dir = makeTempDir();
+  assert.throws(
+    () => writeReport([], { outputDir: dir, format: "xml" }),
+    /Unknown output format/
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("markdown report renders every expected-tool outcome", () => {
+  const dir = makeTempDir();
+  const results = [
+    makeResult({ case: "none-declared" }),
+    makeResult({
+      case: "all-met",
+      expectedTools: ["nmap"],
+      missingTools: [],
+      expectedToolsMet: true,
+    }),
+    makeResult({
+      case: "partial-miss",
+      expectedTools: ["nmap", "whois"],
+      missingTools: ["whois"],
+      expectedToolsMet: false,
+    }),
+    makeResult({
+      case: "total-miss",
+      expectedTools: ["nmap"],
+      missingTools: ["nmap"],
+      expectedToolsMet: false,
+    }),
+  ];
+  const md = readFileSync(writeReport(results, { outputDir: dir, format: "md" }), "utf8");
+
+  assert.match(md, /\| mshin \| none-declared \| PASS \| — \|/);
+  assert.match(md, /\| mshin \| all-met \| PASS \| met \|/);
+  assert.match(md, /\| mshin \| partial-miss \| PASS \| missing whois \|/);
+
+  assert.match(md, /- \*\*Expected tools:\*\* _\(none declared\)_/);
+  assert.match(md, /- \*\*Expected tools:\*\* all called \(nmap\)/);
+  // A partial miss names the whole expectation; a total miss would only repeat
+  // itself, so it stops at the missing list.
+  assert.match(md, /- \*\*Expected tools:\*\* never called: whois \(expected nmap, whois\)/);
+  assert.match(md, /- \*\*Expected tools:\*\* never called: nmap\n/);
+
   rmSync(dir, { recursive: true, force: true });
 });
