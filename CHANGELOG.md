@@ -15,6 +15,8 @@ Agent-loop patch. Running the 0.10.0 harness against live inference for the firs
 
 - **A tool that cannot run is no longer retried** (`clients/mshin-cli/agent.js`). Tool failures whose text is environmental — `sudo: a password is required`, a missing binary, `no new privileges` — fail identically on every attempt, but the loop fed the raw error back and let the model try again. It now marks the tool unavailable for the rest of the run, tells the model the failure is not a bad argument, and answers any further call to it from the transcript instead of re-executing. Ordinary failures (host down, no results) stay retryable, and a successful call is never classified this way however its output reads. The record is scoped to the run, not the `Agent`, so fixing a sudoers allowlist between prompts costs one rediscovery call rather than staying wrong for the session.
 
+- **The fabricated-output backstop is grounded in real results** (`clients/mshin-cli/agent.js`). It only fired when no tool had executed for the whole run, and the flag it read was set by any call that returned — including a failed one. A single failed call therefore disarmed it, and anything invented afterwards reached the user unchallenged. Seen live: `whois` failed under `sudo`, `nmap` was never called, and both models printed a placeholder `Nmap Scan Results for 127.0.0.1` block while `fabricatedOutputsBlocked` stayed 0. The loop now records which tools returned without `isError` and blocks output that reads like a report from a tool that never returned one. A real `whois` result does not license an invented `nmap` report, an honest error is not a result, and summarising output a tool genuinely returned is untouched.
+
 ### Added
 
 - **Non-retryable failure metrics.** `nonRetryableToolErrors` and `blockedToolRetries` are tracked by the agent and carried into all three report formats, separating a model that respects an unavailable tool from one that keeps hammering it.
@@ -26,14 +28,16 @@ Agent-loop patch. Running the 0.10.0 harness against live inference for the firs
 
 ### Verified
 
-- `npm test` in `clients/mshin-cli/` passes 56/56 cases; `servers/src/kali/` passes 20/20. The five new agent cases all fail against the previous loop, checked by reverting `agent.js` alone.
+- `npm test` in `clients/mshin-cli/` passes 60/60 cases; `servers/src/kali/` passes 20/20. Every new agent case was checked against the unfixed loop by reverting `agent.js` alone: the five non-retry cases fail without that fix, and three of the four backstop cases fail without theirs — the fourth guards the summary path and must pass either way.
 - **The defect was measured, not theorised.** On a Node whose sudoers allowlist did not cover `whois`, both the `mshin` persona and `qwen3:8b` spent their entire 3-step budget re-issuing the identical failing call. Neither invented registrar data — the honesty of the final answers was not the problem; the wasted budget was.
-- **The fix changes live behaviour.** With the same models against the same unrunnable `whois`, the call executes once instead of twice, and on the multi-tool `recon-chain` case the model pivoted to `nmap` rather than spending the rest of its budget on retries.
+- **The fix changes live behaviour.** With the same models against the same unrunnable `whois`, the call executes once instead of twice and the case ends in 2 steps rather than 3. The suppression comes from the guidance message itself — `blockedToolRetries` stayed 0, so neither model even attempted the retry the short-circuit exists to catch.
+- **The first wording of that guidance caused a regression, caught before merge.** Told only "do not retry it", both models abandoned the rest of a two-tool goal: on `recon-chain` they announced `nmap`, printed a placeholder for its output, and stopped without ever calling it. The guidance now names the remaining work explicitly and forbids describing output no tool returned.
 
 ### Still not verified
 
 - The two-machine path on real hardware, across a physical LAN.
-- A full model-comparison matrix on the multi-tool case set. No tool has yet executed successfully through live inference on the macOS authoring host: the server runs every binary except `tshark` under `sudo -n`, which needs the Linux Node's allowlist. What the local runs exercise is tool *calling* and failure handling, not tool *output*.
+- A full model-comparison matrix on the multi-tool case set. It has been run once against `mshin` and `qwen3:8b` — which it does separate, on `recon-chain` — and not against anything larger than 8B.
+- The reworded unavailable-tool guidance against live inference. The wording change is pinned by tests; whether it actually recovers the second tool on a two-tool goal is a live-model question, and that re-run had not finished when this was written. No tool has yet executed successfully through live inference on the macOS authoring host: the server runs every binary except `tshark` under `sudo -n`, which needs the Linux Node's allowlist. What the local runs exercise is tool *calling* and failure handling, not tool *output*.
 
 ## [0.10.0] - 2026-09-07
 
