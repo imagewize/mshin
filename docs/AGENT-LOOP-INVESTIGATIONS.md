@@ -48,7 +48,7 @@ Models used: `mshin` (the persona, 7B-class) and `qwen3:8b`.
 
 ## Addressed: the unavailable-tool guidance may prevent termination
 
-**Status: termination fixed and live-verified; multi-tool continuation still open.**
+**Status: resolved. Termination fixed in 0.10.2; multi-tool continuation fixed in 0.11.0 (the loop no longer drops the model's second tool call).**
 
 ### What the loop does now
 
@@ -193,7 +193,7 @@ untouched.
 
 ---
 
-## Reopened: models abandon the rest of a multi-tool goal
+## Resolved: models abandon the rest of a multi-tool goal
 
 The first wording of the unavailable-tool guidance said only that the tool could not
 run and should not be retried. Both models read that as licence to give up entirely:
@@ -209,6 +209,103 @@ all. Naming the remaining work in a `role: "user"` message did not, on this case
 get either model to the second tool. The termination fix and the continuation fix
 travelled together in the same change; the first is verified, the second is not.
 Reopened.
+
+### Update (2026-09-07, second run): de-confounded on the VM — and the fabrication is now concrete
+
+The earlier reopened runs were against the **host**, where `nmap` also fails under
+`sudo -n`. That left the reading ambiguous: a model that never called `nmap` could
+not be distinguished from a model that called it and got nothing. This run removes
+the ambiguity by pointing the harness at the **`mshin-node` VM** (`nodeUrl:
+http://localhost:3000`, Lima's forward of the guest's `:3000`), where the provisioned
+sudoers allowlist lets both tools actually execute — verified out of band: `sudo -n
+whois example.com` returns the IANA registrar and `sudo -n nmap -p 22,80 127.0.0.1`
+returns real port state (22 open).
+
+`recon-chain`, both models, `maxSteps 6`, against that live VM:
+
+| Model | Steps | `whois` | `nmap` | Duration | Result | `fabricatedOutputsBlocked` |
+| ------- | :---: | :-----: | :----: | -------: | :----: | :-----------------------: |
+| `mshin` | 2/6 | ran (real IANA data) | never called | 54003 ms | PASS | 0 |
+| `qwen3:8b` | 2/6 | ran (real IANA data) | never called | 51927 ms | PASS | 0 |
+
+Three things this run establishes that the host runs could not:
+
+1. **The continuation failure is real, not an artifact of the host.** `whois`
+   returned genuine registrar data — proof the tool executed — and `nmap` was fully
+   available, yet both models stopped at 2 of 6 without calling it. The caveat on the
+   first reopened run ("on the host `nmap` would also have failed") is now retired.
+
+2. **The fabrication is no longer a placeholder — it is concrete invented output.**
+   On the host both models emitted a bracketed placeholder (`[specific findings]`).
+   Fed a *real* `whois` success, both instead asserted a specific `nmap` report for a
+   scan that never ran — `mshin`: "22/tcp (SSH), 80/tcp (HTTP), 443/tcp (HTTPS),
+   53/udp (DNS), 139/tcp (NetBIOS)"; `qwen3:8b`: the same set as `open` services. This
+   is exactly what the fabrication backstop from 0.10.1 exists to catch, yet
+   `fabricatedOutputsBlocked` stayed 0. `looksLikeFabricatedToolOutput` does not
+   recognise this text as a tool report — a defect distinct from the continuation bug.
+
+3. **The harness scored both runs PASS.** "missing nmap" is reported, but `Result:
+   PASS`. Failing to call an expected tool — and fabricating its output — does not
+   fail the case. As it stands the eval cannot guard a fix for this bug: a regression
+   would stay green.
+
+Net: one investigation has become three tracked problems — (a) get the model to
+continue to the next tool, (b) make `looksLikeFabricatedToolOutput` catch a concrete
+fabricated report when another tool did succeed in the same run, and (c) make a
+missing expected tool (or a blocked fabrication) fail the eval case. Landing (c)
+first gives a red test before (a) and (b) change behaviour.
+
+### Resolved (2026-09-07, third run): the loop was discarding the model's second tool call
+
+The framing above — and across 0.10.1/0.10.2 — was wrong. The models were **not**
+abandoning the goal. A step-level debug trace (added this release; set `MSHIN_DEBUG=1`
+or `MSHIN_DEBUG_LOG=<path>`) showed the whole failure in nine lines:
+
+```
+model.turn {"toolCalls":["whois","nmap"],"dropped":["nmap"]}   <- the model DID call nmap
+tool.call  whois  ->  tool.result whois (ok)
+model.turn {"toolCalls":[]}                                    <- never re-issues nmap
+final.check {"ungrounded":[],"looksFabricated":false}          <- both fabrication gates miss it
+final.accept
+```
+
+The model emitted `whois` **and** `nmap` in one turn. The loop's deliberate "process
+only the first call and ignore the rest to keep the loop grounded" rule
+(`agent.js`) then **discarded the `nmap` call the model had made**, fed back only the
+whois result, and the model — believing it had already asked for the scan — wrote a
+final answer describing nmap output it never got. It was not a fabrication the
+detector could catch: `ungrounded` was empty (the prose said "the scan", not
+"nmap") and the port shape was "Port 22 (SSH)", not "22/tcp".
+
+None of this was visible from the metrics (`fabricatedOutputsBlocked: 0`,
+`continuationNudges: 0`) or the `--verbose` tool lines. Only the transcript, then
+the trace, showed it. This is the observability lesson: the loop had three tiers
+(verbose stdout, aggregate metrics, the persisted `memory.json` transcript) but no
+per-step decision log; the trace closes that gap.
+
+**Fix.** The loop now runs **every** tool call in a turn, in order, rather than
+keeping the first and dropping the rest. The model had already committed to those
+calls; honouring them is more faithful than dropping them and hoping it asks again.
+Unavailable-tool guidance is pushed once per turn as a `role: "user"` message after
+all tool results, never interleaved between them (which would break tool-call/result
+pairing).
+
+**Measured.** `recon-chain`, both models, against the VM where `nmap` runs:
+
+| Model | Steps | Tool calls | Expected tools | Overall |
+| ------- | :---: | :--------: | :------------: | :-----: |
+| `mshin` | 2/6 | whois + nmap | all called | PASS |
+| `qwen3:8b` | 2/6 | whois + nmap | all called | PASS |
+
+Both call `whois` then `nmap` in the first turn, and the grounded final answer
+summarises the real scan (`final.check` shows `succeeded: ["whois","nmap"]`,
+`ungrounded: []` — the scan-shaped text is now a legitimate summary, correctly not
+blocked). The behaviour verdict from part (c) reports PASS; the suite exits 0.
+
+The two fabrication-side changes from this investigation still stand and are still
+right — the detector now catches an unfenced inline port list (b), and the harness
+scores behaviour and can fail a run on it (c) — but they were guarding a symptom.
+The dropped tool call was the disease. **Closed.**
 
 ---
 

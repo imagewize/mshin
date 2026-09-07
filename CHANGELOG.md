@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-07
+
+Agent-loop observability and the real fix for the multi-tool bug. Adding a
+step-level debug trace exposed the actual cause of the "models abandon the rest
+of a multi-tool goal" defect that stood open across 0.10.1 and 0.10.2: the models
+were not giving up — the loop was discarding a tool call they had made. The trace,
+the fix, and the eval that now guards it ship together.
+
+### Added
+
+- **A step-level debug trace of the agent loop** (`clients/mshin-cli/agent.js`),
+  the WP_DEBUG analogue the loop lacked. Off by default; `MSHIN_DEBUG=1` writes to
+  stderr and `MSHIN_DEBUG_LOG=<path>` also appends to that file. Each step logs one
+  line per decision — `run.start`, `step`, `model.turn` (with the tool calls the
+  turn emitted), `tool.call` / `tool.result`, `final.check` (the fabrication
+  verdict, grounded tools and ungrounded mentions), `fabrication.nudge` /
+  `fabrication.block`, `final.accept`. The `model.turn` line is what surfaced the
+  dropped-tool-call bug below; the metrics and `--verbose` output had hidden it. A
+  broken `MSHIN_DEBUG_LOG` path can never take the run down. Injectable for tests.
+
+### Fixed
+
+- **The loop no longer discards tool calls the model made** (`clients/mshin-cli/agent.js`).
+  It kept only the first of several `tool_calls` in a turn and dropped the rest "to
+  keep the loop grounded". A live `recon-chain` run showed both `mshin` and
+  `qwen3:8b` emit `whois` **and** `nmap` in one turn; the loop ran `whois`, threw
+  away `nmap`, and the model — believing it had already asked for the scan — wrote a
+  final answer describing scan output it never received. This is the defect
+  mislabelled "models abandon the rest of a multi-tool goal" across two releases.
+  The loop now runs **every** tool call in a turn, in order; unavailable-tool
+  guidance is pushed once per turn as a `role: "user"` message after all tool
+  results, never interleaved between them. Verified live against the `mshin-node`
+  VM: both models now call `whois` then `nmap` in the first turn and return a
+  grounded report — `recon-chain` scores Overall PASS for both. Full account in
+  `docs/AGENT-LOOP-INVESTIGATIONS.md`.
+- **The fabricated-output detector catches an unfenced inline port list**
+  (`clients/mshin-cli/agent.js`). `looksLikeFabricatedToolOutput` fired only on a
+  fenced block or a `Result:`-labelled report; the live fabrication was a plain
+  markdown list (`- 22/tcp (SSH)`) under prose, with neither, so it slipped through
+  and `fabricatedOutputsBlocked` stayed 0. It now also recognises a `<port>/tcp|udp`
+  token beside an open/closed/filtered word anywhere in the prose. The call site's
+  grounding check is unchanged, so a genuine scan summary is still not blocked.
+
+### Changed
+
+- **The evaluation harness scores behaviour, not just run health**
+  (`clients/mshin-cli/eval-harness.js`). `success` still means only that the run
+  finished without throwing. A new `behaviourPass` is true only when every expected
+  tool was called and no output was blocked as fabricated, and `overallPass` fails
+  when either verdict does. Reports gain **Overall / Run / Behaviour** columns, a
+  `Continuation nudges` line, and the CLI exits **3** on a behavioural failure (exit
+  2 stays a run that could not complete), so a green run that skips a tool and
+  invents its output no longer reads as a pass. This is what let the `recon-chain`
+  regression register as FAIL while the fix was built, and what now guards it.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 66/66 cases; `servers/src/kali/` passes
+  20/20.
+- **Live inference, `recon-chain`, `mshin` and `qwen3:8b`, against the `mshin-node`
+  VM.** Before the fix: both models stopped at 2/6, called only `whois`, and
+  fabricated the scan (Behaviour FAIL). After: both call `whois` then `nmap` in one
+  turn, return a grounded report, and score Overall PASS — "all cases passed", exit
+  0. The `MSHIN_DEBUG_LOG` trace from each run is what confirmed the dropped call
+  before the fix and the two `tool.call` lines after.
+
 ## [0.10.2] - 2026-09-07
 
 Agent-loop follow-up. The 0.10.1 unavailable-tool guidance worked in mock tests

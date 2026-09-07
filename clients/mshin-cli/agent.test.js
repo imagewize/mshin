@@ -268,9 +268,11 @@ test("defaults missing tool arguments to an empty object", async (t) => {
 // One decision at a time
 // -----------------------------------------------------------------------------
 
-test("processes only the first of several tool_calls in one turn", async (t) => {
+test("runs every tool_call in one turn, in the order asked", async (t) => {
   const { ollama, mcp, agent } = await setup(t);
 
+  // The model asks for two calls at once. Both must run -- dropping the second
+  // is the recon-chain bug. They execute in order, before the next model turn.
   ollama.queueMultiToolCall([
     { name: "nmap", args: { target: "a" } },
     { name: "nmap", args: { target: "b" } },
@@ -278,8 +280,9 @@ test("processes only the first of several tool_calls in one turn", async (t) => 
   ollama.queueFinal("done");
 
   await agent.run({ sessionId: "s1", userGoal: "go" });
-  assert.equal(mcp.calls.length, 1);
+  assert.equal(mcp.calls.length, 2);
   assert.deepEqual(mcp.calls[0].args, { target: "a" });
+  assert.deepEqual(mcp.calls[1].args, { target: "b" });
 });
 
 // -----------------------------------------------------------------------------
@@ -721,7 +724,7 @@ test("the model is told the failure is environmental, not a bad argument", async
   const messages = ollama.requests.at(-1).body.messages;
   const toolMessage = messages.find((m) => m.role === "tool");
   const instruction = messages.find(
-    (m) => m.role === "user" && m.content.includes("is unavailable")
+    (m) => m.role === "user" && m.content.includes("Continue the rest of the task")
   );
   // The tool slot stays short: error plus retry suppression.
   assert.match(toolMessage.content, /cannot run on this Node/);
@@ -795,47 +798,113 @@ test("blocking one tool leaves the others usable", async (t) => {
 // Fabricated output after a tool has already run
 // -----------------------------------------------------------------------------
 
-test("a fabricated report is blocked even after another tool succeeded", async (t) => {
-  const { ollama, agent } = await setup(t, {
+test("a fabricated report is caught, then the skipped tool is actually run", async (t) => {
+  // The recon-chain continuation bug: one tool succeeds (metasploit), and the
+  // model invents the next tool's report (nmap) instead of calling it. The loop
+  // must refuse the fabrication, direct the model to run nmap, and let the real
+  // result through -- not terminate at the fabrication.
+  const { ollama, mcp, agent } = await setup(t, {
     mcpHandler: (name) =>
-      name === "metasploit" ? textContent("module completed") : textContent("ok"),
+      name === "metasploit"
+        ? textContent("module completed")
+        : textContent("22/tcp open ssh"),
   });
 
-  // metasploit really runs, then the model invents an nmap report.
   ollama.queueToolCall("metasploit", {});
   ollama.queueFinal(
-    "Here are the results:\n\n```\nNmap scan report for 127.0.0.1\n22/tcp open ssh\n80/tcp open http\n```"
+    "Here are the results:\n\n```\nNmap scan report for 127.0.0.1\n9999/tcp open leak\n```"
   );
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("Result: nmap found 22/tcp open (ssh).");
 
   const answer = await agent.run({
+    sessionId: "s1",
+    userGoal: "run metasploit then scan it",
+    onApproval: async () => true,
+  });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.equal(agent.metrics.continuationNudges, 1);
+  // nmap was actually called after the nudge, not just described.
+  assert.ok(mcp.calls.some((c) => c.name === "nmap"));
+  // The real result is delivered; the invented port never leaks through.
+  assert.match(answer, /22\/tcp open/);
+  assert.doesNotMatch(answer, /9999\/tcp/);
+});
+
+test("an unfenced inline scan list is caught when its tool never ran", async (t) => {
+  // The exact live recon-chain shape: nmap fails non-retryably (so it is
+  // unavailable and cannot be re-run), then the model reports an inline
+  // markdown list of ports with no code fence and no "Result:" label. The
+  // broadened detector must catch it, and with no runnable tool left the
+  // fabrication is refused rather than nudged.
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () =>
+      errorContent(
+        "Error: Command failed: sudo -n /usr/bin/nmap\nsudo: a password is required"
+      ),
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal(
+    "The nmap scan revealed the following open ports:\n" +
+      "- 22/tcp (SSH)\n- 80/tcp (HTTP)\n- 443/tcp (HTTPS)"
+  );
+
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.equal(agent.metrics.continuationNudges, 0);
+  assert.match(answer, /never returned one/);
+  assert.doesNotMatch(answer, /22\/tcp/);
+  // nmap was tried once and, being unavailable, was not re-run.
+  assert.equal(mcp.calls.filter((c) => c.name === "nmap").length, 1);
+});
+
+test("the debug trace records dropped tool_calls and each decision", async (t) => {
+  const events = [];
+  const { ollama, mcp, agent } = await setup(t, {
+    agentOptions: { debug: (event, data) => events.push([event, data]) },
+  });
+
+  // The model asks for two tools in one turn. The trace's model.turn event
+  // records both -- the signal that was missing when this exact shape hid a
+  // real bug (the loop dropping the second call) in a live run.
+  ollama.queueMultiToolCall([
+    { name: "nmap", args: { target: "127.0.0.1" } },
+    { name: "metasploit", args: {} },
+  ]);
+  ollama.queueFinal("Result: nmap found 22/tcp open (ssh).");
+
+  await agent.run({
     sessionId: "s1",
     userGoal: "scan it",
     onApproval: async () => true,
   });
 
-  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
-  assert.match(answer, /never returned one/);
-  assert.match(answer, /nmap/);
-  assert.doesNotMatch(answer, /22\/tcp/);
+  // Both tools actually ran, not just the first.
+  assert.deepEqual(mcp.calls.map((c) => c.name), ["nmap", "metasploit"]);
+  const turn = events.find(([e]) => e === "model.turn");
+  assert.ok(turn, "a model.turn event was recorded");
+  assert.deepEqual(turn[1].toolCalls, ["nmap", "metasploit"]);
+  assert.ok(events.some(([e]) => e === "run.start"));
+  assert.ok(events.some(([e]) => e === "tool.call"));
 });
 
-test("a failed tool call does not ground a fabricated report", async (t) => {
-  // The live case: whois fails non-retryably, nmap is never called, and the
-  // model prints a placeholder "Nmap Scan Results" block anyway.
-  const { ollama, agent } = await setup(t, {
-    mcpHandler: () => errorContent("Error: sudo: a password is required"),
-  });
+test("with no budget left, a fabrication is refused rather than nudged", async (t) => {
+  // The continuation nudge needs a turn to spend. On the final step there is
+  // none, so an invented result is refused outright.
+  const { ollama, agent } = await setup(t, { agentOptions: { maxSteps: 1 } });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
   ollama.queueFinal(
-    "The whois lookup could not run. Here's the result:\n\n" +
-      "**Nmap Scan Results for 127.0.0.1:**\n- 22/tcp open ssh"
+    "The nmap scan revealed the following open ports:\n- 22/tcp (SSH)"
   );
 
-  const answer = await agent.run({ sessionId: "s1", userGoal: "recon it" });
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
   assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
-  assert.doesNotMatch(answer, /22\/tcp/);
+  assert.equal(agent.metrics.continuationNudges, 0);
+  assert.match(answer, /never returned one/);
 });
 
 test("summarising a tool's real output is not blocked", async (t) => {

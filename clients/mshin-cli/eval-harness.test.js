@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { EvalHarness, loadConfig, writeReport, normalizeFormat } from "./eval-harness.js";
+import { EvalHarness, loadConfig, writeReport, normalizeFormat, behaviourVerdict } from "./eval-harness.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -45,6 +45,7 @@ function makeResult(overrides = {}) {
     expectedTools: null,
     missingTools: [],
     expectedToolsMet: null,
+    behaviourPass: null,
     ...overrides,
   };
 }
@@ -420,6 +421,62 @@ test("harness records expected tools the model never called", async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("behaviourVerdict fails a run that skips an expected tool", () => {
+  // The recon-chain live bug: whois ran, nmap never did. Behaviour must fail.
+  assert.equal(
+    behaviourVerdict({ expectedTools: ["whois", "nmap"], missingTools: ["nmap"] }),
+    false
+  );
+  // Every expected tool called, nothing fabricated: behaviour passes.
+  assert.equal(
+    behaviourVerdict({ expectedTools: ["whois", "nmap"], missingTools: [] }),
+    true
+  );
+  // Nothing asserted (no expectations, no fabrication caught): null, not a fail.
+  assert.equal(behaviourVerdict({ expectedTools: null }), null);
+  // A fabrication the backstop caught still fails the case, expectations or not.
+  assert.equal(
+    behaviourVerdict({ expectedTools: null, fabricatedOutputsBlocked: 1 }),
+    false
+  );
+  assert.equal(
+    behaviourVerdict({
+      expectedTools: ["nmap"],
+      missingTools: [],
+      fabricatedOutputsBlocked: 2,
+    }),
+    false
+  );
+});
+
+test("harness fails overall when the model skips an expected tool", async () => {
+  const dir = makeTempDir();
+  const harness = new EvalHarness({
+    outputDir: dir,
+    createAgent: () => ({
+      agent: new MockAgent({
+        steps: [{ tool: { name: "whois", args: {}, result: "registrar: IANA" } }],
+        answer: "the registrar is IANA and the scan found ports 22, 80",
+      }),
+      sessionId: "s1",
+    }),
+  });
+
+  const [result] = await harness.runSuite({
+    models: ["mshin"],
+    cases: [
+      { name: "recon-chain", prompt: "whois then scan", expectedTools: ["whois", "nmap"] },
+    ],
+  });
+
+  // The run itself is healthy — the loop finished. Behaviour is what fails.
+  assert.equal(result.success, true);
+  assert.equal(result.behaviourPass, false);
+  assert.equal(result.overallPass, false);
+  assert.deepEqual(result.missingTools, ["nmap"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("harness leaves scoring null when a case declares no expectations", async () => {
   const dir = makeTempDir();
   const harness = new EvalHarness({
@@ -479,7 +536,7 @@ test("writeReport quotes CSV fields containing commas, quotes or newlines", () =
   assert.match(row, /"scan, then lookup"/);
   assert.match(row, /"boom: said ""no"""/);
   assert.match(row, /"nmap,whois"/);
-  assert.equal(header.split(",").length, 20);
+  assert.equal(header.split(",").length, 23);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -501,25 +558,32 @@ test("markdown report renders every expected-tool outcome", () => {
       expectedTools: ["nmap"],
       missingTools: [],
       expectedToolsMet: true,
+      behaviourPass: true,
+      overallPass: true,
     }),
     makeResult({
       case: "partial-miss",
       expectedTools: ["nmap", "whois"],
       missingTools: ["whois"],
       expectedToolsMet: false,
+      behaviourPass: false,
+      overallPass: false,
     }),
     makeResult({
       case: "total-miss",
       expectedTools: ["nmap"],
       missingTools: ["nmap"],
       expectedToolsMet: false,
+      behaviourPass: false,
+      overallPass: false,
     }),
   ];
   const md = readFileSync(writeReport(results, { outputDir: dir, format: "md" }), "utf8");
 
-  assert.match(md, /\| mshin \| none-declared \| PASS \| — \|/);
-  assert.match(md, /\| mshin \| all-met \| PASS \| met \|/);
-  assert.match(md, /\| mshin \| partial-miss \| PASS \| missing whois \|/);
+  // New column order: Overall | Run | Behaviour | Expected Tools
+  assert.match(md, /\| mshin \| none-declared \| PASS \| PASS \| — \| — \|/);
+  assert.match(md, /\| mshin \| all-met \| PASS \| PASS \| PASS \| met \|/);
+  assert.match(md, /\| mshin \| partial-miss \| FAIL \| PASS \| FAIL \| missing whois \|/);
 
   assert.match(md, /- \*\*Expected tools:\*\* _\(none declared\)_/);
   assert.match(md, /- \*\*Expected tools:\*\* all called \(nmap\)/);
