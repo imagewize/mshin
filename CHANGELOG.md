@@ -28,7 +28,8 @@ the CLI exits.
   pass `sessionLogger: null` so the suite does not write to `~/.mshin`.
 - **CLI wiring** (`clients/mshin-cli/index.js`). The interactive harness creates
   a `SessionLogger` sharing the `AgentMemory` data directory and prints the log
-  path at startup.
+  path at startup. `MSHIN_DATA_DIR` overrides the default `~/.mshin` location
+  so logs can live on a host-mounted or shared path.
 
 ### Changed
 
