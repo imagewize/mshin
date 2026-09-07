@@ -38,6 +38,8 @@ function makeResult(overrides = {}) {
     approvalGranted: 0,
     approvalDenied: 0,
     contextHighWaterTokens: 120,
+    nonRetryableToolErrors: 0,
+    blockedToolRetries: 0,
     errors: 0,
     finalAnswer: "done",
     expectedTools: null,
@@ -59,6 +61,8 @@ class MockAgent {
       approvalGranted: 0,
       approvalDenied: 0,
       contextHighWaterTokens: 0,
+      nonRetryableToolErrors: 0,
+      blockedToolRetries: 0,
       steps: 0,
       errors: 0,
     };
@@ -458,6 +462,8 @@ test("writeReport quotes CSV fields containing commas, quotes or newlines", () =
       approvalGranted: 0,
       approvalDenied: 0,
       contextHighWaterTokens: 120,
+      nonRetryableToolErrors: 0,
+      blockedToolRetries: 0,
       errors: 1,
       expectedTools: ["nmap", "whois"],
       missingTools: ["whois"],
@@ -473,7 +479,7 @@ test("writeReport quotes CSV fields containing commas, quotes or newlines", () =
   assert.match(row, /"scan, then lookup"/);
   assert.match(row, /"boom: said ""no"""/);
   assert.match(row, /"nmap,whois"/);
-  assert.equal(header.split(",").length, 18);
+  assert.equal(header.split(",").length, 20);
   rmSync(dir, { recursive: true, force: true });
 });
 
