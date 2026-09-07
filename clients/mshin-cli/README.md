@@ -95,6 +95,7 @@ hardware.
 - Fabricated outputs blocked by the backstop
 - Active-tool approval requests (granted / denied)
 - Context-window high-water mark in tokens
+- Whether the case called every tool it declared in `expectedTools`
 - Final answer and any error
 
 ### Config format
@@ -110,12 +111,14 @@ Create a JSON file like `eval-config.json`:
     {
       "name": "nmap-localhost",
       "prompt": "Scan 127.0.0.1 with nmap and list open ports.",
+      "expectedTools": ["nmap"],
       "maxSteps": 5,
       "approveActiveTools": true
     },
     {
       "name": "searchsploit-openssh",
       "prompt": "Use searchsploit to look up OpenSSH 8.9 exploits.",
+      "expectedTools": ["searchsploit"],
       "maxSteps": 5
     }
   ]
@@ -136,6 +139,19 @@ node eval-harness.js -f csv -o ./eval-results eval-config.json
 ```
 
 Reports are written to `--output-dir` (default `./eval-results`). The harness
-connects to the same Node and Ollama URLs as the interactive CLI, auto-approves
-active tools when `approveActiveTools` is true, and exits non-zero if any case
-fails.
+connects to the same Node and Ollama URLs as the interactive CLI and
+auto-approves active tools when `approveActiveTools` is true. An unknown
+`--format` is rejected before the first model runs, so a typo cannot discard a
+finished suite.
+
+### expectedTools and the exit code
+
+`expectedTools` is optional. When a case declares it, the report records
+`expectedToolsMet` and the `missingTools` the model never called, and the run
+prints a summary of the misses.
+
+This does **not** change the exit code, which stays non-zero only when a case
+throws. A model that skips a tool it should have reached is the measurement the
+suite exists to take — the number you compare between models — not a broken
+run. Keeping the two apart means a clean comparison of a weak model still exits
+zero, and a non-zero exit always means the harness itself hit trouble.
