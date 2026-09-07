@@ -5,7 +5,7 @@ An interactive terminal harness that connects a local Ollama instance to the Mac
 ## Features
 
 - Discovers tools from the MCP server.
-- Sends the user prompt to Ollama with native tool support.
+- Sends the user prompt to Ollama with [native tool support](https://docs.ollama.com/capabilities/tool-calling).
 - Executes tool calls on the Machin Shin Node and feeds results back to the model.
 - Runs a simple observe-decide-act loop until the model produces a final answer.
 
@@ -40,7 +40,8 @@ mshin --model llama3.3:70b 192.168.1.100
 `index.js` is the CLI shell (arg parsing, MCP connection, the readline
 prompt); `agent.js` is where the observe-decide-act loop actually lives, in
 `Agent.run()`. Each turn: send the message history plus the MCP `tools`
-array to Ollama's `/api/chat`, look at what comes back, act on it, repeat --
+array to Ollama's [`/api/chat`](https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-chat-completion),
+look at what comes back, act on it, repeat --
 up to `DEFAULT_MAX_STEPS` (25) turns before the loop gives up and asks the
 model to summarize what it found so far.
 
