@@ -26,20 +26,37 @@ it:
   misconfigured-sudoers case a real deployment hits, and it is what surfaced the
   three defects below.
 
+**But the host only ever reaches the failure branch.** Because every tool fails
+under `sudo -n`, a host run validates tool *calling* and unavailable-tool
+*handling* and nothing else — it can never show what the loop does once a tool
+*succeeds*: the happy-path multi-tool chain, or any fix whose behaviour differs
+between a tool that returns output and one that does not. For that, run against the
+**`mshin-node` Lima VM**, where the provisioned `/etc/sudoers.d/mshin` allowlist
+lets the binaries actually execute (`sudo -n whois` returns real output). Verifying
+a happy-path change on the host alone wastes the run: the code path under test is
+never reached. Two gotchas when pointing the harness at the VM — its MCP server is
+a long-lived systemd unit (`mshin-node.service`) that keeps the code it loaded at
+start, so after editing the mounted repo you must `sudo systemctl restart
+mshin-node` or the old code answers (a stale build returns `Cannot POST /mcp`
+against the current harness); and the persona is a *thinking* 7-8B, which, fed a
+verbose real tool result, can generate for many minutes on an M-series Mac's
+CPU/GPU — well past the two-minute-per-case rule of thumb below.
+
 Models used: `mshin` (the persona, 7B-class) and `qwen3:8b`.
 
 ---
 
-## Open: the unavailable-tool guidance may prevent termination
+## Addressed: the unavailable-tool guidance may prevent termination
 
-**Status: unresolved. Do not treat the reworded guidance as verified.**
+**Status: termination fixed and live-verified; multi-tool continuation still open.**
 
 ### What the loop does now
 
 When a tool fails for an environmental reason — `sudo: a password is required`, a
-missing binary, `no new privileges` — the loop marks it unavailable for the run and
-pushes a `role: "tool"` message telling the model not to retry it, that the rest of
-the task still stands, and not to describe output no tool returned.
+missing binary, `no new privileges` — the loop marks it unavailable for the run,
+pushes a short `role: "tool"` message with the error and a retry-suppression
+line, and then pushes the direction to continue as a separate `role: "user"`
+message.
 
 ### What was measured
 
@@ -73,20 +90,52 @@ message — a slot the model expects to contain tool *output*, not instructions.
 7-8B model may fail to terminate on that. The pre-fix run, with short error text in
 the same slot, completed the same step in ~95s.
 
-### Next diagnostic
+### Fix
 
-Cheap, and needs no long run: POST the exact step-2 message set to
-`/api/chat` directly, once with a short guidance string and once with the long one,
-and compare whether generation terminates. That isolates wording from transport in
-about a minute of inference. If wording is the cause, candidates are a much shorter
-tool message, or moving the instruction to a `role: "user"` or `system` message
-where imperative text belongs.
+`clients/mshin-cli/agent.js` now splits the response:
+
+- The `role: "tool"` message is short: the original error plus `This tool is
+  unavailable for this run; do not retry it.`
+- The imperative direction — continue the task, call another tool if needed, do
+  not describe output no tool returned — is pushed as a `role: "user"` message
+  immediately after the tool result.
+
+This keeps the retry suppression and the explicit task continuation while putting
+each kind of text in the message role it belongs in. The mock-based tests verify
+that the split happens and that the tool slot no longer carries the long
+instruction.
 
 ### Why it is not simply reverted
 
 The defect the guidance fixes is real and measured: without it, both models spent
 their **entire step budget re-issuing an identical failing call**. The retry
-suppression itself works. It is the wording that is suspect.
+suppression itself works. It was the wording's *location*, not the instruction
+itself, that was suspect.
+
+### Measured (2026-09-07)
+
+Re-ran the two-tool `recon-chain` case, `mshin` and `qwen3:8b`, against a live Node
+whose `whois` fails under `sudo -n`:
+
+- **Termination is fixed.** Both models returned in ~45s — 46095 ms and 44154 ms —
+  with no hang. The split-message guidance no longer wedges the following turn: the
+  slot-length hypothesis holds, and the 300s/600s dead-ends are gone.
+- **Continuation still fails.** Neither model called `nmap` after `whois` went
+  unavailable; both stopped at 2 of 6 steps and returned a placeholder — "Nmap scan
+  completed. Results show [specific findings]... *(Replace bracketed text with actual
+  nmap output.)*". The `role: "user"` instruction to continue the task did not
+  produce continuation on this case. This is a placeholder, not concrete invented
+  output, so `looksLikeFabricatedToolOutput` correctly did not flag it and
+  `fabricatedOutputsBlocked` stayed 0 — but the model still asserts a scan ran that
+  did not.
+
+Termination — the defect this section is about — is resolved. The continuation
+behaviour tracked under "models abandon the rest of a multi-tool goal" is **not**
+confirmed fixed and is reopened below. Caveat: on the host `nmap` would also have
+failed, and the happy path (both tools succeeding) does not exercise this guidance
+at all, so testing continuation properly needs a **VM run where one enabled tool
+fails non-retryably while another succeeds** — remove a single binary from the
+sudoers allowlist and leave the rest.
 
 ---
 
@@ -144,15 +193,22 @@ untouched.
 
 ---
 
-## Closed: models abandoned the rest of a multi-tool goal
+## Reopened: models abandon the rest of a multi-tool goal
 
 The first wording of the unavailable-tool guidance said only that the tool could not
 run and should not be retried. Both models read that as licence to give up entirely:
 on `recon-chain` each announced `nmap`, printed a placeholder for its output, and
 stopped at 2 of 6 steps without calling it.
 
-The guidance now names the remaining work explicitly. Whether that succeeds is the
-open question above.
+The guidance was reworded to name the remaining work explicitly, then split so the
+instruction sits in a `role: "user"` message (see the section above).
+
+**Update (2026-09-07 run): still not fixed.** With the split-message guidance, both
+`mshin` and `qwen3:8b` again stopped at 2 of 6 on `recon-chain`, placeholder and
+all. Naming the remaining work in a `role: "user"` message did not, on this case,
+get either model to the second tool. The termination fix and the continuation fix
+travelled together in the same change; the first is verified, the second is not.
+Reopened.
 
 ---
 
@@ -164,9 +220,17 @@ open question above.
 - **Do not run test suites during a live eval.** Durations become meaningless. An
   early run was misdiagnosed as contention for this reason — it was the transport
   ceiling.
-- **Clean up.** `pkill -f "servers/src/kali/index.js"` and an
-  `/api/generate` call with `"keep_alive": 0` to unload the model. Stray Node
-  servers from earlier runs have twice been left listening for over an hour.
+- **Run happy-path evals against the `mshin-node` VM, not the host.** See Method:
+  the host reaches only the unavailable-tool branch. Point `nodeUrl` at the VM's
+  forwarded `:3000`, keep `ollamaUrl` on the host Ollama, and `sudo systemctl
+  restart mshin-node` after touching the mounted repo — otherwise the long-lived
+  service serves stale in-memory code (symptom: `Cannot POST /mcp`).
+- **Clean up.** Unload the model with an `/api/generate` call carrying
+  `"keep_alive": 0`, and kill the Node server. Note `pkill -f
+  "servers/src/kali/index.js"` misses a server started as `node index.js` from its
+  own directory — the argv carries no path — so match the listening port instead
+  (`lsof -ti tcp:3000 | xargs kill`). Stray Node servers from earlier runs have
+  twice been left listening for over an hour.
 - **`blockedToolRetries` has never fired in a live run.** Models stopped retrying on
   the guidance text alone, so the short-circuit that refuses a repeat call is
   currently unexercised outside tests.

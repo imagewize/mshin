@@ -88,7 +88,7 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 - [Lima Local Dev](docs/lima-local-dev.md) – Single-machine development environment on macOS
   - Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
 - [Agent Roadmap](docs/cybersecurity-agent-roadmap.md) – Where the agent loop is headed
-- [Agent-Loop Investigations](docs/agent-loop-investigations.md) – Defects found by running the evaluation harness, and what is still open
+- [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
 
 ---

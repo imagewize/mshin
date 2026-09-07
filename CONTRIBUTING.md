@@ -84,7 +84,7 @@ mshin/
 │   ├── workflows.md           # Example workflows
 │   ├── lima-local-dev.md      # Lima VM local development on macOS
 │   ├── cybersecurity-agent-roadmap.md  # Agent roadmap
-│   └── agent-loop-investigations.md    # Agent-loop defects and open questions
+│   └── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
 │   └── setup_ollama.sh        # Ollama / Core setup script
