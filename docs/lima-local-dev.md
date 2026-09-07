@@ -31,26 +31,26 @@ For **local development, testing, or constrained hardware**, you can consolidate
 ## Architecture: Lima Edition
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                    macOS HOST (Apple Silicon)                  │
-│                                                                │
-│  ┌───────────────────────────┐   ┌──────────────────────────┐  │
-│  │   Lima: mshin-core        │   │  Lima: mshin-node        │  │
-│  │   Ubuntu, aarch64         │   │  Debian, all 13 tools  │  │
-│  │                           │   │  ┌────────────────────┐  │  │
-│  │  ┌─────────────────────┐  │   │  │ MCP server   :3000 │  │  │
-│  │  │ Ollama       :11434 │  │   │  │ nmap, hydra,      │  │  │
-│  │  │ mistral (7B, ~4GB)  │  │   │  │ sqlmap, gobuster,  │  │  │
-│  │  └──────────▲──────────┘  │   │  │ masscan, dirb,     │  │  │
-│  │             │             │   │  │ arping, dnsenum,   │  │  │
-│  │  ┌──────────▼──────────┐  │   │  │ metasploit,        │  │  │
-│  │  │ Machin Shin CLI     │──┼───┼──── SSE ───┘             │  │
-│  │  │ (MCP client)        │  │   │  │ searchsploit       │  │  │
-│  │  └─────────────────────┘  │   │  └─────────▲──────────┘  │  │
-│  └───────────────────────────┘   └──────────────────────────┘  │
-│                                                                │
-│        lima shared network (vmnet) — 192.168.105.0/24          │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  macOS HOST (Apple Silicon)                                                         │
+│                                                                                     │
+│  ┌──────────────────────────┐               ┌────────────────────────────────────┐  │
+│  │ Lima: mshin-core         │               │ Lima: mshin-node                   │  │
+│  │ Ubuntu, aarch64          │               │ Debian, all 13 tools               │  │
+│  │                          │               │                                    │  │
+│  │  ┌──────────────────────┐│               │ MCP server   :3000                 │  │
+│  │  │ Ollama       :11434  ││               │ nmap, nikto, whois, tshark,        │  │
+│  │  │ mistral (7B, ~4GB)   ││               │ hydra, sqlmap, gobuster, masscan,  │  │
+│  │  └──────────────────────┘│               │ dirb, arping, dnsenum,             │  │
+│  │      │                   │               │ metasploit, searchsploit           │  │
+│  │  ┌──────────────────────┐│               │                                    │  │
+│  │  │ Machin Shin CLI      ││  ─── SSE ──▶  │                                    │  │
+│  │  │ (MCP client)         ││               │                                    │  │
+│  │  └──────────────────────┘│               │                                    │  │
+│  └──────────────────────────┘               └────────────────────────────────────┘  │
+│                                                                                     │
+│                   lima shared network (vmnet) — 192.168.105.0/24                    │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Both VMs run as **Lima instances** on your Mac. They talk to each other over Lima's **shared vmnet network** (`192.168.105.0/24`, addresses assigned by DHCP), which is opt-in per instance — see [Shared networking](#shared-networking-required-for-two-vms) below. The Core VM runs Ollama with a smaller model (`mistral`, 7B, ~4GB), and the Node VM runs the MCP server with the security tools.
