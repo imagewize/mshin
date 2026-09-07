@@ -32,13 +32,20 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the six documented tools with complete metadata", () => {
+test("exposes exactly the thirteen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
+    "arping",
+    "dirb",
+    "dnsenum",
+    "gobuster",
+    "hydra",
+    "masscan",
     "metasploit",
     "nikto",
     "nmap",
     "searchsploit",
+    "sqlmap",
     "tshark",
     "whois",
   ]);
@@ -86,11 +93,18 @@ test("nmap rejects a null byte in the target", async () => {
   await assert.rejects(nmap.handler({ target: "8.8.8.8\0evil" }), /unsafe characters|null byte/);
 });
 
-test("searchsploit, nikto and whois reject shell metacharacters", async () => {
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping and dnsenum reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
     ["whois", (p) => ({ target: p })],
+    ["hydra", (p) => ({ target: p, service: "ssh" })],
+    ["sqlmap", (p) => ({ url: p })],
+    ["gobuster", (p) => ({ url: p })],
+    ["masscan", (p) => ({ target: p })],
+    ["dirb", (p) => ({ url: p })],
+    ["arping", (p) => ({ target: p })],
+    ["dnsenum", (p) => ({ domain: p })],
   ];
   for (const [name, build] of cases) {
     const tool = byName(name);
@@ -148,6 +162,12 @@ test("well-formed input passes validation and fails only at the missing binary",
   const nmap = byName("nmap");
   await assert.rejects(
     nmap.handler({ target: "scanme.nmap.org", flags: ["-sV"] }),
+    /binary not found/
+  );
+  // Also test a new tool (hydra) to ensure its validation passes for well-formed input.
+  const hydra = byName("hydra");
+  await assert.rejects(
+    hydra.handler({ target: "192.168.1.1", service: "ssh" }),
     /binary not found/
   );
 });

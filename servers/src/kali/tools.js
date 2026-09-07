@@ -12,6 +12,13 @@ const TOOL_PATHS = {
   whois: "/usr/bin/whois",
   tshark: "/usr/bin/tshark",
   metasploit: "/usr/bin/msfconsole",
+  hydra: "/usr/bin/hydra",
+  sqlmap: "/usr/bin/sqlmap",
+  gobuster: "/usr/bin/gobuster",
+  masscan: "/usr/bin/masscan",
+  dirb: "/usr/bin/dirb",
+  arping: "/usr/bin/arping",
+  dnsenum: "/usr/bin/dnsenum",
 };
 
 // Default timeout for any single tool invocation.
@@ -254,6 +261,289 @@ const tools = [
     handler: async ({ module, options = {} }) => {
       const msfScript = buildMsfScript(module, options);
       const output = await runTool("metasploit", ["-q", "-x", msfScript], 600_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "hydra",
+    description:
+      "Run Hydra password cracking against a service. Target and service must be specified.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target host IP or hostname.",
+        },
+        service: {
+          type: "string",
+          description: "Service type, e.g. 'ssh', 'ftp', 'http-post-form'.",
+        },
+        user: {
+          type: "string",
+          description: "Optional username or user list file (prefixed with -L for file).",
+        },
+        password: {
+          type: "string",
+          description: "Optional password or password list file (prefixed with -P for file).",
+        },
+        options: {
+          type: "string",
+          description: "Optional additional Hydra options, e.g. '-s 22 -t 4'.",
+        },
+      },
+      required: ["target", "service"],
+    },
+    handler: async ({ target, service, user, password, options }) => {
+      assertSafe(target, "target");
+      assertSafe(service, "service");
+      const args = [target, service];
+      if (user) {
+        assertSafe(user, "user");
+        args.push(user);
+      }
+      if (password) {
+        assertSafe(password, "password");
+        args.push(password);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("hydra", args, 60_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "sqlmap",
+    description:
+      "Run SQLMap to detect and exploit SQL injection vulnerabilities. URL is required.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Target URL to test for SQL injection, e.g. 'http://192.168.1.100/login.php'.",
+        },
+        data: {
+          type: "string",
+          description: "Optional POST data for the request, e.g. 'id=1&user=test'.",
+        },
+        risk: {
+          type: "string",
+          description: "Risk level: 1 (low) to 3 (high). Default is 1.",
+          default: "1",
+        },
+        level: {
+          type: "string",
+          description: "Test level: 1 (basic) to 5 (deep). Default is 1.",
+          default: "1",
+        },
+      },
+      required: ["url"],
+    },
+    handler: async ({ url, data, risk = "1", level = "1" }) => {
+      assertSafe(url, "url");
+      const args = ["-u", url, "--risk", risk, "--level", level];
+      if (data) {
+        assertSafe(data, "data");
+        args.push("--data", data);
+      }
+      args.push("--batch");
+      const output = await runTool("sqlmap", args, 300_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "gobuster",
+    description:
+      "Run Gobuster for directory/file brute forcing or DNS enumeration.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          description: "Mode: 'dir' for directory brute forcing, 'dns' for DNS.",
+          default: "dir",
+        },
+        url: {
+          type: "string",
+          description: "Base URL for dir mode, e.g. 'http://192.168.1.100'.",
+        },
+        domain: {
+          type: "string",
+          description: "Domain for DNS mode, e.g. 'example.com'.",
+        },
+        wordlist: {
+          type: "string",
+          description: "Path to wordlist file, e.g. '/usr/share/wordlists/dirb/common.txt'.",
+        },
+        options: {
+          type: "string",
+          description: "Additional Gobuster options, e.g. '-t 50 -x .php,.txt'.",
+        },
+      },
+      required: [],
+    },
+    handler: async ({ mode = "dir", url, domain, wordlist, options }) => {
+      assertSafe(mode, "mode");
+      const args = [mode];
+      if (mode === "dir" && url) {
+        assertSafe(url, "url");
+        args.push("-u", url);
+      } else if (mode === "dns" && domain) {
+        assertSafe(domain, "domain");
+        args.push("-d", domain);
+      } else {
+        return {
+          content: [{ type: "text", text: "Error: url required for dir mode, domain required for dns mode" }],
+          isError: true,
+        };
+      }
+      if (wordlist) {
+        assertSafe(wordlist, "wordlist");
+        args.push("-w", wordlist);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("gobuster", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "masscan",
+    description:
+      "Run Masscan for fast port scanning across large ranges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target IP address, range, or CIDR, e.g. '192.168.1.0/24'.",
+        },
+        ports: {
+          type: "string",
+          description: "Ports to scan, e.g. '80,443' or '1-1000'. Default is '1-65535'.",
+          default: "1-65535",
+        },
+        rate: {
+          type: "string",
+          description: "Packets per second rate, e.g. '1000'.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, ports = "1-65535", rate }) => {
+      assertSafe(target, "target");
+      assertSafe(ports, "ports");
+      const args = [target, "-p", ports];
+      if (rate) {
+        assertSafe(rate, "rate");
+        args.push("--rate", rate);
+      }
+      args.push("--banners", "-n");
+      const output = await runTool("masscan", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "dirb",
+    description:
+      "Run DirB directory brute forcer against a web server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Base URL to scan, e.g. 'http://192.168.1.100'.",
+        },
+        wordlist: {
+          type: "string",
+          description: "Path to wordlist file. Default is '/usr/share/dirb/wordlists/common.txt'.",
+          default: "/usr/share/dirb/wordlists/common.txt",
+        },
+        options: {
+          type: "string",
+          description: "Additional DirB options, e.g. '-S -e .php'.",
+        },
+      },
+      required: ["url"],
+    },
+    handler: async ({ url, wordlist = "/usr/share/dirb/wordlists/common.txt", options }) => {
+      assertSafe(url, "url");
+      assertSafe(wordlist, "wordlist");
+      const args = [url, wordlist];
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("dirb", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "arping",
+    description:
+      "Run arping to discover hosts on the local network via ARP.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target IP or host to ping, e.g. '192.168.1.1' or '192.168.1.0/24'.",
+        },
+        iface: {
+          type: "string",
+          description: "Network interface to use, e.g. 'eth0'.",
+        },
+        count: {
+          type: "string",
+          description: "Number of packets to send. Default is '3'.",
+          default: "3",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, iface, count = "3" }) => {
+      assertSafe(target, "target");
+      const args = [target];
+      if (iface) {
+        assertSafe(iface, "iface");
+        args.push("-I", iface);
+      }
+      args.push("-c", count);
+      const output = await runTool("arping", args, 30_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "dnsenum",
+    description:
+      "Run DNSEnum for DNS enumeration and reconnaissance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "Domain to enumerate, e.g. 'example.com'.",
+        },
+        options: {
+          type: "string",
+          description: "Additional DNSEnum options, e.g. '--noreverse'.",
+        },
+      },
+      required: ["domain"],
+    },
+    handler: async ({ domain, options }) => {
+      assertSafe(domain, "domain");
+      const args = [domain];
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("dnsenum", args, 60_000);
       return { content: [{ type: "text", text: output }] };
     },
   },
