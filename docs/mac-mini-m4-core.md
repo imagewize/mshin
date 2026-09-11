@@ -32,39 +32,41 @@ The Mac Mini M4 Pro 24GB is **Tier 1** hardware for the Core role — comfortabl
 ## Architecture: Mac Mini M4 Pro Edition
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  MAC MINI M4 PRO 24GB (macOS)                                                 │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐   │
-│  │ Lima: mshin-core                                                    │   │
-│  │ Ubuntu, aarch64 (native ARM64)                                     │   │
-│  │                                                                     │   │
-│  │  ┌──────────────────────┐   ┌────────────────────────────────────────┐  │   │
-│  │  │ Ollama       :11434  │   │ Machin Shin CLI (MCP client)           │  │   │
-│  │  │ mistral-small         │   │ - Bridges model to MCP Server         │  │   │
-│  │  │ (24B, ~14GB)          │   │ - Runs on Core VM                      │  │   │
-│  │  └──────────────────────┘   └────────────────────────────────────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                           │
-│  macOS (your daily driver)         │  Ethernet/Wi-Fi                          │
-│                                    ▼                                           │
-└────────────────────────────────────┼───────────────────────────────────────┘
-                                     │ Physical LAN (192.168.1.0/24)
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  RASPBERRY PI (ARM64)                                                               │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐   │
-│  │ Kali Linux / Raspberry Pi OS + Kali repo                             │   │
-│  │                                                                     │   │
-│  │  ┌──────────────────────┐   ┌────────────────────────────────────────┐  │   │
-│  │  │ MCP Server    :3000  │   │ 16 Kali tools:                           │  │   │
-│  │  │ - nmap, metasploit     │   │   nmap, searchsploit, nikto, whois,       │  │   │
-│  │  │ - Runs as systemd     │   │   tshark, hydra, sqlmap, gobuster,      │  │   │
-│  │  │   service             │   │   masscan, dirb, arping, dnsenum,        │  │   │
-│  │  └──────────────────────┘   │   enum4linux, ffuf, john                 │  │   │
-│  └─────────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ MAC MINI M4 PRO 24GB (macOS)                                         │
+│                                                                      │
+│   ┌────────────────────────────────────────────────────────────────┐ │
+│   │ Lima: mshin-core                                               │ │
+│   │ Ubuntu, aarch64 (native ARM64)                                 │ │
+│   │                                                                │ │
+│   │ ┌────────────────────────┐   ┌───────────────────────────────┐ │ │
+│   │ │ Ollama          :11434 │   │ Machin Shin CLI (MCP client)  │ │ │
+│   │ │ mistral-small          │   │ - Bridges model to MCP Server │ │ │
+│   │ │ (24B, ~14GB)           │   │ - Runs on Core VM             │ │ │
+│   │ └────────────────────────┘   └───────────────────────────────┘ │ │
+│   └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│ macOS (your daily driver)                                            │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │ Ethernet/Wi-Fi
+                                    │ Physical LAN (192.168.1.0/24)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ RASPBERRY PI (ARM64)                                               │
+│                                                                    │
+│   ┌──────────────────────────────────────────────────────────────┐ │
+│   │ Kali Linux / Raspberry Pi OS + Kali repo                     │ │
+│   │                                                              │ │
+│   │ ┌────────────────────────┐   ┌─────────────────────────────┐ │ │
+│   │ │ MCP Server       :3000 │   │ 16 Kali tools:              │ │ │
+│   │ │ - Runs as systemd      │   │  nmap, searchsploit, nikto, │ │ │
+│   │ │   service              │   │  whois, tshark, hydra,      │ │ │
+│   │ └────────────────────────┘   │  sqlmap, gobuster, masscan, │ │ │
+│   │                              │  dirb, arping, dnsenum,     │ │ │
+│   │                              │  enum4linux, ffuf, john     │ │ │
+│   │                              └─────────────────────────────┘ │ │
+│   └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 The Mac Mini runs **macOS natively** with a **single Lima VM** (`mshin-core`) hosting Ollama and the CLI. The Raspberry Pi runs **Kali Linux natively** (or Raspberry Pi OS with Kali repo) hosting the MCP server and tools. Both communicate over your **physical LAN** on `192.168.1.x` addresses.
