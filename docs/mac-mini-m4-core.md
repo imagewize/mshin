@@ -507,7 +507,6 @@ ollama list
 # - mistral-small (24B, ~14GB) - default, strongest
 # - qwen3:32b (~20GB) - does NOT fit in 16GB
 # - llama3.3:70b (~40GB) - does NOT fit in 16GB
-offset
 
 # For example, try a smaller model for testing:
 ollama pull phi3:3.8b
@@ -561,14 +560,13 @@ For **maximum inference speed**, you can run Ollama **natively on macOS** (acces
 ```bash
 brew install ollama
 ollama pull mistral-small
-offset
 ```
 
 2. Build the persona on macOS:
 
 ```bash
 sed 's|^FROM .*|FROM mistral-small|' /opt/mshin/configs/ollama-modelfile > /tmp/Modelfile
-ollama create mshin -f /tmp/Modefile
+ollama create mshin -f /tmp/Modelfile
 ```
 
 3. Run the CLI from macOS (no VM needed):
