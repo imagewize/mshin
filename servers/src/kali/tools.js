@@ -2,30 +2,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 
+import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE } from "./config.js";
+
 const execFileAsync = promisify(execFile);
-
-// Full paths to the Kali tools as installed by apt.
-const TOOL_PATHS = {
-  nmap: "/usr/bin/nmap",
-  searchsploit: "/usr/bin/searchsploit",
-  nikto: "/usr/bin/nikto",
-  whois: "/usr/bin/whois",
-  tshark: "/usr/bin/tshark",
-  metasploit: "/usr/bin/msfconsole",
-  hydra: "/usr/bin/hydra",
-  sqlmap: "/usr/bin/sqlmap",
-  gobuster: "/usr/bin/gobuster",
-  masscan: "/usr/bin/masscan",
-  dirb: "/usr/bin/dirb",
-  arping: "/usr/bin/arping",
-  dnsenum: "/usr/bin/dnsenum",
-};
-
-// Default timeout for any single tool invocation.
-const DEFAULT_TIMEOUT_MS = 300_000;
-
-// Reject anything that looks like shell syntax.
-const SHELL_META_RE = /[;|&$()`\\<>]/;
 
 function assertSafe(value, name = "argument") {
   if (typeof value !== "string") {
