@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs } from "./tools.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
 // injection guard, without needing the Kali binaries installed: malicious input
@@ -116,6 +116,24 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     const tool = byName(name);
     await assert.rejects(tool.handler(build("evil; reboot")), /unsafe characters/, name);
   }
+});
+
+test("buildEnum4linuxArgs puts options before the target", () => {
+  // enum4linux's Getopt::Std-style parser stops looking for flags at the
+  // first non-dash argument, so options after the target are silently
+  // ignored — they must come first.
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", "-a"), ["-a", "192.168.1.100"]);
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", "-U -S"), [
+    "-U",
+    "-S",
+    "192.168.1.100",
+  ]);
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", undefined), ["192.168.1.100"]);
+});
+
+test("buildEnum4linuxArgs still rejects shell metacharacters", () => {
+  assert.throws(() => buildEnum4linuxArgs("evil; reboot", undefined), /unsafe characters/);
+  assert.throws(() => buildEnum4linuxArgs("192.168.1.100", "-a; reboot"), /unsafe characters/);
 });
 
 test("metasploit rejects an injection in the module path", async () => {

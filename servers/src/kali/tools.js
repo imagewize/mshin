@@ -52,6 +52,20 @@ function buildMsfScript(module, options = {}) {
   return scriptParts.join("; ");
 }
 
+// enum4linux's CLI is `enum4linux [options] ip` — its Getopt::Std-style
+// parser stops scanning for flags at the first non-dash argument, so options
+// must precede the target or they're silently ignored.
+function buildEnum4linuxArgs(target, options) {
+  assertSafe(target, "target");
+  const args = [];
+  if (options) {
+    assertSafe(options, "options");
+    args.push(...options.split(/\s+/));
+  }
+  args.push(target);
+  return args;
+}
+
 async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true } = {}) {
   const bin = TOOL_PATHS[name];
   if (!bin) {
@@ -545,12 +559,7 @@ const tools = [
       required: ["target"],
     },
     handler: async ({ target, options }) => {
-      assertSafe(target, "target");
-      const args = [target];
-      if (options) {
-        assertSafe(options, "options");
-        args.push(...options.split(/\s+/));
-      }
+      const args = buildEnum4linuxArgs(target, options);
       const output = await runTool("enum4linux", args, 120_000);
       return { content: [{ type: "text", text: output }] };
     },
@@ -634,5 +643,5 @@ const tools = [
   },
 ];
 
-export { tools, TOOL_PATHS, buildMsfScript };
+export { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs };
 export default tools;
