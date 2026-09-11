@@ -18,15 +18,11 @@ These are low-risk and pay for themselves. The `node:test` suites (see the onboa
 
 The `agent.js:12–47` constants and `tools.js` timeouts/paths are fine where they are functionally, but a single `config.js` per package makes them discoverable and opens the door to environment-variable overrides. Keep it to one file per package — do not build a `config/` directory of three files for ~15 constants.
 
-### 2. JSDoc on the dense functions (low risk)
-
-Add JSDoc to the functions a newcomer stumbles on: `run()`, `compactContext()`, `extractTextToolCall()`, `looksLikeFabricatedToolOutput()`, and the `findings-memory.js` parsers. Document parameters, return shape, and *why* the tricky ones exist (e.g. text-form tool-call recovery is a workaround for smaller models). This is the highest value-per-effort change available.
-
-### 3. Grow test coverage where it's thin (low risk)
+### 2. Grow test coverage where it's thin (low risk)
 
 The framework is already here (`node:test`) — the gap is coverage, not tooling. The compaction logic in `compactContext()` and the fabrication heuristics are the highest-value places to add cases, because they're the hardest to reason about and the most dangerous to break silently.
 
-### 4. Extract the two most self-contained seams of `agent.js` — only if it earns its keep
+### 3. Extract the two most self-contained seams of `agent.js` — only if it earns its keep
 
 `agent.js` at 1130 lines is large, but most of it is genuinely coupled around one shared message array. The two parts that *aren't* — and could move to their own files with clean interfaces — are:
 - tool-call extraction (`extractTextToolCall` and its helpers), and
@@ -50,9 +46,6 @@ The following were tempting but carry more cost than benefit for a project this 
 ## Next Steps
 
 **Do now:**
-1. JSDoc the four dense functions in `agent.js` plus the `findings-memory.js` parsers.
-
-**Do next:**
 1. Centralise constants into one `config.js` per package.
 2. Add `node:test` coverage for `compactContext()` and the fabrication heuristics.
 

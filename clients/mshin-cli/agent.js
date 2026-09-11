@@ -104,9 +104,20 @@ function compressToolResult(text, {
  * though a scan had run. Lowering the sampling temperature makes this rarer
  * but never impossible, so the loop refuses to depend on it.
  *
+ * This is a workaround for smaller models that don't reliably use the
+ * function-calling API. It attempts multiple extraction strategies:
+ * 1. JSON payload extraction (handles `[{...}]` and bare `{...}` objects)
+ * 2. Function syntax extraction (handles `functions.nmap(...)` or `nmap(...)`)
+ *
  * Returns { name, args } for the first payload naming a tool this Node
  * actually exposes, or null. Requiring a known tool name is what keeps a
  * legitimate answer that merely quotes JSON from being mistaken for a call.
+ *
+ * @param {string} content - The assistant message content to search for embedded tool calls
+ * @param {Function} isValidTool - Function to check if a tool name is valid: (name) => boolean
+ * @returns {Object|null} Extracted tool call with name and args, or null if none found
+ * @returns {string} returns.name - The tool name
+ * @returns {Object} returns.args - The tool arguments as a plain object
  */
 export function extractTextToolCall(content, isValidTool) {
   if (!content) return null;
@@ -354,6 +365,17 @@ function parseLiteral(token) {
  * `<port>/tcp` or `<port>/udp` token near "open"/"closed"/"filtered"). This
  * is deliberately narrow -- it is meant to catch confident fabrication, not
  * to flag every code block or every use of the word "result".
+ *
+ * Detection strategies (in order):
+ * 1. Fenced code blocks containing "Result:", "Results:", or scan-like signatures
+ * 2. "Result:" label followed by port/protocol or state keywords
+ * 3. Unfenced scan-like signatures (port/protocol near state keywords)
+ *
+ * The scan signature specifically looks for patterns like "22/tcp open" or
+ * "443/tcp closed" which are characteristic of nmap and similar tool outputs.
+ *
+ * @param {string} content - The message content to check for fabricated tool output
+ * @returns {boolean} true if the content looks like fabricated tool output, false otherwise
  */
 function looksLikeFabricatedToolOutput(content) {
   if (!content) return false;
@@ -602,6 +624,35 @@ class Agent {
     this.debug = debug || makeDebugLogger();
   }
 
+  /**
+   * Execute the main agent loop: observe-decide-act with Ollama and MCP tools.
+   *
+   * Orchestrates the full conversation lifecycle: maintains message history,
+   * queries the LLM for each turn, executes any requested tools via MCP,
+   * handles tool result processing with findings extraction, detects and
+   * blocks fabricated tool output, manages context compaction to stay within
+   * token budgets, and enforces user approval for active (dangerous) tools.
+   *
+   * The loop continues until one of:
+   * - The model produces a final answer (no tool calls and no fabrication detected)
+   * - The step budget is exhausted, triggering a final summary
+   * - An error occurs
+   *
+   * Option B (structured findings memory): findings are extracted from tool outputs
+   * and maintained in a separate summary that survives context compaction,
+   * ensuring critical facts remain addressable even as raw outputs are dropped.
+   *
+   * @param {Object} options - Run configuration
+   * @param {string} options.sessionId - Unique identifier for this conversation session
+   * @param {string} options.userGoal - The user's initial prompt/goal
+   * @param {Function} [options.onToolCall] - Callback when a tool is about to be called: (name, args)
+   * @param {Function} [options.onToolResult] - Callback when a tool returns: (name, text)
+   * @param {Function} [options.onApproval] - Callback to request user approval for active tools: (name, args) => boolean
+   * @param {Function} [options.onComplete] - Callback when the run finishes: (answer)
+   * @param {Function} [options.onNarratedToolCall] - Callback when a text-form tool call is recovered: (name)
+   * @returns {Promise<string>} The final answer content (or warning if fabrication blocked)
+   * @throws {Error} On unrecoverable errors during execution
+   */
   async run({ sessionId, userGoal, onToolCall, onToolResult, onApproval, onComplete, onNarratedToolCall }) {
     let messages = this.memory.getSession(sessionId).messages.slice();
 
@@ -1010,11 +1061,23 @@ class Agent {
    * truncated to its head and tail rather than evicting the entire result.
    * The full output remains in AgentMemory; only the LLM-facing copy is slimmed.
    *
-   * Option B: Structured findings memory - if there are findings, keep a single
+   * Option B (structured findings memory): if there are findings, keep a single
    * findings summary message right after the system prompt, refreshed on every
    * pass. This ensures critical facts (hosts, ports, services, CVEs) remain
    * addressable, and current, even when raw tool outputs are compressed or
    * dropped.
+   *
+   * The algorithm:
+   * 1. Compress each tool result message that exceeds maxToolResultLines
+   * 2. Insert/update a findings summary message (if findings exist)
+   * 3. Identify preserved messages (system, user goal, findings summary)
+   * 4. While over budget (message count OR token count): drop oldest non-preserved message
+   *
+   * @param {Array<Object>} messages - The current message history to compact
+   * @param {string} messages[].role - Message role: "system", "user", "assistant", "tool"
+   * @param {string} messages[].content - Message content text
+   * @param {string} [messages[].name] - Tool name for tool-role messages
+   * @returns {Array<Object>} Compacted message history, with system prompt, user goal, and findings preserved
    */
   compactContext(messages) {
     // First pass: compress long tool results in place rather than dropping the
