@@ -92,6 +92,7 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 - [Agent Roadmap](docs/cybersecurity-agent-roadmap.md) – Where the agent loop is headed
 - [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
 - [Raspberry Pi Node](docs/raspberry-pi-node.md) – Running the Node on a Raspberry Pi
+- [Mac Mini M4 Pro Core](docs/mac-mini-m4-core.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
 
 ---

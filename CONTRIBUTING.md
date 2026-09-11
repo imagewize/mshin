@@ -87,7 +87,8 @@ mshin/
 │   ├── refactoring-ideas.md    # Cleanups worth doing (and ones avoided)
 │   ├── cybersecurity-agent-roadmap.md  # Agent roadmap
 │   ├── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
-│   └── raspberry-pi-node.md            # Raspberry Pi Node guide
+│   ├── raspberry-pi-node.md            # Raspberry Pi Node guide
+│   └── mac-mini-m4-core.md             # Mac Mini M4 Pro Core guide
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
 │   └── setup_ollama.sh        # Ollama / Core setup script
