@@ -83,6 +83,8 @@ mshin/
 │   ├── setup.md               # Setup instructions
 │   ├── workflows.md           # Example workflows
 │   ├── lima-local-dev.md      # Lima VM local development on macOS
+│   ├── developer-onboarding.md # Learning path and architecture
+│   ├── refactoring-ideas.md    # Cleanups worth doing (and ones avoided)
 │   ├── cybersecurity-agent-roadmap.md  # Agent roadmap
 │   └── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
 ├── scripts/
@@ -107,6 +109,8 @@ mshin/
 │       ├── index.js
 │       ├── agent.js
 │       ├── agent.test.js
+│       ├── findings-memory.js
+│       ├── findings-memory.test.js
 │       ├── session-logger.js
 │       ├── eval-harness.js
 │       ├── eval-harness.test.js
