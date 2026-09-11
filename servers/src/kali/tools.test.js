@@ -32,14 +32,17 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the thirteen documented tools with complete metadata", () => {
+test("exposes exactly the sixteen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "arping",
     "dirb",
     "dnsenum",
+    "enum4linux",
+    "ffuf",
     "gobuster",
     "hydra",
+    "john",
     "masscan",
     "metasploit",
     "nikto",
@@ -93,7 +96,7 @@ test("nmap rejects a null byte in the target", async () => {
   await assert.rejects(nmap.handler({ target: "8.8.8.8\0evil" }), /unsafe characters|null byte/);
 });
 
-test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping and dnsenum reject shell metacharacters", async () => {
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux, ffuf and john reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
@@ -105,6 +108,9 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     ["dirb", (p) => ({ url: p })],
     ["arping", (p) => ({ target: p })],
     ["dnsenum", (p) => ({ domain: p })],
+    ["enum4linux", (p) => ({ target: p })],
+    ["ffuf", (p) => ({ url: p, wordlist: "/usr/share/wordlists/dirb/common.txt" })],
+    ["john", (p) => ({ hash_file: p })],
   ];
   for (const [name, build] of cases) {
     const tool = byName(name);
@@ -183,4 +189,17 @@ test("tshark with an existing file clears validation and reaches the binary chec
   const tshark = byName("tshark");
   const existingFile = fileURLToPath(import.meta.url); // this test file certainly exists
   await assert.rejects(tshark.handler({ pcap: existingFile }), /binary not found/);
+});
+
+test("john reports a missing hash file as an error result, not a throw", async () => {
+  const john = byName("john");
+  const res = await john.handler({ hash_file: "/nonexistent/hashes.txt" });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /Hash file not found/);
+});
+
+test("john with an existing file clears validation and reaches the binary check", async () => {
+  const john = byName("john");
+  const existingFile = fileURLToPath(import.meta.url); // this test file certainly exists
+  await assert.rejects(john.handler({ hash_file: existingFile }), /binary not found/);
 });

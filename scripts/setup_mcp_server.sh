@@ -36,10 +36,9 @@ fi
 
 MSHIN_DIR="/opt/mshin"
 MSHIN_USER="mshin"
-TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum"
+TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
-# Needed while the repository is private; the HTTPS default is correct once it
-# is public. Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
+# Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
 MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
 
 # --- Install Dependencies ---
@@ -64,6 +63,9 @@ apt-get install -y \
     dirb \
     arping \
     dnsenum \
+    enum4linux \
+    ffuf \
+    john \
     net-tools
 
 # --- Install Node.js 20+ ---
@@ -92,9 +94,7 @@ else
         cat >&2 <<EOF
 [ERROR] Could not clone ${MSHIN_REPO}
 
-The repository is private until v1.0, so an anonymous HTTPS clone fails with
-"could not read Username for 'https://github.com'". Point the script at a
-source this host can actually reach:
+Point the script at a source this host can actually reach:
 
   # SSH, with a deploy key installed on this host
   MSHIN_REPO=git@github.com:imagewize/mshin.git sudo -E bash "\$0"
@@ -136,7 +136,7 @@ echo "[+] Configuring sudoers for '${MSHIN_USER}'..."
 # triggers Wireshark's file-owner check, and tshark needs no privileges to
 # analyze existing captures.
 cat > /etc/sudoers.d/mshin <<EOF
-${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 EOF
 chmod 440 /etc/sudoers.d/mshin
 
@@ -156,11 +156,18 @@ if [ "$assign_ip" = "y" ]; then
     read -r -p "[?] Enter static IP (e.g., 192.168.1.100): " static_ip
     read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
+    # Detect a sensible default interface: the first non-loopback ethernet
+    # device that is currently up. Fall back to enp1s0 if detection fails.
+    default_iface="$(ip -4 -o link show up 2>/dev/null | awk -F': ' '/^[0-9]+: lo/ {next} {print $2; exit}')"
+    default_iface="${default_iface:-enp1s0}"
+    read -r -p "[?] Enter network interface (default: ${default_iface}): " iface
+    iface="${iface:-${default_iface}}"
+
 cat > /etc/netplan/00-mshin-node.yaml <<EOF
 network:
   version: 2
   ethernets:
-    enp1s0:
+    ${iface}:
       dhcp4: no
       addresses:
         - ${static_ip}/24
@@ -174,7 +181,7 @@ network:
 EOF
 
 netplan apply
-echo "[+] Static IP assigned: ${static_ip}"
+echo "[+] Static IP assigned: ${static_ip} on ${iface}"
 fi
 
 # --- Display Setup Summary ---

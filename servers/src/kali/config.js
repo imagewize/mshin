@@ -18,6 +18,9 @@ export const TOOL_PATHS = {
   dirb: "/usr/bin/dirb",
   arping: "/usr/bin/arping",
   dnsenum: "/usr/bin/dnsenum",
+  enum4linux: "/usr/bin/enum4linux",
+  ffuf: "/usr/bin/ffuf",
+  john: "/usr/bin/john",
 };
 
 // Default timeout for any single tool invocation.

@@ -24,12 +24,12 @@ export const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
 // and to keep it out of eviction.
 export const FINDINGS_SUMMARY_MARKER = "[Findings Summary";
 
-// Tools that can alter state or launch exploits require explicit user approval
-// before each invocation. hydra brute-forces live credentials (can lock out
-// real accounts) and sqlmap actively exploits SQL injection (can read or
-// modify database contents), so both carry the same real-world risk as
-// metasploit.
-export const ACTIVE_TOOLS = new Set(["metasploit", "hydra", "sqlmap"]);
+// Tools that can alter state, launch exploits, or reveal credentials require
+// explicit user approval before each invocation. hydra brute-forces live
+// credentials (can lock out real accounts), sqlmap actively exploits SQL
+// injection (can read or modify database contents), and john cracks password
+// hashes offline, so all three carry the same real-world risk as metasploit.
+export const ACTIVE_TOOLS = new Set(["metasploit", "hydra", "sqlmap", "john"]);
 
 // Tool failures no retry can fix. Every one of these is environmental -- the
 // binary is absent, the sudoers allowlist does not cover it, or systemd blocks

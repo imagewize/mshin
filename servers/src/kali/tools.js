@@ -526,6 +526,112 @@ const tools = [
       return { content: [{ type: "text", text: output }] };
     },
   },
+  {
+    name: "enum4linux",
+    description:
+      "Enumerate SMB shares, users, and groups on a Windows or Samba target.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target IP address or hostname, e.g. '192.168.1.100'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional enum4linux options, e.g. '-a' or '-U -S'.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, options }) => {
+      assertSafe(target, "target");
+      const args = [target];
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("enum4linux", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "ffuf",
+    description:
+      "Fast web fuzzer for directory and file discovery, virtual hosts, and parameter fuzzing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Target URL with or without FUZZ keyword, e.g. 'http://192.168.1.100/FUZZ'.",
+        },
+        wordlist: {
+          type: "string",
+          description: "Path to wordlist file, e.g. '/usr/share/wordlists/dirb/common.txt'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional ffuf options, e.g. '-t 50 -mc 200,204'.",
+        },
+      },
+      required: ["url", "wordlist"],
+    },
+    handler: async ({ url, wordlist, options }) => {
+      assertSafe(url, "url");
+      assertSafe(wordlist, "wordlist");
+      const args = ["-u", url, "-w", wordlist];
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("ffuf", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "john",
+    description:
+      "Run John the Ripper for offline password hash cracking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        hash_file: {
+          type: "string",
+          description: "Absolute path to the file containing password hashes.",
+        },
+        format: {
+          type: "string",
+          description: "Optional hash format, e.g. 'raw-md5' or 'nt'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional John options, e.g. '--wordlist=/usr/share/wordlists/rockyou.txt'.",
+        },
+      },
+      required: ["hash_file"],
+    },
+    handler: async ({ hash_file, format, options }) => {
+      assertSafe(hash_file, "hash_file");
+      if (!existsSync(hash_file)) {
+        return {
+          content: [{ type: "text", text: `Error: Hash file not found: ${hash_file}` }],
+          isError: true,
+        };
+      }
+      const args = [hash_file];
+      if (format) {
+        assertSafe(format, "format");
+        args.push("--format", format);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("john", args, 300_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
 ];
 
 export { tools, TOOL_PATHS, buildMsfScript };
