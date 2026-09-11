@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-09-11
+
+Refactor-only patch. Centralises scattered constants into a single
+`config.js` per package, per `docs/refactoring-ideas.md`. No behavior
+change - values, comments, and exported names are unchanged, only
+relocated.
+
+### Changed
+
+- **`clients/mshin-cli/config.js`** (new). Holds the agent loop tunables
+  previously defined at the top of `agent.js`: `DEFAULT_MAX_STEPS`,
+  `DEFAULT_MAX_HISTORY_MESSAGES`, `DEFAULT_CONTEXT_TOKEN_BUDGET`,
+  `DEFAULT_OLLAMA_TIMEOUT_MS`, the tool-result compression line limits,
+  `FINDINGS_SUMMARY_MARKER`, `ACTIVE_TOOLS`, and
+  `NON_RETRYABLE_TOOL_ERROR_RE`. `agent.js` now imports these instead of
+  defining them inline.
+- **`servers/src/kali/config.js`** (new). Holds `TOOL_PATHS`,
+  `DEFAULT_TIMEOUT_MS`, and `SHELL_META_RE`, previously defined at the top
+  of `tools.js`. `tools.js` now imports these instead of defining them
+  inline.
+- **`docs/refactoring-ideas.md`** prunes the completed "centralise
+  constants" item from the backlog.
+
 ## [0.14.1] - 2026-09-11
 
 Documentation-only patch. Adds JSDoc to the dense, previously-unannotated
