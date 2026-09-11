@@ -13,6 +13,22 @@
 /**
  * Parse an nmap XML or text output and extract structured findings.
  * Handles both XML (-oX) and standard text output formats.
+ *
+ * For XML output: extracts host information, open ports with service details,
+ * OS detection results, and vulnerability data from the structured XML elements.
+ *
+ * For text output: parses the human-readable format looking for patterns like
+ * "22/tcp open ssh" and "Nmap scan report for host", extracting hosts, ports,
+ * services, and OS information.
+ *
+ * @param {string} output - Raw nmap output in either XML or text format
+ * @returns {Object} Structured findings object
+ * @returns {Array<Object>} returns.hosts - Discovered hosts with IP/hostname and port details
+ * @returns {Array<Object>} returns.openPorts - All open ports found
+ * @returns {Array<Object>} returns.services - Detected services
+ * @returns {Array<Object>} returns.osMatches - OS detection results with confidence scores
+ * @returns {Array<Object>} returns.vulnerabilities - Extracted vulnerability information
+ * @returns {string} returns.raw - The original raw output
  */
 function parseNmapOutput(output) {
   const findings = {
@@ -218,6 +234,21 @@ function parseNmapOutput(output) {
 
 /**
  * Parse whois output to extract domain/IP information.
+ *
+ * Handles both domain and IP whois output formats, extracting registry
+ * information, contact details, dates, and name servers from the semi-structured
+ * text output.
+ *
+ * @param {string} output - Raw whois command output
+ * @returns {Object} Structured findings object
+ * @returns {string|null} returns.domain - The domain name
+ * @returns {string|null} returns.ip - IP address (for IP whois)
+ * @returns {string|null} returns.registrar - Registrar organization
+ * @returns {string|null} returns.creationDate - Domain registration date
+ * @returns {string|null} returns.expirationDate - Domain expiration date
+ * @returns {Array<string>} returns.nameServers - List of name servers
+ * @returns {Object} returns.contacts - Contact information grouped by type (Registrant, Admin, Tech, Billing)
+ * @returns {string} returns.raw - The original raw output
  */
 function parseWhoisOutput(output) {
   const findings = {
@@ -286,6 +317,20 @@ function parseWhoisOutput(output) {
 
 /**
  * Parse searchsploit output to extract exploit information.
+ *
+ * Extracts exploit database entries from searchsploit's tabular output format,
+ * identifying exploits by title, path, EDB-ID, and associated CVE references.
+ * Handles the characteristic table format with "Exploit Title" and "Path" headers.
+ *
+ * @param {string} output - Raw searchsploit command output
+ * @returns {Object} Structured findings object
+ * @returns {string|null} returns.query - The search query used
+ * @returns {Array<Object>} returns.results - List of exploit results
+ * @returns {string} returns.results[].title - Exploit title
+ * @returns {string} returns.results[].path - Exploit path in the database
+ * @returns {string|null} returns.results[].edbId - Exploit Database ID
+ * @returns {Array<string>} returns.results[].cves - Associated CVE identifiers
+ * @returns {string} returns.raw - The original raw output
  */
 function parseSearchsploitOutput(output) {
   const findings = {
@@ -355,6 +400,18 @@ function parseSearchsploitOutput(output) {
 
 /**
  * Parse nikto output to extract vulnerability findings.
+ *
+ * Extracts server information, vulnerability indicators, and interesting
+ * security items from nikto's scan output. Identifies CVEs, OSVDB entries,
+ * and other security findings from the characteristic "+ " prefixed lines.
+ *
+ * @param {string} output - Raw nikto command output
+ * @returns {Object} Structured findings object
+ * @returns {string|null} returns.host - Target host IP address
+ * @returns {string|null} returns.server - Server software and version
+ * @returns {Array<Object>} returns.vulnerabilities - Detected vulnerabilities with type and description
+ * @returns {Array<Object>} returns.interestingItems - Other notable findings
+ * @returns {string} returns.raw - The original raw output
  */
 function parseNiktoOutput(output) {
   const findings = {
@@ -416,6 +473,24 @@ function parseNiktoOutput(output) {
 
 /**
  * Parse generic text output and try to extract any IP addresses, ports, CVEs.
+ *
+ * Fallback parser for tools without dedicated parsers. Uses regex patterns
+ * to extract common cybersecurity entities: IPv4 addresses, port/protocol
+ * combinations, and CVE identifiers. Also captures interesting lines that
+ * contain these entities for context.
+ *
+ * This provides a safety net ensuring that even unstructured tool output
+ * contributes to the findings memory with basic entity extraction.
+ *
+ * @param {string} output - Raw tool output text
+ * @param {string} toolName - Name of the tool that produced this output
+ * @returns {Object} Structured findings object
+ * @returns {string} returns.tool - The tool name
+ * @returns {Array<string>} returns.hosts - Extracted IPv4 addresses (deduplicated)
+ * @returns {Array<Object>} returns.ports - Extracted port/protocol pairs
+ * @returns {Array<string>} returns.cves - Extracted CVE identifiers (deduplicated)
+ * @returns {Array<string>} returns.interestingLines - Lines containing important entities
+ * @returns {string} returns.raw - The original raw output
  */
 function parseGenericOutput(output, toolName) {
   const findings = {
