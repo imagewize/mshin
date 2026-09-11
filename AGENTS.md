@@ -26,6 +26,8 @@ Documentation map:
 | `docs/lima-local-dev.md` | Single-machine Lima setup on macOS |
 | `lima/*.yaml` | Lima templates backing that guide |
 | `docs/cybersecurity-agent-roadmap.md` | Where the agent loop is headed |
+| `docs/raspberry-pi-node.md` | Raspberry Pi Node guide |
+| `docs/mac-mini-m4-core.md` | Mac Mini M4 Pro Core with Pi Node guide |
 
 ---
 
