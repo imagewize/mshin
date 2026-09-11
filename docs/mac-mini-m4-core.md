@@ -102,7 +102,7 @@ brew install lima
 limactl --version    # Should show 2.0+
 ```
 
-> **Note:** The Lima VM uses the **shared vmnet network** internally, but the **Core VM communicates with the Raspberry Pi Node over your physical LAN**, not through vmnet. This is different from the [full Lima local dev setup](lima-local-dev.md) which uses vmnet for VM-to-VM communication.
+> **Note:** The Core VM's traffic to the Node still passes through Lima's **shared vmnet network** (NAT mode) — it just doesn't stop there. vmnet NATs the outbound connection through the Mac's own interface, so it reaches the Pi's real address on your **physical LAN** (`192.168.1.100`) rather than another `192.168.105.0/24` guest. This is different from the [full Lima local dev setup](lima-local-dev.md), where both Core and Node are Lima guests on the *same* `192.168.105.0/24` shared network and talk to each other without ever leaving the Mac. Because the Core VM only ever *initiates* connections to the Node, NAT is enough — nothing needs to dial back into the VM.
 
 ---
 
@@ -414,7 +414,7 @@ sudo networksetup -setmanual "Wi-Fi" 192.168.1.200 255.255.255.0 192.168.1.1
 sudo networksetup -setmanual "Ethernet" 192.168.1.200 255.255.255.0 192.168.1.1
 ```
 
-> **Note:** This sets the **macOS host** IP. The Lima VM (`mshin-core`) shares the host's network and will be reachable at this address from other devices on your LAN. However, **from within the Core VM itself**, use `localhost` to reach services running on macOS, and the Pi's IP (`192.168.1.100`) to reach the Node.
+> **Note:** This sets the **macOS host's** IP, not the guest's. The Core VM sits behind Lima's shared-network NAT, so — unlike a bridged VM — it is *not* itself reachable at `192.168.1.200` from other LAN devices; only the Mac itself is. That's fine here, since the Node never needs to dial into the Core. **From within the Core VM**, use `localhost` to reach services running on macOS, and the Pi's IP (`192.168.1.100`) to reach the Node.
 
 #### 3.2 Test Connectivity
 
