@@ -2,15 +2,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 
-import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE } from "./config.js";
+import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE, SHELL_META_RE_ALLOW_AMP } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
-function assertSafe(value, name = "argument") {
+function assertSafe(value, name = "argument", { pattern = SHELL_META_RE } = {}) {
   if (typeof value !== "string") {
     throw new Error(`${name} must be a string`);
   }
-  if (SHELL_META_RE.test(value)) {
+  if (pattern.test(value)) {
     throw new Error(`${name} contains unsafe characters`);
   }
   if (value.includes("\0")) {
@@ -587,11 +587,14 @@ const tools = [
       required: ["url", "wordlist"],
     },
     handler: async ({ url, wordlist, options }) => {
-      assertSafe(url, "url");
+      // '&' is allowed here: ffuf's own CLI syntax needs it as the
+      // query-string/form-body parameter separator for multi-parameter
+      // fuzzing, and execFile never invokes a shell, so it's inert argv data.
+      assertSafe(url, "url", { pattern: SHELL_META_RE_ALLOW_AMP });
       assertSafe(wordlist, "wordlist");
       const args = ["-u", url, "-w", wordlist];
       if (options) {
-        assertSafe(options, "options");
+        assertSafe(options, "options", { pattern: SHELL_META_RE_ALLOW_AMP });
         args.push(...options.split(/\s+/));
       }
       const output = await runTool("ffuf", args, 120_000);

@@ -136,6 +136,43 @@ test("buildEnum4linuxArgs still rejects shell metacharacters", () => {
   assert.throws(() => buildEnum4linuxArgs("192.168.1.100", "-a; reboot"), /unsafe characters/);
 });
 
+test("ffuf accepts '&' in the url and options for multi-parameter fuzzing", async () => {
+  const ffuf = byName("ffuf");
+  // '&' must not be rejected as an "unsafe character" — it's the query
+  // string/form-body separator ffuf's own parameter-fuzzing use case needs,
+  // and execFile never invokes a shell, so it's inert argv data. The call
+  // still fails past validation with "binary not found" on a host without
+  // ffuf installed (e.g. this macOS authoring box), which is what proves
+  // validation was cleared rather than the tool actually running.
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/login?user=FUZZ&pass=admin",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+    }),
+    /binary not found/
+  );
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/FUZZ",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+      options: "-d user=FUZZ&pass=admin",
+    }),
+    /binary not found/
+  );
+});
+
+test("ffuf still rejects other shell metacharacters in options", async () => {
+  const ffuf = byName("ffuf");
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/FUZZ",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+      options: "-d evil; reboot",
+    }),
+    /unsafe characters/
+  );
+});
+
 test("metasploit rejects an injection in the module path", async () => {
   const msf = byName("metasploit");
   await assert.rejects(msf.handler({ module: "exploit/x; run" }), /unsafe characters/);
