@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-09-11
+
+Documentation-only patch. Adds JSDoc to the dense, previously-unannotated
+functions in the agent loop and the findings parsers, with no change to
+behavior.
+
+### Added
+
+- **JSDoc for `clients/mshin-cli/agent.js`**: `extractTextToolCall`,
+  `looksLikeFabricatedToolOutput`, `Agent#run`, and `Agent#compactContext` now
+  document their parameters, return shapes, and (for `run` and
+  `compactContext`) the ordered algorithm each follows.
+- **JSDoc for `clients/mshin-cli/findings-memory.js`** parsers:
+  `parseNmapOutput`, `parseWhoisOutput`, `parseSearchsploitOutput`,
+  `parseNiktoOutput`, and `parseGenericOutput` now document their input format
+  and the shape of the structured findings object each returns.
+
 ## [0.14.0] - 2026-09-07
 
 Structured findings memory release. Implements Option B from the roadmap -
