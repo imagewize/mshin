@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs } from "./tools.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
 // injection guard, without needing the Kali binaries installed: malicious input
@@ -32,14 +32,17 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the thirteen documented tools with complete metadata", () => {
+test("exposes exactly the sixteen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "arping",
     "dirb",
     "dnsenum",
+    "enum4linux",
+    "ffuf",
     "gobuster",
     "hydra",
+    "john",
     "masscan",
     "metasploit",
     "nikto",
@@ -93,7 +96,7 @@ test("nmap rejects a null byte in the target", async () => {
   await assert.rejects(nmap.handler({ target: "8.8.8.8\0evil" }), /unsafe characters|null byte/);
 });
 
-test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping and dnsenum reject shell metacharacters", async () => {
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux, ffuf and john reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
@@ -105,11 +108,69 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     ["dirb", (p) => ({ url: p })],
     ["arping", (p) => ({ target: p })],
     ["dnsenum", (p) => ({ domain: p })],
+    ["enum4linux", (p) => ({ target: p })],
+    ["ffuf", (p) => ({ url: p, wordlist: "/usr/share/wordlists/dirb/common.txt" })],
+    ["john", (p) => ({ hash_file: p })],
   ];
   for (const [name, build] of cases) {
     const tool = byName(name);
     await assert.rejects(tool.handler(build("evil; reboot")), /unsafe characters/, name);
   }
+});
+
+test("buildEnum4linuxArgs puts options before the target", () => {
+  // enum4linux's Getopt::Std-style parser stops looking for flags at the
+  // first non-dash argument, so options after the target are silently
+  // ignored — they must come first.
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", "-a"), ["-a", "192.168.1.100"]);
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", "-U -S"), [
+    "-U",
+    "-S",
+    "192.168.1.100",
+  ]);
+  assert.deepEqual(buildEnum4linuxArgs("192.168.1.100", undefined), ["192.168.1.100"]);
+});
+
+test("buildEnum4linuxArgs still rejects shell metacharacters", () => {
+  assert.throws(() => buildEnum4linuxArgs("evil; reboot", undefined), /unsafe characters/);
+  assert.throws(() => buildEnum4linuxArgs("192.168.1.100", "-a; reboot"), /unsafe characters/);
+});
+
+test("ffuf accepts '&' in the url and options for multi-parameter fuzzing", async () => {
+  const ffuf = byName("ffuf");
+  // '&' must not be rejected as an "unsafe character" — it's the query
+  // string/form-body separator ffuf's own parameter-fuzzing use case needs,
+  // and execFile never invokes a shell, so it's inert argv data. The call
+  // still fails past validation with "binary not found" on a host without
+  // ffuf installed (e.g. this macOS authoring box), which is what proves
+  // validation was cleared rather than the tool actually running.
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/login?user=FUZZ&pass=admin",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+    }),
+    /binary not found/
+  );
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/FUZZ",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+      options: "-d user=FUZZ&pass=admin",
+    }),
+    /binary not found/
+  );
+});
+
+test("ffuf still rejects other shell metacharacters in options", async () => {
+  const ffuf = byName("ffuf");
+  await assert.rejects(
+    ffuf.handler({
+      url: "http://192.168.1.100/FUZZ",
+      wordlist: "/usr/share/wordlists/dirb/common.txt",
+      options: "-d evil; reboot",
+    }),
+    /unsafe characters/
+  );
 });
 
 test("metasploit rejects an injection in the module path", async () => {
@@ -183,4 +244,17 @@ test("tshark with an existing file clears validation and reaches the binary chec
   const tshark = byName("tshark");
   const existingFile = fileURLToPath(import.meta.url); // this test file certainly exists
   await assert.rejects(tshark.handler({ pcap: existingFile }), /binary not found/);
+});
+
+test("john reports a missing hash file as an error result, not a throw", async () => {
+  const john = byName("john");
+  const res = await john.handler({ hash_file: "/nonexistent/hashes.txt" });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /Hash file not found/);
+});
+
+test("john with an existing file clears validation and reaches the binary check", async () => {
+  const john = byName("john");
+  const existingFile = fileURLToPath(import.meta.url); // this test file certainly exists
+  await assert.rejects(john.handler({ hash_file: existingFile }), /binary not found/);
 });

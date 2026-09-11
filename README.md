@@ -91,6 +91,7 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 - [Refactoring Ideas](docs/refactoring-ideas.md) – Cleanups worth doing, and the ones deliberately avoided
 - [Agent Roadmap](docs/cybersecurity-agent-roadmap.md) – Where the agent loop is headed
 - [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
+- [Raspberry Pi Node](docs/raspberry-pi-node.md) – Running the Node on a Raspberry Pi
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
 
 ---

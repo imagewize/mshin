@@ -311,9 +311,10 @@ test("rejects a tool the Node does not expose without calling MCP", async (t) =>
 // Active-tool approval gate
 // -----------------------------------------------------------------------------
 
-test("hydra and sqlmap are gated behind approval like metasploit", () => {
+test("hydra, sqlmap and john are gated behind approval like metasploit", () => {
   assert.ok(ACTIVE_TOOLS.has("hydra"));
   assert.ok(ACTIVE_TOOLS.has("sqlmap"));
+  assert.ok(ACTIVE_TOOLS.has("john"));
 });
 
 test("metasploit is gated behind approval and runs when approved", async (t) => {

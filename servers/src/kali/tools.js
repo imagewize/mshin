@@ -2,15 +2,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 
-import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE } from "./config.js";
+import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE, SHELL_META_RE_ALLOW_AMP } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
-function assertSafe(value, name = "argument") {
+function assertSafe(value, name = "argument", { pattern = SHELL_META_RE } = {}) {
   if (typeof value !== "string") {
     throw new Error(`${name} must be a string`);
   }
-  if (SHELL_META_RE.test(value)) {
+  if (pattern.test(value)) {
     throw new Error(`${name} contains unsafe characters`);
   }
   if (value.includes("\0")) {
@@ -50,6 +50,20 @@ function buildMsfScript(module, options = {}) {
   scriptParts.push("run");
   scriptParts.push("exit");
   return scriptParts.join("; ");
+}
+
+// enum4linux's CLI is `enum4linux [options] ip` — its Getopt::Std-style
+// parser stops scanning for flags at the first non-dash argument, so options
+// must precede the target or they're silently ignored.
+function buildEnum4linuxArgs(target, options) {
+  assertSafe(target, "target");
+  const args = [];
+  if (options) {
+    assertSafe(options, "options");
+    args.push(...options.split(/\s+/));
+  }
+  args.push(target);
+  return args;
 }
 
 async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true } = {}) {
@@ -526,7 +540,111 @@ const tools = [
       return { content: [{ type: "text", text: output }] };
     },
   },
+  {
+    name: "enum4linux",
+    description:
+      "Enumerate SMB shares, users, and groups on a Windows or Samba target.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target IP address or hostname, e.g. '192.168.1.100'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional enum4linux options, e.g. '-a' or '-U -S'.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, options }) => {
+      const args = buildEnum4linuxArgs(target, options);
+      const output = await runTool("enum4linux", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "ffuf",
+    description:
+      "Fast web fuzzer for directory and file discovery, virtual hosts, and parameter fuzzing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Target URL with or without FUZZ keyword, e.g. 'http://192.168.1.100/FUZZ'.",
+        },
+        wordlist: {
+          type: "string",
+          description: "Path to wordlist file, e.g. '/usr/share/wordlists/dirb/common.txt'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional ffuf options, e.g. '-t 50 -mc 200,204'.",
+        },
+      },
+      required: ["url", "wordlist"],
+    },
+    handler: async ({ url, wordlist, options }) => {
+      // '&' is allowed here: ffuf's own CLI syntax needs it as the
+      // query-string/form-body parameter separator for multi-parameter
+      // fuzzing, and execFile never invokes a shell, so it's inert argv data.
+      assertSafe(url, "url", { pattern: SHELL_META_RE_ALLOW_AMP });
+      assertSafe(wordlist, "wordlist");
+      const args = ["-u", url, "-w", wordlist];
+      if (options) {
+        assertSafe(options, "options", { pattern: SHELL_META_RE_ALLOW_AMP });
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("ffuf", args, 120_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "john",
+    description:
+      "Run John the Ripper for offline password hash cracking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        hash_file: {
+          type: "string",
+          description: "Absolute path to the file containing password hashes.",
+        },
+        format: {
+          type: "string",
+          description: "Optional hash format, e.g. 'raw-md5' or 'nt'.",
+        },
+        options: {
+          type: "string",
+          description: "Optional John options, e.g. '--wordlist=/usr/share/wordlists/rockyou.txt'.",
+        },
+      },
+      required: ["hash_file"],
+    },
+    handler: async ({ hash_file, format, options }) => {
+      assertSafe(hash_file, "hash_file");
+      if (!existsSync(hash_file)) {
+        return {
+          content: [{ type: "text", text: `Error: Hash file not found: ${hash_file}` }],
+          isError: true,
+        };
+      }
+      const args = [hash_file];
+      if (format) {
+        assertSafe(format, "format");
+        args.push("--format", format);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("john", args, 300_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
 ];
 
-export { tools, TOOL_PATHS, buildMsfScript };
+export { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs };
 export default tools;

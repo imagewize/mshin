@@ -74,7 +74,7 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 - **Cons**: No 70B/120B headroom; long, noisy agent sessions will eventually pressure a 32GB context budget
 - **Graduate when**: you measure context overflow, or a 24–32B model demonstrably fails the tool-calling reliability bar your loop needs — not before
 
-> **Planned personal deployment (late 2026):** Mac Mini as the Core and a Raspberry Pi as the Kali Node. This keeps the two-machine separation while using small, quiet hardware. A Raspberry Pi is sufficient for light recon tools (`nmap`, `whois`, `nikto`) but will struggle with heavier workloads such as Metasploit or large `sqlmap` runs; treat it as a low-cost entry point, not a full-speed offensive platform. Verification of this pairing is on the backlog under *Phase 2*.
+> **Planned personal deployment (late 2026):** Mac Mini as the Core and a Raspberry Pi as the Kali Node. This keeps the two-machine separation while using small, quiet hardware. A Raspberry Pi is sufficient for light recon tools (`nmap`, `whois`, `nikto`) but will struggle with heavier workloads such as Metasploit or large `sqlmap` runs; treat it as a low-cost entry point, not a full-speed offensive platform. A dedicated guide is now in `docs/raspberry-pi-node.md`; end-to-end verification of the Mac Mini + Raspberry Pi pairing is still pending.
 
 ### Option A′: Pure Local — Unified-Memory APU (The Upgrade Target)
 ```
@@ -368,13 +368,14 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 **Goal**: Scale to larger models and add security-specific features.
 
 - [ ] **Verify physical two-machine deployment** — the Lima local-dev path is verified; the production path (real Kali Node + Core on physical LAN) still needs end-to-end testing
+- [ ] **Verify Mac Mini + Raspberry Pi pairing** — guide is written (`docs/raspberry-pi-node.md`); real-hardware end-to-end run is pending
 - [ ] **Hardware Decision** — make it *after* Phase 1, using measurements from the harness (tokens/session, context high-water mark, tool-call success rate), not before:
   - A model-evaluation harness is implemented in `clients/mshin-cli/eval-harness.js`; run it against candidate models and compare JSON/CSV reports before buying hardware
   - **Stay on Option A**: if a 24–32B model is clearing your reliability bar, buy nothing
   - **Option A′**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE; the right buy if you need a bigger *model*
   - **Option A″**: RTX 6000 Ada (48GB) + DIMM RAM (~$7k–8k) — only if you need raw throughput
   - **Option B**: RunPod A100 (~$2/hr, pay-as-you-go) — the cheapest way to *test* whether a 70B/120B actually helps before committing to hardware
-- [ ] **Model**: evaluate `qwen3:32b` first (still fits a 64GB box); deploy `llama3.3:70b` or `gpt-oss-120b` only if the 32B tier measurably falls short
+- [ ] **Model**: evaluate `qwen3:32b` first (still fits a 64GB box); deploy `llama3.3:70b` or `gpt-oss:120b` only if the 32B tier measurably falls short
 - [ ] **Fine-tuning (optional, only if a knowledge gap shows up)**:
   - Collect cybersecurity datasets (CVE, MITRE ATT&CK, Exploit-DB)
   - LoRA-tune `mistral-small` on security-specific tasks — after the harness is proven, not before
@@ -382,12 +383,12 @@ def parse_nmap_xml(xml_output: str) -> Dict:
   - Option A: smarter in-context compaction in `clients/mshin-cli/agent.js` (compress tool output instead of dropping whole messages)
   - Option B: structured findings memory in `clients/mshin-cli/findings-memory.js` so critical hosts/ports/CVEs survive long sessions
   - Option C (later): replace JSON `memory.json` with SQLite, then Redis/PostgreSQL if multi-user is needed
-- [x] **Tool Expansion** — 12 Kali tools currently integrated:
+- [x] **Tool Expansion** — 16 Kali tools currently integrated:
   - `nmap`, `searchsploit`, `nikto`, `whois`, `tshark` (passive/recon)
-  - `metasploit`, `hydra`, `sqlmap` (active/destructive, require approval)
-  - `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum` (scanning/enumeration)
-  - All documented in `docs/setup.md`; sudoers configured in `scripts/setup_mcp_server.sh`
-  - Tool safety: `ACTIVE_TOOLS` set tracks destructive tools; explicit approval required before execution
+  - `metasploit`, `hydra`, `sqlmap`, `john` (active/destructive or credential-revealing, require approval)
+  - `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`, `enum4linux`, `ffuf` (scanning/enumeration)
+  - All documented in `docs/setup.md` and `KALI-OPENLLM.md`; sudoers configured in `scripts/setup_mcp_server.sh`
+  - Tool safety: `ACTIVE_TOOLS` set tracks destructive/credential-revealing tools; explicit approval required before execution
   - [ ] Implement sandboxing (Docker Compose config in roadmap; not yet integrated)
 
 **Deliverable**: A scalable agent capable of running complex security workflows.
@@ -476,7 +477,7 @@ Output:
 
 | **Metric**               | **Phase 1 Goal** | **Phase 2 Goal** | **Phase 3 Goal** |
 |--------------------------|------------------|------------------|------------------|
-| Tools Supported          | 5+               | 20+              | 50+              |
+| Tools Supported          | 5+               | 16+              | 50+              |
 | Concurrent Users         | 1                | 3                | 10+              |
 | Inference Latency (70B, first token) | N/A     | <5s              | <2s              |
 | Workflow Steps           | 2–3              | 5–10             | 20+              |
@@ -535,6 +536,6 @@ Machin Shin has the **foundation** right — the Ollama + MCP + Kali architectur
 
 ---
 
-*Document Status: Draft (Phase 1 complete)*
-*Last Updated: 2026-09-07*
-*Author: Jasper Frumau (with Mistral Vibe)*
+*Document Status: Draft (Phase 1 complete; Phase 2 tool expansion and Pi guide complete; Pi hardware verification pending)*
+*Last Updated: 2026-09-11*
+*Author: Jasper Frumau*

@@ -104,7 +104,7 @@ sudo apt install -y nodejs git
 
 #### **1.3 Install the Security Tools**
 
-A minimal Kali install has no tool metapackages, so the thirteen tools the MCP
+A minimal Kali install has no tool metapackages, so the sixteen tools the MCP
 server wraps (`servers/src/kali/tools.js`) are not present yet — without this
 step, every tool call fails with `Tool binary not found`. `exploitdb` is what
 provides the `searchsploit` binary. This mirrors the package list in
@@ -127,6 +127,9 @@ sudo apt install -y \
     dirb \
     arping \
     dnsenum \
+    enum4linux \
+    ffuf \
+    john \
     net-tools
 ```
 
@@ -142,7 +145,7 @@ cd /opt/mshin/servers/src/kali
 npm install
 
 # Start the MCP server (Machin Shin Node)
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum &
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john &
 ```
 
 #### **1.5 Create a `systemd` Service for MCP Server**
@@ -156,7 +159,7 @@ After=network.target
 [Service]
 User=mshin
 WorkingDirectory=/opt/mshin/servers/src/kali
-ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production
@@ -198,7 +201,7 @@ user-owned PCAP files, and running it as root triggers Wireshark's
 file-owner check.
 
 ```
-mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 ```
 
 #### **1.7 Assign a Static IP**
@@ -417,7 +420,7 @@ Add:
 ```
 # tshark is omitted: it does not need root to read user-owned PCAP files, and
 # running it as root triggers Wireshark's file-owner check.
-mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 ```
 
 #### **3. Test SSH Access**
@@ -438,7 +441,7 @@ Prompt the LLM to run SSH commands:
 
 #### **5. Verify Every MCP Tool**
 
-With the CLI pointed at the Node, these prompts exercise all thirteen tools against safe targets. Only run scans against systems you own or are authorised to test.
+With the CLI pointed at the Node, these prompts exercise all sixteen tools against safe targets. Only run scans against systems you own or are authorised to test.
 
 ```
 "Scan 127.0.0.1 with nmap and list the open ports."
@@ -454,9 +457,12 @@ With the CLI pointed at the Node, these prompts exercise all thirteen tools agai
 "Use dirb to brute-force http://127.0.0.1."
 "Run arping to discover hosts on the local network."
 "Use dnsenum to enumerate example.com."
+"Enumerate SMB shares on 127.0.0.1 with enum4linux."
+"Fuzz directories on http://127.0.0.1 with ffuf."
+"Crack the hashes in /home/mshin/hashes.txt with john."
 ```
 
-> **`metasploit`, `hydra`, and `sqlmap` require approval.** They are the active tools in the approval gate; the CLI will prompt you before any of them runs.
+> **`metasploit`, `hydra`, `sqlmap`, and `john` require approval.** They are the active tools in the approval gate; the CLI will prompt you before any of them runs.
 >
 > **`tshark` needs user-owned PCAP files.** The server runs `tshark` without `sudo`; capture files must be readable by the `mshin` user.
 

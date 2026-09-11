@@ -18,6 +18,9 @@ export const TOOL_PATHS = {
   dirb: "/usr/bin/dirb",
   arping: "/usr/bin/arping",
   dnsenum: "/usr/bin/dnsenum",
+  enum4linux: "/usr/bin/enum4linux",
+  ffuf: "/usr/bin/ffuf",
+  john: "/usr/bin/john",
 };
 
 // Default timeout for any single tool invocation.
@@ -25,3 +28,10 @@ export const DEFAULT_TIMEOUT_MS = 300_000;
 
 // Reject anything that looks like shell syntax.
 export const SHELL_META_RE = /[;|&$()`\\<>]/;
+
+// Same set, minus '&'. Every tool call goes through execFile with no shell,
+// so '&' is never interpreted as a background/AND operator here — it's inert
+// argv data. ffuf's url/options legitimately contain '&' as the query-string
+// and form-body parameter separator (its whole "parameter fuzzing" use case
+// depends on it), so it validates against this instead of SHELL_META_RE.
+export const SHELL_META_RE_ALLOW_AMP = /[;|$()`\\<>]/;

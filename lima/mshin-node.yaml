@@ -8,10 +8,11 @@
 # moment the OS did not match, so it now pairs with mshin-core by role. The
 # production Node still runs real Kali; see docs/lima-local-dev.md.
 #
-# Debian 13 with the full thirteen-tool set — nmap, whois, tshark and nikto from
-# Debian; hydra, sqlmap, gobuster, masscan, dirb, arping and dnsenum from Debian;
-# metasploit and searchsploit from their upstream vendors — the Machin Shin MCP
-# server, and the mshin-node systemd unit. See docs/lima-local-dev.md.
+# Debian 13 with the full sixteen-tool set — nmap, whois, tshark and nikto from
+# Debian; hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux,
+# ffuf and john from Debian; metasploit and searchsploit from their upstream
+# vendors — the Machin Shin MCP server, and the mshin-node systemd unit.
+# See docs/lima-local-dev.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so this
 # one file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an
@@ -42,9 +43,9 @@ containerd:
 networks:
   - lima: shared
 
-# The repo is private until v1.0, so the guest cannot clone it anonymously.
-# Mount your host clone instead — either uncomment and set `location` below, or
-# pass it at create time without editing this file, from your clone's root:
+# The guest cannot clone anonymously if the repo requires credentials, so mount
+# your host clone instead — either uncomment and set `location` below, or pass
+# it at create time without editing this file, from your clone's root:
 #
 #   limactl create --name=mshin-node \
 #     --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
@@ -57,13 +58,14 @@ networks:
 #     writable: true
 
 provision:
-  # Debian ships eleven of the MCP server's thirteen tools: nmap, whois, tshark
-  # from main; nikto, hydra, sqlmap, gobuster, masscan, dirb, arping and dnsenum
-  # from various sources. The other two (metasploit, searchsploit) come from their
-  # upstream vendors in a later block -- Kali packages them, but neither is Kali-only,
-  # and neither needs Kali's repo grafted onto Debian (that part is still
-  # unsupported). Keep this list, the sudoers allowlist and the unit's --tools
-  # flag below in sync; see the tool-list invariant in AGENTS.md.
+  # Debian ships fourteen of the MCP server's sixteen tools: nmap, whois, tshark
+  # from main; nikto, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum,
+  # enum4linux, ffuf and john from various sources. The other two (metasploit,
+  # searchsploit) come from their upstream vendors in a later block -- Kali
+  # packages them, but neither is Kali-only, and neither needs Kali's repo
+  # grafted onto Debian (that part is still unsupported). Keep this list, the
+  # sudoers allowlist and the unit's --tools flag below in sync; see the
+  # tool-list invariant in AGENTS.md.
   - mode: system
     script: |
       #!/bin/bash
@@ -80,7 +82,7 @@ provision:
           sed -i "s/^Components: main$/Components: main non-free/" /etc/apt/sources.list.d/debian.sources
       fi
       apt-get update
-      apt-get install -y curl git nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum
+      apt-get install -y curl git nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum enum4linux ffuf john
       curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
       apt-get install -y nodejs
 
@@ -128,11 +130,11 @@ provision:
           # Nothing mounted there, so fall back to a clone. GIT_TERMINAL_PROMPT=0
           # turns a credential prompt into an immediate error instead of a hang.
           export GIT_TERMINAL_PROMPT=0
-          if ! git clone https://github.com/imagewize/mshin.git "${REPO_DIR}"; then
-              cat >&2 <<'ERR'
+      if ! git clone https://github.com/imagewize/mshin.git "${REPO_DIR}"; then
+          cat >&2 <<'ERR'
       [ERROR] /opt/mshin has no checkout and the clone failed.
-      The repository is private until v1.0, so an anonymous clone cannot work.
-      Mount your host clone into the guest instead — from the root of your clone:
+      If the repository requires credentials, mount your host clone into the
+      guest instead — from the root of your clone:
         limactl delete <name>
         limactl create --name=<name> \
           --set ".mounts += [{\"location\":\"$PWD\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
@@ -157,7 +159,7 @@ provision:
       # Wireshark's file-owner check, and tshark needs no privileges to read
       # capture files.
       cat >/etc/sudoers.d/mshin <<'EOF'
-      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
       EOF
       chmod 440 /etc/sudoers.d/mshin
       visudo -cf /etc/sudoers.d/mshin
@@ -170,10 +172,10 @@ provision:
       install -m 644 /opt/mshin/configs/mcp-kali.service "${UNIT}"
       # The shipped unit runs as a dedicated 'mshin' user. In a throwaway
       # guest, run as the Lima login user instead; the tool list is the same
-      # thirteen, now that the block above provides metasploit and searchsploit.
+      # sixteen, now that the block above provides metasploit and searchsploit.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
       sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
-      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum|" "${UNIT}"
+      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john|" "${UNIT}"
       systemctl daemon-reload
       systemctl enable mshin-node
       systemctl restart mshin-node

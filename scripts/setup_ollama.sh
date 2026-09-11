@@ -29,8 +29,6 @@ ART
 
 MSHIN_DIR="/opt/mshin"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
-# Needed while the repository is private; the HTTPS default is correct once it
-# is public.
 MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
 
 # --- Check for Root (recommended) ---
@@ -73,9 +71,7 @@ else
         cat >&2 <<EOF
 [ERROR] Could not clone ${MSHIN_REPO}
 
-The repository is private until v1.0, so an anonymous HTTPS clone fails with
-"could not read Username for 'https://github.com'". Point the script at a
-source this host can actually reach:
+Point the script at a source this host can actually reach:
 
   # SSH, with your key loaded in an agent
   MSHIN_REPO=git@github.com:imagewize/mshin.git bash "\$0"
@@ -126,11 +122,18 @@ if [ "$assign_ip" = "y" ]; then
     read -r -p "[?] Enter static IP (e.g., 192.168.1.200): " static_ip
     read -r -p "[?] Enter gateway (e.g., 192.168.1.1): " gateway
 
+    # Detect a sensible default interface: the first non-loopback ethernet
+    # device that is currently up. Fall back to enp1s0 if detection fails.
+    default_iface="$(ip -4 -o link show up 2>/dev/null | awk -F': ' '/^[0-9]+: lo/ {next} {print $2; exit}')"
+    default_iface="${default_iface:-enp1s0}"
+    read -r -p "[?] Enter network interface (default: ${default_iface}): " iface
+    iface="${iface:-${default_iface}}"
+
 sudo tee /etc/netplan/00-mshin-core.yaml <<EOF
 network:
   version: 2
   ethernets:
-    enp1s0:
+    ${iface}:
       dhcp4: no
       addresses:
         - ${static_ip}/24
@@ -144,7 +147,7 @@ network:
 EOF
 
 sudo netplan apply
-echo "[+] Static IP assigned: ${static_ip}"
+echo "[+] Static IP assigned: ${static_ip} on ${iface}"
 fi
 
 # --- Create a Wrapper Script for Machin Shin ---

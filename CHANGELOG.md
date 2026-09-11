@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-11
+
+Tool expansion and v1.0.0 prep release. Adds three new Kali tools to close the
+biggest coverage gaps (SMB enumeration, modern web fuzzing, offline password
+cracking), aligns package versions, removes pre-1.0.0 private-repo fallback
+language, improves setup-script robustness for Raspberry Pi, and adds a
+Pi-specific Node guide.
+
+### Added
+
+- **Three new MCP tools** (`servers/src/kali/tools.js`):
+  - `enum4linux` — SMB/Windows share and user enumeration.
+  - `ffuf` — fast web fuzzer for directories, files, virtual hosts, and
+    parameters.
+  - `john` — offline password hash cracking (John the Ripper).
+- **Tool-path entries** in `servers/src/kali/config.js` for `enum4linux`,
+  `ffuf`, and `john`.
+- **Approval gate** for `john` in `clients/mshin-cli/config.js`; it joins
+  `metasploit`, `hydra`, and `sqlmap` as an active tool that requires explicit
+  user approval before each run.
+- **Server tests** in `servers/src/kali/tools.test.js` covering the contract
+  update, shell-injection rejection, and missing-hash-file handling for the
+  new tools.
+- **Raspberry Pi Node guide** (`docs/raspberry-pi-node.md`) covering Kali
+  Raspberry Pi image installation, Raspberry Pi OS + Kali repo alternative,
+  ARM-specific notes, and Pi-appropriate troubleshooting.
+
+### Changed
+
+- **Synchronised all tool-list locations** per the repo invariant:
+  `servers/src/kali/config.js`, `servers/src/kali/tools.js`,
+  `scripts/setup_mcp_server.sh` apt list and sudoers,
+  `configs/mcp-kali.service`, `lima/mshin-node.yaml` apt list/sudoers/unit
+  command, `docs/setup.md`, and `KALI-OPENLLM.md`. Total enabled tools is now
+  sixteen.
+- **Package versions aligned** to `0.15.0` in
+  `servers/src/kali/package.json` and `clients/mshin-cli/package.json`.
+- **Setup scripts no longer claim the repo is "private until v1.0"**. The
+  fallback clone-error messages in `scripts/setup_mcp_server.sh` and
+  `scripts/setup_ollama.sh` now simply tell the operator to point the script at
+  a reachable source.
+- **Static-IP configuration is interface-aware**. Both setup scripts detect the
+  first non-loopback Ethernet interface and offer it as the default, rather
+  than hardcoding `enp1s0`. This makes them usable on Raspberry Pi (`eth0`)
+  without manual editing.
+- **Documentation links**: `README.md` and `CONTRIBUTING.md` now list
+  `docs/raspberry-pi-node.md`.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes the updated server cases.
+- `npm test` in `clients/mshin-cli/` passes the updated client cases.
+
 ## [0.14.2] - 2026-09-11
 
 Refactor-only patch. Centralises scattered constants into a single

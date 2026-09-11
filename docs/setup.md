@@ -136,7 +136,7 @@ sudo apt install -y git curl wget
 
 ### **1.3 Install the Security Tools**
 
-A minimal Kali install has no tool metapackages, so the thirteen tools the MCP
+A minimal Kali install has no tool metapackages, so the sixteen tools the MCP
 server wraps (`servers/src/kali/tools.js`) are not present yet — without this
 step, every tool call fails with `Tool binary not found`:
 
@@ -156,6 +156,9 @@ sudo apt install -y \
     dirb \
     arping \
     dnsenum \
+    enum4linux \
+    ffuf \
+    john \
     net-tools
 ```
 
@@ -189,7 +192,7 @@ Machin Shin ships its own Kali MCP server at `servers/src/kali`.
   ```
 3. Test the MCP server manually:
   ```bash
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum &
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john &
   ```
    This starts the server on `http://localhost:3000`.
 4. Verify the server is running:
@@ -241,7 +244,7 @@ To ensure the MCP server starts automatically on boot:
    [Service]
    User=mshin
    WorkingDirectory=/opt/mshin/servers/src/kali
-   ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
+    ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
    Restart=always
    RestartSec=5s
    Environment=NODE_ENV=production
@@ -283,12 +286,12 @@ Add the following line:
 ```
 # tshark is omitted: it does not need root to read user-owned PCAP files, and
 # running it as root triggers Wireshark's file-owner check.
-mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 ```
 
 ### **1.10 Verify the Node Tools**
 
-Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. `metasploit`, `hydra`, and `sqlmap` are destructive-by-default and the CLI will ask for approval before any of them runs; the rest are passive.
+Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. `metasploit`, `hydra`, `sqlmap`, and `john` are destructive-by-default and the CLI will ask for approval before any of them runs; the rest are passive.
 
 ```
 "Scan 127.0.0.1 with nmap and list the open ports."
@@ -304,6 +307,9 @@ Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.10
 "Use dirb to brute-force http://127.0.0.1."
 "Run arping to discover hosts on the local network."
 "Use dnsenum to enumerate example.com."
+"Enumerate SMB shares on 127.0.0.1 with enum4linux."
+"Fuzz directories on http://127.0.0.1 with ffuf."
+"Crack the hashes in /home/mshin/hashes.txt with john."
 ```
 
 > **PCAP ownership matters.** Capture files must be readable by the `mshin` user; `tshark` is run without `sudo` because Wireshark's file-owner check rejects root-owned captures.
@@ -420,7 +426,7 @@ If everything is set up correctly, Machin Shin should:
 - **Manual start:**
   ```bash
   cd /opt/mshin/servers/src/kali
-  node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
+  node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
   ```
 
 ### **Connection Refused to MCP Server**
