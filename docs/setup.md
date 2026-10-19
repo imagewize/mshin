@@ -248,6 +248,11 @@ To ensure the MCP server starts automatically on boot:
    Restart=always
    RestartSec=5s
    Environment=NODE_ENV=production
+   # Optional: restrict which targets the Node will scan or attack. When set,
+   # every network-facing tool argument is checked against this comma-separated
+   # list of IPs, CIDR ranges, or hostnames before execution. Leave unset to
+   # allow all targets (the legacy default).
+   # Environment=MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
 
    # Security settings
    # NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as
@@ -289,7 +294,40 @@ Add the following line:
 mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 ```
 
-### **1.10 Verify the Node Tools**
+### **1.10 Restrict Targets with `MSHIN_ALLOWED_TARGETS`**
+
+By default the Node accepts any target the LLM passes to a tool. To constrain an engagement, set the `MSHIN_ALLOWED_TARGETS` environment variable to a comma-separated list of allowed IPs, CIDR ranges, and hostnames. The Node checks every network-facing tool argument against this list before execution.
+
+Format:
+```bash
+MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
+```
+
+Rules:
+- Exact IPv4 match: `127.0.0.1`
+- CIDR match: `192.168.1.0/24` matches `192.168.1.100`
+- Exact hostname: `scanme.nmap.org`
+- Subdomain wildcard: `*.example.com` matches `www.example.com` but not `example.com` itself
+- URL targets are parsed for their hostname: `http://192.168.1.100/path` matches `192.168.1.0/24`
+
+Apply it in the systemd unit (`/etc/systemd/system/mshin-node.service`) by uncommenting or adding:
+```ini
+Environment=MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
+```
+
+Then reload and restart:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart mshin-node
+sudo journalctl -u mshin-node -f
+```
+
+You will see the active scope logged at startup:
+```
+[INFO] Target scope allowlist: 192.168.1.0/24, 127.0.0.1, *.example.com
+```
+
+### **1.11 Verify the Node Tools**
 
 Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. `metasploit`, `hydra`, `sqlmap`, and `john` are destructive-by-default and the CLI will ask for approval before any of them runs; the rest are passive.
 

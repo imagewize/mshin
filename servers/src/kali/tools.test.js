@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
 import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs } from "./tools.js";
+import { isTargetAllowed, assertTargetInScope } from "./config.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
 // injection guard, without needing the Kali binaries installed: malicious input
@@ -10,6 +11,10 @@ import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs } from "./tools.
 // through validation and dispatch until it hits the "binary not found" check on
 // a host where the tool is absent (i.e. the macOS authoring box or CI). What is
 // NOT covered here is the tools actually executing — that needs a real Node.
+
+// NOTE: this file is loaded without MSHIN_ALLOWED_TARGETS set, so config.js
+// computes an empty allowlist. Tests for allowlist behavior live in
+// scope.test.js, which sets the env var before importing tools.js.
 
 function byName(name) {
   const tool = tools.find((t) => t.name === name);
@@ -257,4 +262,26 @@ test("john with an existing file clears validation and reaches the binary check"
   const john = byName("john");
   const existingFile = fileURLToPath(import.meta.url); // this test file certainly exists
   await assert.rejects(john.handler({ hash_file: existingFile }), /binary not found/);
+});
+
+// -----------------------------------------------------------------------------
+// Scope allowlist — default behavior when no allowlist is configured
+// -----------------------------------------------------------------------------
+
+test("isTargetAllowed returns true when no allowlist is configured", () => {
+  assert.equal(isTargetAllowed("8.8.8.8"), true);
+  assert.equal(isTargetAllowed("http://evil.example.com/"), true);
+  assert.equal(isTargetAllowed(""), false);
+});
+
+test("assertTargetInScope does not throw when no allowlist is configured", () => {
+  assert.doesNotThrow(() => assertTargetInScope("10.0.0.1", "target"));
+});
+
+test("nmap still reaches the missing-binary check for any target when no allowlist is set", async () => {
+  const nmap = byName("nmap");
+  await assert.rejects(
+    nmap.handler({ target: "scanme.nmap.org", flags: ["-sV"] }),
+    /binary not found/
+  );
 });

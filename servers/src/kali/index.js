@@ -8,6 +8,7 @@ import {
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { tools } from "./tools.js";
+import { ALLOWED_TARGETS } from "./config.js";
 
 const PORT = process.env.MSHIN_NODE_PORT
   ? parseInt(process.env.MSHIN_NODE_PORT, 10)
@@ -31,6 +32,11 @@ if (enabledTools.length === 0) {
 
 console.error(`[INFO] Machin Shin Node starting on port ${PORT}`);
 console.error(`[INFO] Enabled tools: ${enabledTools.map((t) => t.name).join(", ")}`);
+if (ALLOWED_TARGETS && ALLOWED_TARGETS.length > 0) {
+  console.error(`[INFO] Target scope allowlist: ${ALLOWED_TARGETS.join(", ")}`);
+} else {
+  console.error(`[INFO] No target scope allowlist configured (MSHIN_ALLOWED_TARGETS)`);
+}
 
 // Build a fresh Server instance for each client connection. A single Server
 // can only be bound to one transport at a time, so sharing one across clients
