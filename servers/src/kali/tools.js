@@ -2,7 +2,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 
-import { TOOL_PATHS, DEFAULT_TIMEOUT_MS, SHELL_META_RE, SHELL_META_RE_ALLOW_AMP } from "./config.js";
+import {
+  TOOL_PATHS,
+  DEFAULT_TIMEOUT_MS,
+  SHELL_META_RE,
+  SHELL_META_RE_ALLOW_AMP,
+  assertTargetInScope,
+  assertTargetListInScope,
+} from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -129,6 +136,7 @@ const tools = [
     },
     handler: async ({ target, flags = ["-sV"] }) => {
       assertSafe(target, "target");
+      assertTargetInScope(target, "target");
       assertSafeArray(flags, "flags");
       const output = await runTool("nmap", [...flags, target]);
       return { content: [{ type: "text", text: output }] };
@@ -169,6 +177,7 @@ const tools = [
     },
     handler: async ({ host }) => {
       assertSafe(host, "host");
+      assertTargetInScope(host, "host");
       const output = await runTool("nikto", ["-h", host]);
       return { content: [{ type: "text", text: output }] };
     },
@@ -188,6 +197,7 @@ const tools = [
     },
     handler: async ({ target }) => {
       assertSafe(target, "target");
+      assertTargetInScope(target, "target");
       const output = await runTool("whois", [target]);
       return { content: [{ type: "text", text: output }] };
     },
@@ -252,6 +262,12 @@ const tools = [
       required: ["module"],
     },
     handler: async ({ module, options = {} }) => {
+      if (options.RHOSTS) {
+        assertTargetListInScope(options.RHOSTS, "RHOSTS");
+      }
+      if (options.RHOST) {
+        assertTargetInScope(options.RHOST, "RHOST");
+      }
       const msfScript = buildMsfScript(module, options);
       const output = await runTool("metasploit", ["-q", "-x", msfScript], 600_000);
       return { content: [{ type: "text", text: output }] };
@@ -289,6 +305,7 @@ const tools = [
     },
     handler: async ({ target, service, user, password, options }) => {
       assertSafe(target, "target");
+      assertTargetInScope(target, "target");
       assertSafe(service, "service");
       const args = [target, service];
       if (user) {
@@ -337,6 +354,7 @@ const tools = [
     },
     handler: async ({ url, data, risk = "1", level = "1" }) => {
       assertSafe(url, "url");
+      assertTargetInScope(url, "url");
       const args = ["-u", url, "--risk", risk, "--level", level];
       if (data) {
         assertSafe(data, "data");
@@ -383,9 +401,11 @@ const tools = [
       const args = [mode];
       if (mode === "dir" && url) {
         assertSafe(url, "url");
+        assertTargetInScope(url, "url");
         args.push("-u", url);
       } else if (mode === "dns" && domain) {
         assertSafe(domain, "domain");
+        assertTargetInScope(domain, "domain");
         args.push("-d", domain);
       } else {
         return {
@@ -430,6 +450,7 @@ const tools = [
     },
     handler: async ({ target, ports = "1-65535", rate }) => {
       assertSafe(target, "target");
+      assertTargetInScope(target, "target");
       assertSafe(ports, "ports");
       const args = [target, "-p", ports];
       if (rate) {
@@ -466,6 +487,7 @@ const tools = [
     },
     handler: async ({ url, wordlist = "/usr/share/dirb/wordlists/common.txt", options }) => {
       assertSafe(url, "url");
+      assertTargetInScope(url, "url");
       assertSafe(wordlist, "wordlist");
       const args = [url, wordlist];
       if (options) {
@@ -501,6 +523,7 @@ const tools = [
     },
     handler: async ({ target, iface, count = "3" }) => {
       assertSafe(target, "target");
+      assertTargetInScope(target, "target");
       const args = [target];
       if (iface) {
         assertSafe(iface, "iface");
@@ -531,6 +554,7 @@ const tools = [
     },
     handler: async ({ domain, options }) => {
       assertSafe(domain, "domain");
+      assertTargetInScope(domain, "domain");
       const args = [domain];
       if (options) {
         assertSafe(options, "options");
@@ -559,6 +583,7 @@ const tools = [
       required: ["target"],
     },
     handler: async ({ target, options }) => {
+      assertTargetInScope(target, "target");
       const args = buildEnum4linuxArgs(target, options);
       const output = await runTool("enum4linux", args, 120_000);
       return { content: [{ type: "text", text: output }] };
@@ -591,6 +616,7 @@ const tools = [
       // query-string/form-body parameter separator for multi-parameter
       // fuzzing, and execFile never invokes a shell, so it's inert argv data.
       assertSafe(url, "url", { pattern: SHELL_META_RE_ALLOW_AMP });
+      assertTargetInScope(url, "url");
       assertSafe(wordlist, "wordlist");
       const args = ["-u", url, "-w", wordlist];
       if (options) {
