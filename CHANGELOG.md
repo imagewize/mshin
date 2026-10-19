@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Target scope allowlist** via `MSHIN_ALLOWED_TARGETS` environment variable
+  (`servers/src/kali/config.js`). When set, the Node rejects any network-facing
+  tool argument (IP, CIDR, hostname, or URL hostname) that is not in the
+  configured comma-separated list before the tool runs. Supports exact IPs,
+  CIDR ranges, exact hostnames, and `*.example.com` subdomain wildcards.
+- **Scope checks** integrated into every network-facing tool handler in
+  `servers/src/kali/tools.js`: `nmap`, `nikto`, `whois`, `metasploit`, `hydra`,
+  `sqlmap`, `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`, `enum4linux`,
+  and `ffuf`.
+- **Server tests** for scope allowlist behavior:
+  - `servers/src/kali/scope.test.js` exercises blocking and allowing across
+    all network tools with `MSHIN_ALLOWED_TARGETS` set.
+  - `servers/src/kali/tools.test.js` verifies the default no-allowlist
+    behavior remains unchanged.
+- **Startup logging** in `servers/src/kali/index.js` reports whether a target
+  scope allowlist is active.
+
+### Changed
+
+- `docs/setup.md` and `KALI-OPENLLM.md` document `MSHIN_ALLOWED_TARGETS`,
+  including systemd unit examples and reload instructions.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes 49 cases, including the new scope
+  tests.
+- `npm test` in `clients/mshin-cli/` passes all existing cases.
+
 ## [0.15.0] - 2026-09-11
 
 Tool expansion and v1.0.0 prep release. Adds three new Kali tools to close the
