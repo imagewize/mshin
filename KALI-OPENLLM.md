@@ -163,6 +163,8 @@ ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whoi
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production
+# Optional: restrict which targets the Node will scan or attack.
+# Environment=MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
 
 # Security settings
 # NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as
@@ -204,7 +206,27 @@ file-owner check.
 mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 ```
 
-#### **1.7 Assign a Static IP**
+#### **1.7 Restrict Targets with `MSHIN_ALLOWED_TARGETS`**
+
+Set `MSHIN_ALLOWED_TARGETS` to a comma-separated allowlist of IPs, CIDR ranges, and hostnames. When configured, every network-facing tool argument is checked against this list before execution, preventing the agent from scanning or attacking hosts outside the engagement scope.
+
+```bash
+MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
+```
+
+- `192.168.1.0/24` matches any IP in that range.
+- `127.0.0.1` matches that exact IP.
+- `*.example.com` matches subdomains like `www.example.com` but not `example.com` itself.
+- URLs are parsed for their hostname, so `http://192.168.1.100/path` matches `192.168.1.0/24`.
+
+Add it to the systemd unit or export it before running `node index.js`:
+```ini
+Environment=MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
+```
+
+Leave the variable unset to preserve the legacy behavior of allowing all targets.
+
+#### **1.8 Assign a Static IP**
 
 Create `/etc/netplan/00-mshin-node.yaml`:
 
