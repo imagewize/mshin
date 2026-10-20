@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.4] - 2026-10-20
+
+Docs-only patch release, born from a live Mistral Vibe + Lima Node session
+that hit three operational failure modes in one afternoon.
+
+### Fixed
+
+- **Lima troubleshooting covers unit name, dead `socket_vmnet`, and client
+  timeouts** (`docs/LIMA-LOCAL-DEV.md`). The Lima guest installs
+  `configs/mcp-kali.service` as `mshin-node`, so bare-metal commands like
+  `systemctl status mcp-kali` fail with `Unit not found` in the guest. A
+  dead `socket_vmnet` on the host takes the shared `192.168.105.0/24`
+  network down while `limactl list` still shows the guest `Running` — the
+  fix is restarting the guest and re-reading its DHCP address. And an MCP
+  client that hangs up on tool calls after ~60s makes healthy long scans
+  look like failures; the guest log shows `nmap` ran to completion.
+
 ## [0.16.3] - 2026-10-20
 
 Vibe-and-Lima release. A third deployment option joins the two-machine setup

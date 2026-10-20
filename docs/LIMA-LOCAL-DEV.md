@@ -717,6 +717,9 @@ For better performance:
 | `limactl start mshin-core` warns `bind: address already in use` on 11434 | Ollama is also running natively on the Mac | Lima cannot forward the guest's Ollama to a host port that Ollama.app already holds. Harmless — the in-guest CLI uses the guest's own `localhost:11434`. Quit Ollama.app first if you want to reach the guest's Ollama from the Mac |
 | `limactl start` exits `did not receive an event with the running status` | The guest is still `Running` and cloud-init is mid-provision | On a loaded host the hostagent can time out while the guest is fine. Check inside with `limactl shell <name> -- sudo tail -f /var/log/cloud-init-output.log`; the pull/persona finish on their own. `limactl shell` reconnects once it is up |
 | `failed to listen tcp: 127.0.0.1:11434 ... address already in use` | Ollama is running on the **host** (e.g. `brew` install) on the same port | Harmless — only the host-side port-forward fails; the guest's own Ollama is unaffected. Stop host Ollama (`brew services stop ollama`) if you want the forward |
+| `Unit mcp-kali.service not found` | You ran `systemctl status mcp-kali` inside the Lima guest | The template installs `configs/mcp-kali.service` as `mshin-node`; `mcp-kali` is the bare-metal Kali Node's unit name. Use `systemctl status mshin-node` and `journalctl -u mshin-node` |
+| Node unreachable from the Mac: `curl http://<NODE_IP>:3000/health` times out while `limactl list` shows `Running` and the service is active in the guest | `socket_vmnet` has died on the host (`pgrep socket_vmnet` finds nothing), so the shared `192.168.105.0/24` network is down even though the guest keeps its address | Restart the guest so Lima re-establishes the bridge: `limactl stop mshin-node && limactl start mshin-node`. The address is DHCP — re-read it with `limactl shell mshin-node -- ip -4 -br addr show lima0` and update `<NODE_IP>` wherever the client points at it |
+| Tool call fails after exactly 60s on a long scan (the guest log shows `nmap` ran to completion) | The MCP client (e.g. Mistral Vibe) hangs up on tool calls that exceed its own timeout; a full `-sn` sweep of a live `/24` takes ~30s, but a quiet or unrouted subnet can take longer | Keep each scan under the client timeout: narrow the target range, or pass aggressive timing flags such as `['-sn','-T4','--min-parallelism','64','--max-retries','1']`. The scan itself is not failing — only the client stopped waiting |
 
 ### Common Commands
 
@@ -852,6 +855,7 @@ What is worth changing:
 | 2026-09-06 | Correct `limactl` syntax, document shared vmnet networking, systemd unit and sudoers allowlist | Jasper Frumau |
 | 2026-09-06 | Add `lima/` templates and split Setup into template and flag paths | Jasper Frumau |
 | 2026-09-06 | Enable Debian's `non-free` component so `nikto` installs | Jasper Frumau |
+| 2026-10-20 | Troubleshooting: the Lima guest's unit is `mshin-node`, not `mcp-kali`; a dead `socket_vmnet` makes the Node unreachable from the host while the guest looks healthy; client-side MCP timeouts kill scans longer than ~60s | Jasper Frumau |
 
 ---
 
