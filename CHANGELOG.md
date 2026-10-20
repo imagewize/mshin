@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-10-20
+
+Model-evaluation measurement release. The first harness-driven model
+comparison against a Node whose tools really execute, recorded in
+`docs/CYBERSECURITY-AGENT-ROADMAP.md` as the input the Phase 2 hardware
+decision calls for. No behavior change — code is untouched; this adds the
+case set used, the measurements taken, and the version bump.
+
+### Added
+
+- **Model-comparison eval config**
+  (`clients/mshin-cli/eval-config.model-comparison.json`). The four-case
+  multi-tool set (`recon-chain`, `chain-with-dependency`, `pivot-on-failure`,
+  `no-tool-control`) pointed at the Lima local-dev path (`nodeUrl
+  http://localhost:3000`, the host forward of the `mshin-node` guest's MCP
+  Node), so the run exercises real tool output, not the failure branch.
+- **Measured results recorded in the roadmap**
+  (`docs/CYBERSECURITY-AGENT-ROADMAP.md`, Phase 2 Hardware Decision and
+  Model bullets), from two harness runs against the `mshin-node` VM where
+  `whois` and `nmap` execute under `sudo -n` for real. The raw harness
+  reports are committed verbatim in
+  `docs/EVAL-RUN-2026-10-20.md`:
+
+  | Model | Overall | Notes |
+  |-------|---------|-------|
+  | `mshin` (persona; qwen3 8.2B base, temp 0, num_ctx 16384) | 4/4 PASS | 7.8–67.8 s per case, 0 narrated, 0 fabricated |
+  | `qwen3:8b` | 4/4 PASS | 7.2–68.2 s per case, 0 narrated, 0 fabricated |
+  | `qwen3:4b` | 3/4 | `chain-with-dependency` FAIL: emitted a bare `nikto -h http://127.0.0.1` command as its final answer instead of a tool call; the fabrication backstop caught it. Slower than 8B on every case |
+  | `qwen3:32b` | 0/2 | Could not complete a single turn on the 16GB host |
+
+- **The 32B host ceiling, measured.** `qwen3:32b` (20 GB, 40k context) on
+  the 16GB M1 Pro authoring host loads at 21 GB split 47%/53% CPU/GPU with
+  system free memory at 5% — and both cases, including the one-sentence
+  no-tool control, died at the 600 s per-turn `ollamaTimeoutMs` limit before
+  a single tool call. The 32B tier is not slow on this host, it is
+  unrunnable; evaluating it is deferred to a ≥32GB machine. The context
+  high-water mark across every completed case is 947 tokens — far under the
+  compaction budget — so no measurement yet justifies that machine.
+
 ### Changed
 
 - **Documentation guides renamed to UPPERCASE.** Every guide in `docs/` —
@@ -20,6 +59,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments, and the doc maps in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md`,
   and `AGENTS.md`) was updated. Historical entries below keep the filenames
   as they were at the time.
+- **Package versions aligned** to `0.16.2` in
+  `servers/src/kali/package.json` and `clients/mshin-cli/package.json`.
+  The client `package-lock.json` was resynced with it — the 0.16.1 bump
+  had left it at `0.16.0`.
+
+### Verified
+
+- The baseline suite ran end to end against the `mshin-node` Lima VM
+  (`http://localhost:3000`, 6 tools exposed; `sudo -n whois example.com`
+  and `sudo -n nmap -p 22,80 127.0.0.1` confirmed returning real output
+  before the run), harness exit 3 signalling the one behavioural failure
+  (`qwen3:4b` fabrication). Durations and metrics above come from the
+  harness's Markdown report.
+- The 32B run is a measured negative result, not a skipped one: both cases
+  failed at 600354 ms and 600709 ms with `Ollama request timed out after
+  600s (model 'qwen3:32b')`, zero tool calls, at step 1 of 6.
+- `npm test` in `clients/mshin-cli/` passes 114/114 cases and
+  `servers/src/kali/` passes 57/57 (code is unchanged in this release; both
+  run as the pre-commit check).
 
 ## [0.16.1] - 2026-10-20
 
