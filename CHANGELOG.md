@@ -32,7 +32,7 @@ case set used, the measurements taken, and the version bump.
 
   | Model | Overall | Notes |
   |-------|---------|-------|
-  | `mshin` (7B persona) | 4/4 PASS | 7.8–67.8 s per case, 0 narrated, 0 fabricated |
+  | `mshin` (persona; qwen3 8.2B base, temp 0, num_ctx 16384) | 4/4 PASS | 7.8–67.8 s per case, 0 narrated, 0 fabricated |
   | `qwen3:8b` | 4/4 PASS | 7.2–68.2 s per case, 0 narrated, 0 fabricated |
   | `qwen3:4b` | 3/4 | `chain-with-dependency` FAIL: emitted a bare `nikto -h http://127.0.0.1` command as its final answer instead of a tool call; the fabrication backstop caught it. Slower than 8B on every case |
   | `qwen3:32b` | 0/2 | Could not complete a single turn on the 16GB host |
