@@ -5,10 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.17.0] - 2026-10-20
+
+Host-side operations release, born from a live incident: a `socket_vmnet`
+daemon that died silently on the Mac left the Lima Node looking healthy from
+inside the guest while unreachable from the host, and every "verify the
+Node" instruction in the docs required hand-rolling the streamable-http MCP
+handshake in curl. This release ships the scripted form of that check, the
+troubleshooting section for the failure that motivated it, and the optional
+bridged networking that lets the Node see the physical LAN.
 
 ### Added
 
+- **Host-side Node probe script** (`scripts/probe_mcp_server.sh`). A minimal
+  MCP client in bash and curl: `/health`, an `initialize` handshake that
+  captures the `mcp-session-id`, the `notifications/initialized`
+  notification, and — passed as a second argument — one `tools/call`, parsed
+  from the single SSE `data:` line the server answers with. Exit codes
+  separate the failure modes: 0 healthy (and the tool call, if any,
+  succeeded), 1 unhealthy transport (`/health` down, initialize failed, no
+  session), 2 transport healthy but the tool call returned an error. The
+  token is read from `MSHIN_NODE_TOKEN` and never accepted as an argument or
+  printed. Wired into the Lima guide's recovery steps, so "verify from the
+  Mac, not from inside the guest" is one command instead of a curl dance.
 - **Optional bridged networking for the Lima Node** (`lima/mshin-node.yaml`,
   `docs/LIMA-LOCAL-DEV.md`). The shared vmnet network is routed, so the Node's
   root `nmap` cannot ARP-discover hosts that drop all unicast probes — a
@@ -22,6 +41,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MSHIN_NODE_TOKEN` on the unit — bridged, the whole LAN can reach the
   Node's root-privileged tools, so the bearer token moves from optional to
   mandatory.
+- **Dedicated troubleshooting section for the silent `socket_vmnet` death**
+  (`docs/LIMA-LOCAL-DEV.md`). Lima spawns `socket_vmnet` on demand when a
+  guest starts and nothing supervises it; when the daemon dies, the guest
+  keeps its DHCP lease and loopback services while the host loses the
+  bridge and its route to `192.168.105.0/24` — so every in-guest check
+  passes and an MCP client reports a bare `mcp_transport_failed`. The section
+  documents the host-side diagnosis (`netstat -rn`, `pgrep -fl
+  socket_vmnet`, the broken-pipe line in the hostagent log), the
+  stop/start recovery, and the probe script as the scripted verification.
+  The existing troubleshooting table row links to it. Verified against a
+  live incident on 2026-10-20: daemon dead at 19:06, VM restarted at 19:11,
+  route back and MCP initialize answering by 19:12.
+
+### Changed
+
+- **Package versions aligned** to `0.17.0` in
+  `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, and
+  both `package-lock.json` files resynced — the client lock had drifted to
+  `0.16.2` behind its `0.16.4` package.json.
+
+### Verified
+
+- `scripts/probe_mcp_server.sh` against the live `mshin-node` guest:
+  health-only run exits 0; a `tools/call` of `nmap -sn 127.0.0.1` returns
+  the scan and exits 0; a nonexistent tool name exits 2 with the server's
+  `isError: true` result. `bash -n` passes.
+- `npm test` in `servers/src/kali/` and `clients/mshin-cli/` (pre-commit
+  check; no code under either package changed in this release).
 
 ## [0.16.4] - 2026-10-20
 

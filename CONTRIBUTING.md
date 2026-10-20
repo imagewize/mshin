@@ -92,6 +92,7 @@ mshin/
 │   └── MAC-MINI-M4-CORE.md             # Mac Mini M4 Pro Core guide
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
+│   ├── probe_mcp_server.sh    # Host-side Node health/transport probe (minimal MCP client)
 │   └── setup_ollama.sh        # Ollama / Core setup script
 ├── configs/
 │   ├── mcp-kali.service       # systemd service for MCP server

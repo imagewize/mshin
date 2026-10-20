@@ -788,11 +788,12 @@ A broken pipe there means the daemon exited. A crash would leave a report in `~/
 limactl stop mshin-node && limactl start mshin-node
 # The address is DHCP — re-read it; it can change across restarts
 limactl shell mshin-node -- ip -4 -br addr show lima0
-# Verify from the Mac, not from inside the guest
-curl http://<NODE_IP>:3000/health
+# Verify from the Mac, not from inside the guest: /health, initialize,
+# session — plus one tool call if you pass its JSON as the second argument
+MSHIN_NODE_TOKEN=<token> scripts/probe_mcp_server.sh <NODE_IP>
 ```
 
-With the bridge back, `netstat -rn | grep 192.168.105` shows the `bridge101` route again and the MCP client connects on its next attempt. Update `<NODE_IP>` in the client config if the lease changed. All commands above were run against a live incident on 2026-10-20 and restored the connection.
+With the bridge back, `netstat -rn | grep 192.168.105` shows the `bridge101` route again and the MCP client connects on its next attempt. Update `<NODE_IP>` in the client config if the lease changed. All commands above were run against a live incident on 2026-10-20 and restored the connection; `scripts/probe_mcp_server.sh` is the repo's scripted form of the same check.
 
 ### Common Commands
 
@@ -931,6 +932,7 @@ What is worth changing:
 | 2026-10-20 | Troubleshooting: the Lima guest's unit is `mshin-node`, not `mcp-kali`; a dead `socket_vmnet` makes the Node unreachable from the host while the guest looks healthy; client-side MCP timeouts kill scans longer than ~60s | Jasper Frumau |
 | 2026-10-20 | Document optional bridged networking: L2 vantage for ARP discovery, wired-only caveat, mandatory `MSHIN_NODE_TOKEN` | Jasper Frumau |
 | 2026-10-20 | Troubleshooting: dedicated section for the silent `socket_vmnet` daemon death — host-side diagnosis (`netstat`, `pgrep`, hostagent log) and recovery, verified against a live incident | Jasper Frumau |
+| 2026-10-20 | `scripts/probe_mcp_server.sh`: scripted host-side Node verification (health, transport, optional tool call) wired into the recovery steps | Jasper Frumau |
 
 ---
 
