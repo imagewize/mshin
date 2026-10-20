@@ -117,6 +117,44 @@ Instances then opt in with `--network=lima:shared`, and each receives a DHCP add
 
 > **Single-VM setups** (see [Alternative: Single VM](#alternative-single-vm-all-in-one)) do not need any of this; everything talks over `localhost`.
 
+### Bridged networking (optional): the Node on your LAN
+
+The shared network above is **routed** — every packet the Node sends reaches your LAN as ordinary unicast from the Mac. Hosts that answer pings or keep a port open are visible to the Node's `nmap`; hosts that drop all unicast probes (a Windows laptop on its default firewall profile does exactly that) are invisible to it no matter how the scan is tuned, because ARP and broadcast never cross a routing boundary. Only a machine *on* the segment can see them.
+
+Bridged mode fixes the vantage point: the guest gets a second interface directly on the physical LAN, with a DHCP lease from your router. Since `tools.js` already runs `nmap` as root via the `NOPASSWD` allowlist, `nmap -sn -PR` from the guest then does ARP-level discovery and finds the hosts unicast scans cannot.
+
+**Three requirements:**
+
+1. **A wired host connection.** vmnet bridging does not work over Wi-Fi — access points forward frames only from associated MAC addresses, and the guest's frames arrive unassociated. If the Mac is on Wi-Fi, keep the shared network and scan from the Mac itself (`ping -c 3 <broadcast>` then `arp -a` needs no privileges and sees every responder).
+2. **A `bridged` network in `~/.lima/_config/networks.yaml`**, bound to the wired interface:
+   ```yaml
+   networks:
+     bridged:
+       mode: bridged
+       interface: en0
+   ```
+3. **`MSHIN_NODE_TOKEN` set on the unit inside the guest.** On the shared network only your Mac can reach the Node; bridged, the entire LAN can. Without a token, anyone on the network can drive all sixteen tools as root. Generate one (`openssl rand -hex 32`), then add it as a systemd drop-in:
+   ```bash
+   limactl shell mshin-node -- sudo systemctl edit mshin-node
+   # In the editor:
+   #   [Service]
+   #   Environment=MSHIN_NODE_TOKEN=<token>
+   #   # Optional: restrict which targets the tools may touch
+   #   Environment=MSHIN_ALLOWED_TARGETS=192.168.0.0/24
+   limactl shell mshin-node -- sudo systemctl restart mshin-node
+   ```
+   Point the client at the token the same way the bare-metal Core does (`--token` / `MSHIN_NODE_TOKEN`).
+
+**To enable**, uncomment `- lima: bridged` in `lima/mshin-node.yaml` (or pass `--network=lima:bridged` at create), and re-create the instance — `limactl create` snapshots the template, so editing it does not change an existing guest. The bridged interface appears as `lima1`; read its DHCP address with:
+
+```bash
+limactl shell mshin-node -- ip -4 -br addr show lima1
+```
+
+**Verify** the vantage point worked by re-running the sweep that motivated it: `nmap -sn -PR <LAN subnet>` from the Node should now list hosts that never answered a routed scan — with MAC vendors, which the shared network cannot see at all.
+
+> **Trade-off.** Bridged mode trades isolation for visibility. The shared network keeps the Node addressable only from your Mac; bridged makes it a first-class LAN member with root-privileged tools behind a single bearer token. Keep the token set, keep the Node on a trusted segment, and never forward port 3000 to the internet.
+
 ---
 
 ## Setup
@@ -856,6 +894,7 @@ What is worth changing:
 | 2026-09-06 | Add `lima/` templates and split Setup into template and flag paths | Jasper Frumau |
 | 2026-09-06 | Enable Debian's `non-free` component so `nikto` installs | Jasper Frumau |
 | 2026-10-20 | Troubleshooting: the Lima guest's unit is `mshin-node`, not `mcp-kali`; a dead `socket_vmnet` makes the Node unreachable from the host while the guest looks healthy; client-side MCP timeouts kill scans longer than ~60s | Jasper Frumau |
+| 2026-10-20 | Document optional bridged networking: L2 vantage for ARP discovery, wired-only caveat, mandatory `MSHIN_NODE_TOKEN` | Jasper Frumau |
 
 ---
 
