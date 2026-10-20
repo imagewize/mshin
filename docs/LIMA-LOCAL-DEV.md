@@ -125,7 +125,7 @@ Bridged mode fixes the vantage point: the guest gets a second interface directly
 
 **Three requirements:**
 
-1. **A wired host connection.** vmnet bridging does not work over Wi-Fi — access points forward frames only from associated MAC addresses, and the guest's frames arrive unassociated. If the Mac is on Wi-Fi, keep the shared network and scan from the Mac itself (`ping -c 3 <broadcast>` then `arp -a` needs no privileges and sees every responder).
+1. **A wired host connection — or an AP that tolerates unassociated MACs.** The bridged guest emits frames with a virtual MAC the access point has never associated. Wired, that never matters. Over Wi-Fi, many APs silently drop such frames; others forward them and the feature works end to end — verified on a TOTOLINK router over Wi-Fi (2026-10-20): DHCP lease from the LAN, bidirectional unicast with the host, and `nmap -sn -PR` from the guest found every host on the segment, including the Windows machine invisible to every routed scan. Test yours before relying on it: create a throwaway guest with `--network=lima:bridged`, ping its LAN address from the Mac, and run `sudo nmap -sn -PR <LAN subnet>` from inside. If either fails, use a cable, or stay on the shared network and scan from the Mac itself (`ping -c 3 <broadcast>` then `arp -a` needs no privileges and sees every responder).
 2. **A `bridged` network in `~/.lima/_config/networks.yaml`**, bound to the wired interface:
    ```yaml
    networks:

@@ -15,11 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows laptop on its default firewall profile is invisible to it. An
   opt-in `- lima: bridged` entry puts the guest directly on the physical LAN
   (`lima1`), where `nmap -sn -PR` sees those hosts with MAC vendors. The docs
-  spell out the three requirements: a **wired** host connection (vmnet
-  bridging does not work over Wi-Fi), a `bridged` network in
-  `~/.lima/_config/networks.yaml`, and `MSHIN_NODE_TOKEN` on the unit —
-  bridged, the whole LAN can reach the Node's root-privileged tools, so the
-  bearer token moves from optional to mandatory.
+  spell out the requirements: a wired host connection, or an access point
+  that forwards frames for unassociated MACs (verified working over Wi-Fi on
+  a TOTOLINK router — many APs drop such frames, so test first); a
+  `bridged` network in `~/.lima/_config/networks.yaml`; and
+  `MSHIN_NODE_TOKEN` on the unit — bridged, the whole LAN can reach the
+  Node's root-privileged tools, so the bearer token moves from optional to
+  mandatory.
 
 ## [0.16.4] - 2026-10-20
 
