@@ -8,7 +8,7 @@ import {
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { tools } from "./tools.js";
-import { ALLOWED_TARGETS } from "./config.js";
+import { ALLOWED_TARGETS, AUTH_TOKEN, isValidAuthToken } from "./config.js";
 
 const PORT = process.env.MSHIN_NODE_PORT
   ? parseInt(process.env.MSHIN_NODE_PORT, 10)
@@ -36,6 +36,11 @@ if (ALLOWED_TARGETS && ALLOWED_TARGETS.length > 0) {
   console.error(`[INFO] Target scope allowlist: ${ALLOWED_TARGETS.join(", ")}`);
 } else {
   console.error(`[INFO] No target scope allowlist configured (MSHIN_ALLOWED_TARGETS)`);
+}
+if (AUTH_TOKEN) {
+  console.error("[INFO] Bearer-token authentication: enabled (MSHIN_NODE_TOKEN set)");
+} else {
+  console.error("[INFO] Bearer-token authentication: disabled (MSHIN_NODE_TOKEN not set)");
 }
 
 // Build a fresh Server instance for each client connection. A single Server
@@ -82,6 +87,25 @@ function createServer() {
 }
 
 const app = express();
+
+// When MSHIN_NODE_TOKEN is set, every /mcp request must present it as a
+// bearer token. The check runs before any session lookup, so an
+// unauthenticated caller never reaches the MCP layer. /health stays open:
+// it reports only status and the tool list (public in this repo), and
+// keeping it open preserves the documented curl check and monitoring.
+function requireAuth(req, res, next) {
+  if (AUTH_TOKEN === null) return next();
+  const header = req.headers.authorization;
+  const match =
+    typeof header === "string" ? /^Bearer\s+(\S+)$/i.exec(header) : null;
+  if (match && isValidAuthToken(match[1])) return next();
+  res.set("WWW-Authenticate", 'Bearer realm="mshin-node"');
+  res
+    .status(401)
+    .json({ error: "Unauthorized: the Machin Shin Node requires a bearer token." });
+}
+
+app.use("/mcp", requireAuth);
 
 // Active Streamable HTTP transports keyed by session id, so concurrent clients
 // (and reconnects) each get their own message channel.
