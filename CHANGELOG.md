@@ -7,8 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation guides renamed to UPPERCASE.** Every guide in `docs/` —
+  `ARCHITECTURE.md`, `CYBERSECURITY-AGENT-ROADMAP.md`,
+  `DEVELOPER-ONBOARDING.md`, `LIMA-LOCAL-DEV.md`, `MAC-MINI-M4-CORE.md`,
+  `RASPBERRY-PI-NODE.md`, `REFACTORING-IDEAS.md`, `SETUP.md`, and
+  `WORKFLOWS.md` — now uses an uppercase filename, matching the root-level
+  docs (`README.md`, `AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`,
+  `CONTRIBUTING.md`, `KALI-OPENLLM.md`). Renames were done with `git mv`;
+  every cross-reference (the guides themselves, the `lima/` templates, code
+  comments, and the doc maps in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md`,
+  and `AGENTS.md`) was updated. Historical entries below keep the filenames
+  as they were at the time.
+
+## [0.16.0] - 2026-10-20
+
+Security-hardening release. Adds bearer-token authentication to the MCP Node
+and the clients that talk to it, and lands the target scope allowlist in the
+same version. The Node previously accepted tool calls from any host on the
+LAN; with `MSHIN_NODE_TOKEN` set, only a caller presenting the token can
+reach `/mcp`. The allowlist constrains *targets*; the token constrains
+*callers*.
+
 ### Added
 
+- **Bearer-token authentication** via the `MSHIN_NODE_TOKEN` environment
+  variable (`servers/src/kali/config.js`). When set, every `/mcp` request
+  must carry `Authorization: Bearer <token>` or the server answers 401 with
+  a `WWW-Authenticate: Bearer` header, before any session lookup. The token
+  is compared in constant time (both sides SHA-256-hashed before
+  `timingSafeEqual`), so the comparison leaks neither its value nor its
+  length. Unset or empty means no authentication — the legacy behavior, so
+  existing deployments keep working. `/health` stays open so the documented
+  health check and monitoring keep working.
+- **Startup logging** in `servers/src/kali/index.js` reports whether
+  bearer-token authentication is enabled or disabled (never the token
+  itself).
+- **Client token support**:
+  - `clients/mshin-cli/index.js` accepts `--token <token>` (falling back to
+    the `MSHIN_NODE_TOKEN` environment variable) and sends it as a bearer
+    token on every MCP request. A failed connect now prints a hint when no
+    token was provided.
+  - `clients/mshin-cli/eval-harness.js` reads `nodeToken` from the eval
+    config file (falling back to `MSHIN_NODE_TOKEN`) and sends it the same
+    way.
+  - The `mshin` wrapper installed by `scripts/setup_ollama.sh` forwards
+    `--token` to the CLI.
+- **Setup-script provisioning** (`scripts/setup_mcp_server.sh`). Generates a
+  token (`openssl rand -hex 32`), persists it root-only at
+  `/etc/mshin-node-token` (mode 600) so re-runs reuse the same credential
+  instead of locking out the Core, and injects the
+  `Environment=MSHIN_NODE_TOKEN=...` line into the systemd unit by replacing
+  the placeholder comment in `configs/mcp-kali.service`.
+  `MSHIN_NODE_TOKEN=... sudo -E bash "$0"` overrides the generated value.
+  The setup summary prints where the token lives and how to pass it to the
+  Core — never the token itself.
+- **Server tests** (`servers/src/kali/auth.test.js`, 8 cases). Unit coverage
+  for `tokensMatch` / `isValidAuthToken`, plus integration coverage that
+  boots the real server with a token set: 401 without a token, 401 with the
+  wrong token, 401 before session lookup on GET, `/health` open, a full MCP
+  initialize + listTools with the correct token, and a rejected connect
+  without one.
+- **Client tests** (3 cases) for `loadConfig`: `nodeToken` from the config
+  file, fallback to `MSHIN_NODE_TOKEN` then `null`, and config-over-env
+  precedence.
 - **Target scope allowlist** via `MSHIN_ALLOWED_TARGETS` environment variable
   (`servers/src/kali/config.js`). When set, the Node rejects any network-facing
   tool argument (IP, CIDR, hostname, or URL hostname) that is not in the
@@ -28,14 +91,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Documentation**: `docs/setup.md` (new section 1.11), `KALI-OPENLLM.md`
+  (new section 1.8), `configs/mcp-kali.service` (commented
+  `MSHIN_NODE_TOKEN` placeholder), `servers/src/kali/README.md` (new
+  Authentication section), and `clients/mshin-cli/README.md` (`--token`
+  usage and the `nodeToken` config field) document the authentication flow.
 - `docs/setup.md` and `KALI-OPENLLM.md` document `MSHIN_ALLOWED_TARGETS`,
   including systemd unit examples and reload instructions.
+- **Package versions aligned** to `0.16.0` in
+  `servers/src/kali/package.json` and `clients/mshin-cli/package.json`.
+
+### Fixed
+
+- **`docs/developer-onboarding.md` had drifted stale since 0.14.2**: it
+  listed 13 of the 16 tools, omitted `john` from `ACTIVE_TOOLS`, gave
+  outdated line counts, and mentioned neither `config.js` in either package
+  nor `scope.test.js`. Corrected throughout.
+- **`servers/src/kali/README.md` listed 6 of the 16 tools** and told
+  contributors to document new tools in `configs/ollama-modelfile` — which
+  `CLAUDE.md` deliberately keeps off that list, because a hand-written tool
+  roster in the system prompt trains small models to emit tool calls as
+  text instead of native `tool_calls`. Both corrected.
 
 ### Verified
 
-- `npm test` in `servers/src/kali/` passes 49 cases, including the new scope
-  tests.
-- `npm test` in `clients/mshin-cli/` passes all existing cases.
+- `npm test` in `servers/src/kali/` passes 57/57 cases, including the new
+  auth and scope tests.
+- `npm test` in `clients/mshin-cli/` passes 102/102 cases.
+- **Live server with `MSHIN_NODE_TOKEN` set**: startup logs `Bearer-token
+  authentication: enabled`; `GET /health` answers 200 without a token;
+  `POST /mcp` without a token answers 401 with `WWW-Authenticate: Bearer
+  realm="mshin-node"`; `POST /mcp` with a wrong token answers 401; `GET
+  /mcp` without a token answers 401 (auth runs before session lookup); an
+  initialize request with the correct token answers 200.
+- **Live server without a token**: startup logs `Bearer-token
+  authentication: disabled`; an initialize request without a token answers
+  200 (legacy open behavior unchanged).
+- `bash -n` passes on `scripts/setup_mcp_server.sh` and
+  `scripts/setup_ollama.sh`; the unit-injection `sed` was exercised against
+  a copy of `configs/mcp-kali.service`.
+- `node index.js --help` (client) prints the new `--token` option.
 
 ## [0.15.0] - 2026-09-11
 

@@ -140,10 +140,37 @@ ${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin
 EOF
 chmod 440 /etc/sudoers.d/mshin
 
+# --- Configure Node Authentication Token ---
+
+echo "[+] Configuring MCP server authentication token..."
+# The Node listens on 0.0.0.0:3000; without a token any host on the LAN can
+# drive its tools. The token is persisted in /etc/mshin-node-token (root-only)
+# so re-running this script reuses the same credential instead of locking out
+# the Core. Supply your own with MSHIN_NODE_TOKEN=... sudo -E bash "$0".
+MSHIN_TOKEN_FILE="/etc/mshin-node-token"
+if [ -n "${MSHIN_NODE_TOKEN:-}" ]; then
+    umask 077
+    printf '%s\n' "${MSHIN_NODE_TOKEN}" > "${MSHIN_TOKEN_FILE}"
+    echo "[INFO] Using the token supplied via MSHIN_NODE_TOKEN."
+elif [ ! -s "${MSHIN_TOKEN_FILE}" ]; then
+    umask 077
+    openssl rand -hex 32 > "${MSHIN_TOKEN_FILE}"
+    echo "[INFO] Generated a new Node auth token."
+else
+    echo "[INFO] Reusing the existing Node auth token."
+fi
+chmod 600 "${MSHIN_TOKEN_FILE}"
+MSHIN_NODE_TOKEN_VALUE="$(cat "${MSHIN_TOKEN_FILE}")"
+
 # --- Set Up MCP Server as a Systemd Service ---
 
 echo "[+] Setting up MCP server as a systemd service..."
 cp "${MSHIN_DIR}/configs/mcp-kali.service" /etc/systemd/system/mshin-node.service
+# Turn the unit's commented-out MSHIN_NODE_TOKEN placeholder into the real
+# value, so the /mcp endpoint requires a bearer token. The -i.bak form works
+# on both GNU and BSD sed.
+sed -i.bak "s|^# Environment=MSHIN_NODE_TOKEN=.*|Environment=MSHIN_NODE_TOKEN=${MSHIN_NODE_TOKEN_VALUE}|" /etc/systemd/system/mshin-node.service
+rm -f /etc/systemd/system/mshin-node.service.bak
 
 systemctl daemon-reload
 systemctl enable mshin-node
@@ -198,11 +225,17 @@ else
 fi
 echo "   Service: mshin-node (enabled and started)"
 echo "   Tools: ${TOOLS_LIST}"
+echo "   Auth: bearer token required on /mcp (MSHIN_NODE_TOKEN)"
+echo ""
+echo "   The auth token is stored root-only at ${MSHIN_TOKEN_FILE}."
+echo "   Copy it to the Core; the CLI needs it as --token <value> or"
+echo "   MSHIN_NODE_TOKEN=<value>. Retrieve it with:"
+echo "   sudo cat ${MSHIN_TOKEN_FILE}"
 echo ""
 echo "   To test the MCP server:"
 echo "   curl http://localhost:3000/health"
 echo ""
 echo "   Next steps:"
 echo "   1. Note the IP of this machine (Machin Shin Node)."
-echo "   2. Set up Machin Shin Core with this IP."
+echo "   2. Set up Machin Shin Core with this IP and the auth token."
 echo ""

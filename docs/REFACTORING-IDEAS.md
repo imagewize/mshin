@@ -6,7 +6,7 @@ A short, honest backlog of refactoring ideas for Machin Shin — and, just as im
 
 Keep it conservative. The codebase is small (~3,600 lines of source, ~2,450 lines of tests) and its constraints are real — most notably the near-zero-dependency rule and the four-places tool-sync rule from `CLAUDE.md`. Do not import complexity the project doesn't need.
 
-New here? Read [Developer Onboarding](developer-onboarding.md) first — it covers the learning path and the architecture these ideas refer to.
+New here? Read [Developer Onboarding](DEVELOPER-ONBOARDING.md) first — it covers the learning path and the architecture these ideas refer to.
 
 ---
 
@@ -58,7 +58,7 @@ Keep the safety and validation logic sacrosanct, make small testable changes, an
 
 ## See Also
 
-- [Developer Onboarding](developer-onboarding.md) — learning path and architecture
+- [Developer Onboarding](DEVELOPER-ONBOARDING.md) — learning path and architecture
 - [CLAUDE.md](../CLAUDE.md) — repo facts, the four-places rule, commit conventions
 - [AGENTS.md](../AGENTS.md) — working rules for contributors
 

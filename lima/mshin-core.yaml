@@ -4,7 +4,7 @@
 #   limactl start mshin-core
 #
 # Ubuntu LTS with Ollama, a small local model, the mshin persona and the
-# Machin Shin CLI client. See docs/lima-local-dev.md.
+# Machin Shin CLI client. See docs/LIMA-LOCAL-DEV.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so the
 # guest is native on both Intel and Apple Silicon Macs.
@@ -16,7 +16,7 @@ base:
   - template:_default/mounts
 
 cpus: 4
-# 10GiB, not 16: docs/lima-local-dev.md puts the host minimum at 16GB, and a
+# 10GiB, not 16: docs/LIMA-LOCAL-DEV.md puts the host minimum at 16GB, and a
 # guest sized to the whole host leaves nothing for macOS — or for the Node
 # guest, which has to run at the same time for an end-to-end test. 10GiB fits
 # the default 7B model with headroom. Raise it on a bigger Mac with
@@ -29,7 +29,7 @@ containerd:
   system: false
   user: false
 
-# Requires the one-time host setup described in docs/lima-local-dev.md:
+# Requires the one-time host setup described in docs/LIMA-LOCAL-DEV.md:
 #   brew install socket_vmnet
 #   limactl sudoers | sudo tee /etc/sudoers.d/lima
 networks:

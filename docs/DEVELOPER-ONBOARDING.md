@@ -2,7 +2,7 @@
 
 > *"The way of the leaf is not always the easiest path, but it is the path of wisdom. So too with code: the path of understanding may be long, but it leads to mastery."*
 
-A learning path for developers joining Machin Shin, and a map of how the JavaScript fits together. For proposed cleanups and the reasoning behind them, see [Refactoring Ideas](refactoring-ideas.md).
+A learning path for developers joining Machin Shin, and a map of how the JavaScript fits together. For proposed cleanups and the reasoning behind them, see [Refactoring Ideas](REFACTORING-IDEAS.md).
 
 ---
 
@@ -24,7 +24,7 @@ A learning path for developers joining Machin Shin, and a map of how the JavaScr
 - `README.md` — project overview and quick start
 - `CLAUDE.md` — canonical repo facts and conventions (the source of truth)
 - `AGENTS.md` — working rules for anyone (human or agent) changing the code
-- `docs/architecture.md` — system design, including "Why Ollama (and not raw llama.cpp)?"
+- `docs/ARCHITECTURE.md` — system design, including "Why Ollama (and not raw llama.cpp)?"
 
 **Key concepts:**
 1. **Two-machine architecture:** Core (LLM inference + CLI) ↔ Node (Kali tools + MCP server, port 3000).
@@ -40,22 +40,24 @@ The CLI connects to Ollama for inference and to the MCP server for tools, then r
 
 **Read in order:**
 
-1. **`index.js`** (251 lines) — entry point. Arg parsing, MCP client setup, readline interface, session wiring.
-2. **`agent.js`** (1130 lines) — the core. Start with the `Agent` class:
+1. **`index.js`** (275 lines) — entry point. Arg parsing (including `--token` for Node authentication), MCP client setup, readline interface, session wiring.
+2. **`agent.js`** (1157 lines) — the core. Start with the `Agent` class:
    - `run()` — the main loop.
    - `queryOllama()` — talks to Ollama over `node:http` directly (not `fetch`) for timeout control.
    - `compactContext()` — context-window management: compresses long tool results, preserves the system prompt / user goal / findings summary, drops the oldest messages when over budget.
    - `extractTextToolCall()` and helpers — recover tool calls when a model emits them as text instead of native `tool_calls`.
    - `looksLikeFabricatedToolOutput()` / `ungroundedToolsIn()` — detect and block invented tool output.
    - `AgentMemory` — JSON session storage under `~/.mshin/memory.json`.
-3. **`findings-memory.js`** (845 lines) — structured findings memory. Exports `FindingsMemory` plus per-tool parsers (`parseNmapOutput`, `parseWhoisOutput`, `parseSearchsploitOutput`, `parseNiktoOutput`). Keeps critical facts alive across context compaction.
+3. **`findings-memory.js`** (920 lines) — structured findings memory. Exports `FindingsMemory` plus per-tool parsers (`parseNmapOutput`, `parseWhoisOutput`, `parseSearchsploitOutput`, `parseNiktoOutput`). Keeps critical facts alive across context compaction.
 4. **`session-logger.js`** (127 lines) — structured session logs for debugging and audit (`SessionLogger`, `makeSessionLogger`).
-5. **`eval-harness.js`** (572 lines) — the evaluation harness (`EvalHarness`, `behaviourVerdict`, `loadConfig`, `writeReport`). Regression testing for agent behaviour.
+5. **`eval-harness.js`** (580 lines) — the evaluation harness (`EvalHarness`, `behaviourVerdict`, `loadConfig`, `writeReport`). Regression testing for agent behaviour.
+6. **`config.js`** (52 lines) — the loop's tunables: step/history/context budgets, Ollama timeout, tool-result compression limits, `FINDINGS_SUMMARY_MARKER`, `ACTIVE_TOOLS`, `NON_RETRYABLE_TOOL_ERROR_RE`. Imported by `agent.js`.
 
 #### Server (`servers/src/kali/`)
 
-1. **`index.js`** (154 lines) — Express + MCP server. `GET/POST/DELETE /mcp`, `GET /health`, per-session transports, `--tools` parsing.
-2. **`tools.js`** (553 lines) — tool definitions and execution. `TOOL_PATHS`, `runTool()` (sudo handling, timeouts, buffer limits), `assertSafe()` / `assertSafeArray()` (shell-injection guards), `buildMsfScript()`. Currently defines: nmap, searchsploit, nikto, whois, tshark, metasploit, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum.
+1. **`index.js`** (184 lines) — Express + MCP server. `GET/POST/DELETE /mcp`, `GET /health`, per-session transports, `--tools` parsing, and the `requireAuth()` bearer-token middleware that runs when `MSHIN_NODE_TOKEN` is set.
+2. **`tools.js`** (676 lines) — tool definitions and execution. `runTool()` (sudo handling, timeouts, buffer limits), `assertSafe()` / `assertSafeArray()` (shell-injection guards), `buildMsfScript()`. Defines the sixteen tools: nmap, searchsploit, nikto, whois, tshark, metasploit, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux, ffuf, john.
+3. **`config.js`** (213 lines) — server tunables and guards: `TOOL_PATHS`, `DEFAULT_TIMEOUT_MS`, the shell-metacharacter regexes, the `MSHIN_ALLOWED_TARGETS` scope allowlist (`isTargetAllowed`, `assertTargetInScope`), and the `MSHIN_NODE_TOKEN` bearer-token check (`AUTH_TOKEN`, `tokensMatch`, `isValidAuthToken`).
 
 ### Phase 3: Running and Testing (Week 3)
 
@@ -71,9 +73,9 @@ npm test    # runs node --check on every source file, then `node --test`
 npm run check   # syntax pass only
 ```
 
-The suites are substantial and are your safety net when refactoring:
-- `clients/mshin-cli/`: `agent.test.js` (1185 lines, ~57 cases), `eval-harness.test.js` (596), `findings-memory.test.js` (369)
-- `servers/src/kali/`: `tools.test.js` (186), `transport.test.js` (119)
+The suites are substantial and are your safety net when refactoring (57 server cases, 102 client cases as of 0.16.0):
+- `clients/mshin-cli/`: `agent.test.js` (1186 lines, ~57 cases), `eval-harness.test.js` (640), `findings-memory.test.js` (369)
+- `servers/src/kali/`: `tools.test.js` (287), `scope.test.js` (129), `transport.test.js` (119), `auth.test.js` (149)
 
 **Exercise:** add a case to `tools.test.js` for a new `assertSafe` rejection scenario. Run `npm test` and confirm it passes.
 
@@ -111,14 +113,14 @@ agent.js
 │   ├── extractTextToolCall() → extractJsonToolCall(), extractFunctionSyntaxToolCall()
 │   └── looksLikeFabricatedToolOutput(), ungroundedToolsIn()
 ├── AgentMemory — ~/.mshin/memory.json
-└── constants (agent.js:12–47)
+└── config.js — the loop's tunables
     ├── DEFAULT_MAX_STEPS = 25
     ├── DEFAULT_MAX_HISTORY_MESSAGES = 40
     ├── DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000
     ├── DEFAULT_OLLAMA_TIMEOUT_MS = 600_000
     ├── DEFAULT_MAX_TOOL_RESULT_LINES / HEAD / TAIL = 60 / 25 / 25
     ├── FINDINGS_SUMMARY_MARKER = "[Findings Summary"
-    └── ACTIVE_TOOLS = Set(metasploit, hydra, sqlmap)
+    └── ACTIVE_TOOLS = Set(metasploit, hydra, sqlmap, john)
 ```
 
 ### Server call tree
@@ -126,16 +128,20 @@ agent.js
 ```
 index.js (MCP server)
 ├── parseEnabledTools() — from --tools
+├── requireAuth() — bearer-token check on /mcp when MSHIN_NODE_TOKEN is set
 ├── createServer() — ListTools + CallTool handlers
 ├── Express: GET/POST/DELETE /mcp, GET /health
 └── per-session transports Map
 
 tools.js
-├── TOOL_PATHS, DEFAULT_TIMEOUT_MS = 300_000, SHELL_META_RE
 ├── assertSafe(), assertSafeArray()
 ├── runTool() — sudo -n when non-root, timeout, buffer caps, execFile (no shell)
 ├── buildMsfScript()
 └── tools[] — each { name, description, inputSchema, handler }
+
+config.js — TOOL_PATHS, DEFAULT_TIMEOUT_MS = 300_000, SHELL_META_RE
+├── target scope allowlist (MSHIN_ALLOWED_TARGETS)
+└── bearer-token check (MSHIN_NODE_TOKEN)
 ```
 
 ### Safety mechanisms (do not weaken these)
@@ -144,17 +150,18 @@ tools.js
 - Binaries run via `execFile`, never `exec` or a shelled `spawn`.
 - `runTool()` prefixes `sudo -n` when the process isn't root — which is why the `sudoers` allowlist is part of the four-places rule; a missing entry fails at call time, not startup.
 - Fabrication detection blocks unverified "results" from reaching the user.
-- `ACTIVE_TOOLS` (metasploit, hydra, sqlmap) require explicit user approval.
+- `ACTIVE_TOOLS` (metasploit, hydra, sqlmap, john) require explicit user approval.
+- When `MSHIN_NODE_TOKEN` is set on the server, every `/mcp` request must carry it as a bearer token; the CLI sends it via `--token` or `MSHIN_NODE_TOKEN`, and the eval harness via the `nodeToken` config field.
 
 ---
 
 ## See Also
 
-- [Refactoring Ideas](refactoring-ideas.md) — proposed cleanups and the reasoning behind them
-- [Architecture](architecture.md) — system design and components
+- [Refactoring Ideas](REFACTORING-IDEAS.md) — proposed cleanups and the reasoning behind them
+- [Architecture](ARCHITECTURE.md) — system design and components
 - [CLAUDE.md](../CLAUDE.md) — repo facts, the four-places rule, commit conventions
 - [AGENTS.md](../AGENTS.md) — working rules for contributors
 
 ---
 
-*Last updated: 2026-09-11*
+*Last updated: 2026-10-20*

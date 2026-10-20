@@ -9,6 +9,12 @@ ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whoi
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production
+# Require bearer-token authentication on /mcp: without it, any host on the
+# LAN can drive the Node's tools. Set a random token (openssl rand -hex 32)
+# and give the same value to the Core (CLI --token flag or MSHIN_NODE_TOKEN).
+# scripts/setup_mcp_server.sh injects this line from /etc/mshin-node-token.
+# Leave commented to keep the legacy open behavior.
+# Environment=MSHIN_NODE_TOKEN=
 
 # Security settings
 # NoNewPrivileges is deliberately NOT set. tools.js runs most binaries as

@@ -8,7 +8,7 @@ This guide describes how to run a **local, single-machine Machin Shin developmen
 
 ## Overview
 
-The standard [Machin Shin architecture](architecture.md) uses two physical machines:
+The standard [Machin Shin architecture](ARCHITECTURE.md) uses two physical machines:
 - **Machin Shin Core**: LLM inference server (32GB+ RAM)
 - **Machin Shin Node**: Kali Linux + MCP server (x86_64 mini PC)
 
@@ -816,8 +816,8 @@ What is worth changing:
 
 - [Lima Documentation](https://github.com/lima-vm/lima)
 - [Ollama Documentation](https://github.com/jmorganca/ollama)
-- [Machin Shin Architecture](architecture.md)
-- [Machin Shin Setup Guide](setup.md)
+- [Machin Shin Architecture](ARCHITECTURE.md)
+- [Machin Shin Setup Guide](SETUP.md)
 - [Kali Linux Tools](https://www.kali.org/tools/)
 
 ---
@@ -830,7 +830,7 @@ What is worth changing:
 4. **Not for production:** This setup is for **learning and testing only**.
 5. **Network isolation:** The virtual network is isolated from your physical LAN by default.
 
-> **For production use:** Follow the [full setup guide](setup.md) with dedicated hardware.
+> **For production use:** Follow the [full setup guide](SETUP.md) with dedicated hardware.
 
 ---
 

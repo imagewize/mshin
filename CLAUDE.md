@@ -18,7 +18,7 @@ Everything is meant to be deployed onto two separate Linux machines. The macOS w
 
 Everything here describes splitting LLM inference from security-tool execution across two LAN-connected hosts:
 
-- **Machin Shin Core** — runs **Ollama** (Mistral Small 3 / Llama 3.3 70B) for inference plus the **Machin Shin CLI client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/mshin` that launches `/opt/mshin/clients/mshin-cli/index.js` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/architecture.md` ("Why Ollama (and not raw llama.cpp)?").
+- **Machin Shin Core** — runs **Ollama** (Mistral Small 3 / Llama 3.3 70B) for inference plus the **Machin Shin CLI client**. Provisioned by `scripts/setup_ollama.sh`. The script installs a wrapper at `/usr/local/bin/mshin` that launches `/opt/mshin/clients/mshin-cli/index.js` pointed at the Node's IP. Ollama (not raw llama.cpp) is a deliberate choice — Ollama runs on llama.cpp anyway, and the Modelfile/daemon/model-management ergonomics matter more here than the marginal wrapper overhead. The full rationale lives in `docs/ARCHITECTURE.md` ("Why Ollama (and not raw llama.cpp)?").
 - **Machin Shin Node** — runs **Kali Linux** and the **custom Kali MCP server** (`servers/src/kali`) exposing tools (`nmap`, `metasploit`, `searchsploit`, `nikto`, `whois`, `tshark`) on port **3000**. Provisioned by `scripts/setup_mcp_server.sh`, kept alive by the `mshin-node` systemd service (`configs/mcp-kali.service`).
 
 Data flow: `User prompt → Core (LLM) → Machin Shin CLI → MCP client → MCP server (Node, :3000) → Kali tool → result back up the chain`. The LLM's persona is defined in `configs/ollama-modelfile` (an Ollama Modelfile: `ollama create mshin -f <file>`); the tool list reaches the model at runtime as the MCP `tools` array the CLI passes to Ollama, **not** from the Modelfile.
@@ -39,7 +39,7 @@ The sudoers entry is the easiest to miss: `servers/src/kali/tools.js` runs each 
 
 The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 
-- `docs/` holds the split guides: `architecture.md`, `setup.md`, `workflows.md`, `cybersecurity-agent-roadmap.md`, `lima-local-dev.md`.
+- `docs/` holds the split guides: `ARCHITECTURE.md`, `SETUP.md`, `WORKFLOWS.md`, `CYBERSECURITY-AGENT-ROADMAP.md`, `LIMA-LOCAL-DEV.md`.
 - `scripts/` holds both provisioning scripts: `setup_mcp_server.sh` (Node) and `setup_ollama.sh` (Core).
 - `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
 - `lima/` holds the two Lima templates for the macOS local-dev path: `mshin-node.yaml` (Node guest) and `mshin-core.yaml` (Core guest). The Node guest is named **mshin-node**, not mshin-kali: it is Debian, not Kali Linux, so it is named for its architectural role (pairing with mshin-core) rather than the OS (the production Node still runs real Kali). It now provisions the full six-tool set — nmap, whois, tshark and nikto from Debian, metasploit and searchsploit from their upstream vendors (Rapid7's apt repo and exploit-db's git repo, not Kali's repo). The persona is built on a 7B model rather than the Modelfile's `mistral-small`.

@@ -14,6 +14,7 @@ function parseArgs() {
   let nodeUrl = DEFAULT_NODE_URL;
   let ollamaUrl = DEFAULT_OLLAMA_URL;
   let model = DEFAULT_MODEL;
+  let nodeToken = "";
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -26,6 +27,9 @@ function parseArgs() {
       case "--model":
         model = args[++i];
         break;
+      case "--token":
+        nodeToken = args[++i];
+        break;
       case "--help":
       case "-h":
         console.log(`Usage: mshin [OPTIONS] [NODE_IP]
@@ -34,6 +38,7 @@ Options:
   --node URL      Machin Shin Node MCP URL (default: ${DEFAULT_NODE_URL})
   --ollama URL    Ollama base URL (default: ${DEFAULT_OLLAMA_URL})
   --model NAME    Ollama model name (default: ${DEFAULT_MODEL})
+  --token TOKEN   Bearer token for Node authentication (or set MSHIN_NODE_TOKEN)
 
 The positional NODE_IP argument can be used as a shortcut for --node.
 `);
@@ -47,7 +52,7 @@ The positional NODE_IP argument can be used as a shortcut for --node.
     }
   }
 
-  return { nodeUrl, ollamaUrl, model };
+  return { nodeUrl, ollamaUrl, model, nodeToken };
 }
 
 function mcpToolsToOllama(tools) {
@@ -62,12 +67,16 @@ function mcpToolsToOllama(tools) {
 }
 
 async function main() {
-  const { nodeUrl, ollamaUrl, model } = parseArgs();
+  const { nodeUrl, ollamaUrl, model, nodeToken: tokenArg } = parseArgs();
+  // The flag wins over the environment; both are optional. When the Node has
+  // MSHIN_NODE_TOKEN set, every MCP request must carry it as a bearer token.
+  const authToken = tokenArg || process.env.MSHIN_NODE_TOKEN || "";
 
   console.log("Starting Machin Shin Core...");
   console.log(`  Ollama:  ${ollamaUrl}`);
   console.log(`  Model:   ${model}`);
   console.log(`  Node:    ${nodeUrl}`);
+  console.log(`  Token:   ${authToken ? "provided" : "none"}`);
   console.log("");
 
   // Verify Ollama is reachable.
@@ -87,8 +96,23 @@ async function main() {
   );
 
   const mcpUrl = new URL("/mcp", nodeUrl);
-  const transport = new StreamableHTTPClientTransport(mcpUrl);
-  await client.connect(transport);
+  const transportOptions = authToken
+    ? { requestInit: { headers: { Authorization: `Bearer ${authToken}` } } }
+    : {};
+  const transport = new StreamableHTTPClientTransport(mcpUrl, transportOptions);
+  try {
+    await client.connect(transport);
+  } catch (err) {
+    console.error(
+      `[ERROR] Could not connect to the Machin Shin Node at ${nodeUrl}: ${err.message}`
+    );
+    if (!authToken) {
+      console.error(
+        "        If the Node requires authentication, pass --token <token> or set MSHIN_NODE_TOKEN."
+      );
+    }
+    process.exit(1);
+  }
 
   const mcpTools = await client.listTools();
   const ollamaTools = mcpToolsToOllama(mcpTools.tools);

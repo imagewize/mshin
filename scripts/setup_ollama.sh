@@ -160,9 +160,14 @@ sudo tee /usr/local/bin/mshin <<'EOF'
 # Usage:
 #   mshin [NODE_IP_OR_URL]
 #   mshin --node http://192.168.1.100:3000 --model mshin
+#   mshin --token <token> 192.168.1.100
+#
+# If the Node requires authentication (MSHIN_NODE_TOKEN set on the Node),
+# pass --token here or export MSHIN_NODE_TOKEN in the environment.
 
 NODE_URL=""
 MODEL="mshin"
+TOKEN=""
 POSITIONAL=""
 
 while [[ $# -gt 0 ]]; do
@@ -175,8 +180,12 @@ while [[ $# -gt 0 ]]; do
             MODEL="$2"
             shift 2
             ;;
+        --token)
+            TOKEN="$2"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: mshin [NODE_IP_OR_URL] [--node URL] [--model MODEL]"
+            echo "Usage: mshin [NODE_IP_OR_URL] [--node URL] [--model MODEL] [--token TOKEN]"
             exit 0
             ;;
         --*)
@@ -205,7 +214,11 @@ echo "Starting Machin Shin Core..."
 echo "Connecting to Machin Shin Node at ${NODE_URL}..."
 echo ""
 
-exec /opt/mshin/clients/mshin-cli/index.js --node "${NODE_URL}" --model "${MODEL}"
+if [ -n "$TOKEN" ]; then
+    exec /opt/mshin/clients/mshin-cli/index.js --node "${NODE_URL}" --model "${MODEL}" --token "${TOKEN}"
+else
+    exec /opt/mshin/clients/mshin-cli/index.js --node "${NODE_URL}" --model "${MODEL}"
+fi
 EOF
 
 sudo chmod +x /usr/local/bin/mshin

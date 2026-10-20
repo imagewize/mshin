@@ -1,6 +1,6 @@
 // Central place for the mshin-cli agent loop's tunables. Pulled out of
 // agent.js so they're discoverable in one file instead of scattered through
-// the module; see docs/refactoring-ideas.md. No behavior change from moving
+// the module; see docs/REFACTORING-IDEAS.md. No behavior change from moving
 // them here -- values and comments are carried over as-is.
 
 export const DEFAULT_MAX_STEPS = 25;

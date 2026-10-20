@@ -1,7 +1,9 @@
 // Central place for the Kali MCP server's tunables. Pulled out of tools.js so
 // they're discoverable in one file instead of scattered through the module;
-// see docs/refactoring-ideas.md. No behavior change from moving them here --
+// see docs/REFACTORING-IDEAS.md. No behavior change from moving them here --
 // values and comments are carried over as-is.
+
+import { createHash, timingSafeEqual } from "node:crypto";
 
 // Full paths to the Kali tools as installed by apt.
 export const TOOL_PATHS = {
@@ -160,4 +162,52 @@ export function assertTargetListInScope(value, name = "target") {
     if (trimmed === "") continue;
     assertTargetInScope(trimmed, name);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bearer-token authentication
+// ---------------------------------------------------------------------------
+//
+// When MSHIN_NODE_TOKEN is set, every /mcp request must carry
+// `Authorization: Bearer <token>` or the server answers 401 before the MCP
+// layer sees it. The Node exposes destructive tools (metasploit, hydra,
+// sqlmap, john) on the LAN, so this stops any other host from driving them.
+// The scope allowlist above constrains *targets*; this constrains *callers*.
+//
+// An empty or unset token means "no authentication" — the behavior before
+// this feature existed, so existing deployments keep working.
+//
+// Generate one with: openssl rand -hex 32
+
+export function parseAuthToken() {
+  const raw = process.env.MSHIN_NODE_TOKEN;
+  if (!raw || raw.trim() === "") return null;
+  return raw.trim();
+}
+
+export const AUTH_TOKEN = parseAuthToken();
+
+/**
+ * Constant-time comparison of the presented token against the expected one.
+ * Both sides are hashed first so timingSafeEqual always compares
+ * equal-length buffers and the comparison leaks neither the expected token's
+ * value nor its length.
+ */
+export function tokensMatch(presented, expected) {
+  if (typeof presented !== "string" || typeof expected !== "string") {
+    return false;
+  }
+  if (presented === "" || expected === "") return false;
+  const a = createHash("sha256").update(presented).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+/**
+ * True when a request may proceed: always when no token is configured,
+ * otherwise only on an exact match.
+ */
+export function isValidAuthToken(presented) {
+  if (AUTH_TOKEN === null) return true;
+  return tokensMatch(presented, AUTH_TOKEN);
 }

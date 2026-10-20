@@ -55,7 +55,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 **Total Cost:** **~$150–350** if you already have a 32GB machine for the Core — which
 is the intended starting point. Add the EVO-X3 only when you have a concrete reason to
 run a model that doesn't fit; see
-[Sizing the Core](docs/architecture.md#sizing-the-core).
+[Sizing the Core](docs/ARCHITECTURE.md#sizing-the-core).
 
 > **RAM does not buy speed.** It buys *capacity* — which models fit. A 32GB box and a
 > 128GB box with the same memory bus run a 24B model at the same tokens/sec. Read the
@@ -226,7 +226,26 @@ Environment=MSHIN_ALLOWED_TARGETS="192.168.1.0/24,127.0.0.1,*.example.com"
 
 Leave the variable unset to preserve the legacy behavior of allowing all targets.
 
-#### **1.8 Assign a Static IP**
+#### **1.8 Require Node Authentication with `MSHIN_NODE_TOKEN`**
+
+The Node listens on `0.0.0.0:3000`, so any host on the LAN can reach `/mcp` and drive the tools — including the active ones (`metasploit`, `hydra`, `sqlmap`, `john`). The allowlist above constrains *which targets* the tools may touch; authentication constrains *who may call* the Node at all.
+
+Generate a token and set it on the Node:
+
+```bash
+export MSHIN_NODE_TOKEN="$(openssl rand -hex 32)"
+```
+
+```ini
+# /etc/systemd/system/mshin-node.service
+Environment=MSHIN_NODE_TOKEN="<token>"
+```
+
+With the variable set, every `/mcp` request must carry `Authorization: Bearer <token>` or the server answers 401. `/health` stays open so the documented health check keeps working. `scripts/setup_mcp_server.sh` generates the token, stores it root-only in `/etc/mshin-node-token`, and injects the `Environment=` line for you; re-running the script reuses the stored token.
+
+On the **Core**, pass the same token to the CLI — `mshin --token <token> 192.168.1.100`, or `MSHIN_NODE_TOKEN=<token>` in the environment — or to the evaluation harness via the `nodeToken` config field. Leave the variable unset to keep the legacy open behavior.
+
+#### **1.9 Assign a Static IP**
 
 Create `/etc/netplan/00-mshin-node.yaml`:
 

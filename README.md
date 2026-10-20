@@ -44,7 +44,7 @@
 
 The Core is deliberately undemanding: 32GB runs the default 24B model and everything
 in this repo today. Bigger boxes buy *bigger models*, not more speed — see
-[Sizing the Core](docs/architecture.md#sizing-the-core) before spending anything.
+[Sizing the Core](docs/ARCHITECTURE.md#sizing-the-core) before spending anything.
 
 
 ---
@@ -61,11 +61,11 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 
 1. **Set up Machin Shin Node (Kali + MCP):**
   ```bash
-   # Follow the guide in docs/setup.md
+   # Follow the guide in docs/SETUP.md
   ```
 2. **Set up Machin Shin Core (LLM Inference):**
   ```bash
-   # Follow the guide in docs/setup.md
+   # Follow the guide in docs/SETUP.md
   ```
 3. **Connect and Test:**
   ```bash
@@ -82,17 +82,17 @@ in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 ## Documentation
 
 - [Master Guide](KALI-OPENLLM.md) – Complete single-file walkthrough (most comprehensive)
-- [Architecture](docs/architecture.md) – System design and components
-- [Setup Guide](docs/setup.md) – Step-by-step installation
-- [Workflows](docs/workflows.md) – Example cybersecurity tasks
-- [Lima Local Dev](docs/lima-local-dev.md) – Single-machine development environment on macOS
+- [Architecture](docs/ARCHITECTURE.md) – System design and components
+- [Setup Guide](docs/SETUP.md) – Step-by-step installation
+- [Workflows](docs/WORKFLOWS.md) – Example cybersecurity tasks
+- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Single-machine development environment on macOS
   - Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
-- [Developer Onboarding](docs/developer-onboarding.md) – Learning path and architecture for new contributors
-- [Refactoring Ideas](docs/refactoring-ideas.md) – Cleanups worth doing, and the ones deliberately avoided
-- [Agent Roadmap](docs/cybersecurity-agent-roadmap.md) – Where the agent loop is headed
+- [Developer Onboarding](docs/DEVELOPER-ONBOARDING.md) – Learning path and architecture for new contributors
+- [Refactoring Ideas](docs/REFACTORING-IDEAS.md) – Cleanups worth doing, and the ones deliberately avoided
+- [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed
 - [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
-- [Raspberry Pi Node](docs/raspberry-pi-node.md) – Running the Node on a Raspberry Pi
-- [Mac Mini M4 Pro Core](docs/mac-mini-m4-core.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
+- [Raspberry Pi Node](docs/RASPBERRY-PI-NODE.md) – Running the Node on a Raspberry Pi
+- [Mac Mini M4 Pro Core](docs/MAC-MINI-M4-CORE.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
 
 ---

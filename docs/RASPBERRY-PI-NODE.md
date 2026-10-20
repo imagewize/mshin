@@ -4,7 +4,7 @@
 
 This guide covers running the **Machin Shin Node** (the Kali tool + MCP server box) on a **Raspberry Pi**. The Pi is a quiet, low-power option for the Node role, but it is not a full-speed offensive platform: heavy tools such as Metasploit, large `sqlmap` runs, or `john` with big wordlists will be slow or memory-constrained. Treat it as an entry point for light reconnaissance and learning, not a replacement for a faster x86_64 Node.
 
-The Core (Ollama + CLI) is not covered here; set it up on your Mac Mini, desktop, or other 32GB+ machine per [docs/setup.md](setup.md).
+The Core (Ollama + CLI) is not covered here; set it up on your Mac Mini, desktop, or other 32GB+ machine per [docs/SETUP.md](SETUP.md).
 
 ---
 

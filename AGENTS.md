@@ -20,14 +20,14 @@ Documentation map:
 | `README.md` | Project overview and quick start |
 | `CONTRIBUTING.md` | Human contribution workflow, project structure tree |
 | `KALI-OPENLLM.md` | Complete single-file master guide |
-| `docs/architecture.md` | System design and hardware sizing |
-| `docs/setup.md` | Step-by-step installation |
-| `docs/workflows.md` | Example cybersecurity tasks |
-| `docs/lima-local-dev.md` | Single-machine Lima setup on macOS |
+| `docs/ARCHITECTURE.md` | System design and hardware sizing |
+| `docs/SETUP.md` | Step-by-step installation |
+| `docs/WORKFLOWS.md` | Example cybersecurity tasks |
+| `docs/LIMA-LOCAL-DEV.md` | Single-machine Lima setup on macOS |
 | `lima/*.yaml` | Lima templates backing that guide |
-| `docs/cybersecurity-agent-roadmap.md` | Where the agent loop is headed |
-| `docs/raspberry-pi-node.md` | Raspberry Pi Node guide |
-| `docs/mac-mini-m4-core.md` | Mac Mini M4 Pro Core with Pi Node guide |
+| `docs/CYBERSECURITY-AGENT-ROADMAP.md` | Where the agent loop is headed |
+| `docs/RASPBERRY-PI-NODE.md` | Raspberry Pi Node guide |
+| `docs/MAC-MINI-M4-CORE.md` | Mac Mini M4 Pro Core with Pi Node guide |
 
 ---
 
@@ -215,7 +215,7 @@ So:
 
 | Type | Convention | Example |
 | ---- | ---------- | ------- |
-| Documentation | lowercase-with-dashes | `lima-local-dev.md` |
+| Documentation | UPPERCASE-WITH-DASHES | `LIMA-LOCAL-DEV.md` |
 | Scripts | lowercase_with_underscores | `setup_ollama.sh` |
 | Config files | lowercase-with-dashes | `ollama-modelfile` |
 | Branches | type/description | `feature/lima-local-dev` |
@@ -257,7 +257,7 @@ So:
 
 ### Create a new guide
 
-1. Put it in `docs/`, named lowercase-with-dashes
+1. Put it in `docs/`, named UPPERCASE-WITH-DASHES
 2. Include: quote, overview, prerequisites, setup, usage, troubleshooting, limitations, changelog
 3. Say when the reader should use the full two-machine setup instead
 4. Add it to `README.md`, `CONTRIBUTING.md`, and the table at the top of this file
