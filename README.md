@@ -46,6 +46,26 @@ The Core is deliberately undemanding: 32GB runs the default 24B model and everyt
 in this repo today. Bigger boxes buy *bigger models*, not more speed — see
 [Sizing the Core](docs/ARCHITECTURE.md#sizing-the-core) before spending anything.
 
+### Cloud inference (hybrid)
+
+The CLI is a plain Node.js script — it can run anywhere that reaches both Ollama
+and the MCP server. Run the model on a cloud GPU, the CLI on your laptop, and
+the tools on your LAN:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Cloud GPU VPS   │◄───►│ Your MacBook    │◄───►│ Raspberry Pi    │
+│ (RunPod/Lambda) │     │ (macOS)         │     │ (Kali Linux)    │
+│ - Ollama        │     │ - mshin CLI     │     │ - MCP Server    │
+│ - gpt-oss-120b  │     │ - MCP client    │     │ - Kali tools    │
+│ - Inference     │     │                 │     │ - nmap, nikto   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+The CLI sends prompts to Ollama on the VPS and tool calls to the MCP server on
+your Pi. Offensive traffic originates from your LAN, not the cloud provider —
+see [Cloud vs. Local](docs/CYBERSECURITY-AGENT-ROADMAP.md#cloud-vs-local-deployment-options)
+for provider guidance and sizing.
 
 ---
 
