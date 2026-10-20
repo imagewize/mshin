@@ -14,11 +14,7 @@ New here? Read [Developer Onboarding](DEVELOPER-ONBOARDING.md) first — it cove
 
 These are low-risk and pay for themselves. The `node:test` suites (see the onboarding doc) verify you didn't break anything.
 
-### 1. Grow test coverage where it's thin (low risk)
-
-The framework is already here (`node:test`) — the gap is coverage, not tooling. The compaction logic in `compactContext()` and the fabrication heuristics are the highest-value places to add cases, because they're the hardest to reason about and the most dangerous to break silently.
-
-### 2. Extract the two most self-contained seams of `agent.js` — only if it earns its keep
+### 1. Extract the two most self-contained seams of `agent.js` — only if it earns its keep
 
 `agent.js` at 1130 lines is large, but most of it is genuinely coupled around one shared message array. The two parts that *aren't* — and could move to their own files with clean interfaces — are:
 - tool-call extraction (`extractTextToolCall` and its helpers), and
@@ -41,15 +37,14 @@ The following were tempting but carry more cost than benefit for a project this 
 
 ## Next Steps
 
-**Do now:**
-1. Add `node:test` coverage for `compactContext()` and the fabrication heuristics.
+**Completed (0.16.1):** `node:test` coverage for `compactContext()` and the fabrication heuristics — 12 cases pinning eviction order, the preserved floor, the token high-water mark, transcript non-mutation, the detector's deliberate narrowness, and `ungroundedToolsIn`'s name matching.
 
 **Later, only if a concrete pain motivates it:**
 1. Extract tool-call extraction and fabrication detection from `agent.js` (no shim).
 
 ### Success metrics
 
-- **Coverage:** the compaction and fabrication paths gain dedicated `node:test` cases.
+- **Coverage:** the compaction and fabrication paths gained dedicated `node:test` cases (0.16.1).
 - **Restraint:** the dependency list stays at one runtime dependency.
 
 ---
@@ -64,4 +59,4 @@ Keep the safety and validation logic sacrosanct, make small testable changes, an
 
 ---
 
-*Last updated: 2026-09-11*
+*Last updated: 2026-10-20*
