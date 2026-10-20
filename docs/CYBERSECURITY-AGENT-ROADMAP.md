@@ -375,7 +375,9 @@ def parse_nmap_xml(xml_output: str) -> Dict:
   - **Option A′**: GMKtec EVO-X3, 128GB unified (~$3,800) — holds Q4 70B and up to a ~120B MoE; the right buy if you need a bigger *model*
   - **Option A″**: RTX 6000 Ada (48GB) + DIMM RAM (~$7k–8k) — only if you need raw throughput
   - **Option B**: RunPod A100 (~$2/hr, pay-as-you-go) — the cheapest way to *test* whether a 70B/120B actually helps before committing to hardware
+  - **Measured (2026-10-20, first comparison run)**: against the `mshin-node` Lima VM, the 7–8B tier (`mshin`, `qwen3:8b`) passes all four multi-tool cases in 7–68 s per case with a context high-water mark of 947 tokens — far under the compaction budget, so there is no context pressure to buy out of. `qwen3:4b` fails the bar (fabricated a `nikto` command as its final answer on the dependency case, and slower than 8B everywhere). `qwen3:32b` could not be measured on the 16GB authoring host at all: loaded at 21 GB it split 47%/53% CPU/GPU, and every case — including the one-sentence no-tool control — died at the 600 s per-turn timeout before a single tool call. The 32B tier needs a ≥32GB machine before it can be evaluated; nothing in the 8B measurements yet justifies that machine.
 - [ ] **Model**: evaluate `qwen3:32b` first (still fits a 64GB box); deploy `llama3.3:70b` or `gpt-oss:120b` only if the 32B tier measurably falls short
+  - **First comparison run (2026-10-20)**: `mshin` and `qwen3:8b` both score 4/4 on the multi-tool case set (`recon-chain`, `chain-with-dependency`, `pivot-on-failure`, `no-tool-control`); `qwen3:4b` scores 3/4 — the fabrication backstop caught it emitting a bare `nikto -h http://127.0.0.1` command as its final answer instead of a tool call. `qwen3:32b` could not complete a single turn on the 16GB host, so its evaluation is deferred to ≥32GB hardware. The case set lives in `clients/mshin-cli/eval-config.model-comparison.json`; the raw harness reports in [EVAL-RUN-2026-10-20](EVAL-RUN-2026-10-20.md).
 - [ ] **Fine-tuning (optional, only if a knowledge gap shows up)**:
   - Collect cybersecurity datasets (CVE, MITRE ATT&CK, Exploit-DB)
   - LoRA-tune `mistral-small` on security-specific tasks — after the harness is proven, not before
@@ -536,6 +538,6 @@ Machin Shin has the **foundation** right — the Ollama + MCP + Kali architectur
 
 ---
 
-*Document Status: Draft (Phase 1 complete; Phase 2 tool expansion and Pi guide complete; Pi hardware verification pending)*
-*Last Updated: 2026-09-11*
+*Document Status: Draft (Phase 1 complete; Phase 2 tool expansion and Pi guide complete; Pi hardware verification pending; first model-comparison measurements recorded, 32B evaluation deferred to ≥32GB hardware)*
+*Last Updated: 2026-10-20*
 *Author: Jasper Frumau*
