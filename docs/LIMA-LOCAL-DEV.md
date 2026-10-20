@@ -756,8 +756,43 @@ For better performance:
 | `limactl start` exits `did not receive an event with the running status` | The guest is still `Running` and cloud-init is mid-provision | On a loaded host the hostagent can time out while the guest is fine. Check inside with `limactl shell <name> -- sudo tail -f /var/log/cloud-init-output.log`; the pull/persona finish on their own. `limactl shell` reconnects once it is up |
 | `failed to listen tcp: 127.0.0.1:11434 ... address already in use` | Ollama is running on the **host** (e.g. `brew` install) on the same port | Harmless — only the host-side port-forward fails; the guest's own Ollama is unaffected. Stop host Ollama (`brew services stop ollama`) if you want the forward |
 | `Unit mcp-kali.service not found` | You ran `systemctl status mcp-kali` inside the Lima guest | The template installs `configs/mcp-kali.service` as `mshin-node`; `mcp-kali` is the bare-metal Kali Node's unit name. Use `systemctl status mshin-node` and `journalctl -u mshin-node` |
-| Node unreachable from the Mac: `curl http://<NODE_IP>:3000/health` times out while `limactl list` shows `Running` and the service is active in the guest | `socket_vmnet` has died on the host (`pgrep socket_vmnet` finds nothing), so the shared `192.168.105.0/24` network is down even though the guest keeps its address | Restart the guest so Lima re-establishes the bridge: `limactl stop mshin-node && limactl start mshin-node`. The address is DHCP — re-read it with `limactl shell mshin-node -- ip -4 -br addr show lima0` and update `<NODE_IP>` wherever the client points at it |
+| Node unreachable from the Mac: `curl http://<NODE_IP>:3000/health` times out while `limactl list` shows `Running` and the service is active in the guest | `socket_vmnet` has died on the host (`pgrep socket_vmnet` finds nothing), so the shared `192.168.105.0/24` network is down even though the guest keeps its address | Restart the guest so Lima re-establishes the bridge: `limactl stop mshin-node && limactl start mshin-node`. The address is DHCP — re-read it with `limactl shell mshin-node -- ip -4 -br addr show lima0` and update `<NODE_IP>` wherever the client points at it. See [The Node goes dark: `socket_vmnet` dies silently](#the-node-goes-dark-socket_vmnet-dies-silently) for the full diagnosis |
 | Tool call fails after exactly 60s on a long scan (the guest log shows `nmap` ran to completion) | The MCP client (e.g. Mistral Vibe) hangs up on tool calls that exceed its own timeout; a full `-sn` sweep of a live `/24` takes ~30s, but a quiet or unrouted subnet can take longer | Keep each scan under the client timeout: narrow the target range, or pass aggressive timing flags such as `['-sn','-T4','--min-parallelism','64','--max-retries','1']`. The scan itself is not failing — only the client stopped waiting |
+
+### The Node goes dark: `socket_vmnet` dies silently
+
+The failure mode most likely to eat an afternoon. The MCP client reports `MCP server 'mshin' failed to connect: mcp_transport_failed`, and every check that looks at the guest passes: `limactl list` shows `Running`, and inside the guest `curl http://127.0.0.1:3000/health` answers `ok`. From the Mac, `curl http://<NODE_IP>:3000/health` times out. Nothing is wrong with the MCP server.
+
+**Why.** Lima does not run `socket_vmnet` as a service — `brew install socket_vmnet` only installs the binary, and `limactl sudoers` only grants `limactl` the right to launch it as root. Lima spawns it on demand when a guest using `lima: shared` (or `lima: bridged`) starts, and nothing supervises it afterwards. If the daemon exits, the host loses the vmnet bridge and its route to `192.168.105.0/24`, while the guest keeps its DHCP lease and its loopback services — so it still looks healthy from the inside. Every packet from the Mac then follows the default route out to the LAN gateway and dies there.
+
+**Diagnose, from the Mac:**
+
+```bash
+# Healthy shows a route via bridge101; no output means the bridge is gone
+netstat -rn | grep 192.168.105
+
+# Healthy shows a sudo wrapper plus /opt/socket_vmnet/bin/socket_vmnet
+# for each network the guest uses (shared, bridged); no output = dead daemon
+pgrep -fl socket_vmnet
+
+# The moment it died, in the guest's hostagent log:
+#   "write unix ->/private/var/run/lima/socket_vmnet.shared: broken pipe"
+grep vmnet ~/.lima/mshin-node/ha.stderr.log
+```
+
+A broken pipe there means the daemon exited. A crash would leave a report in `~/Library/Logs/DiagnosticReports`; in the one observed case (2026-10-20) there was none, so it was killed rather than crashed — keep `pkill`-style cleanup away from `socket_vmnet` while guests run. Nothing restarts it and the guest stays up with a stale lease, which is exactly why the failure is silent.
+
+**Recover:**
+
+```bash
+limactl stop mshin-node && limactl start mshin-node
+# The address is DHCP — re-read it; it can change across restarts
+limactl shell mshin-node -- ip -4 -br addr show lima0
+# Verify from the Mac, not from inside the guest
+curl http://<NODE_IP>:3000/health
+```
+
+With the bridge back, `netstat -rn | grep 192.168.105` shows the `bridge101` route again and the MCP client connects on its next attempt. Update `<NODE_IP>` in the client config if the lease changed. All commands above were run against a live incident on 2026-10-20 and restored the connection.
 
 ### Common Commands
 
@@ -895,6 +930,7 @@ What is worth changing:
 | 2026-09-06 | Enable Debian's `non-free` component so `nikto` installs | Jasper Frumau |
 | 2026-10-20 | Troubleshooting: the Lima guest's unit is `mshin-node`, not `mcp-kali`; a dead `socket_vmnet` makes the Node unreachable from the host while the guest looks healthy; client-side MCP timeouts kill scans longer than ~60s | Jasper Frumau |
 | 2026-10-20 | Document optional bridged networking: L2 vantage for ARP discovery, wired-only caveat, mandatory `MSHIN_NODE_TOKEN` | Jasper Frumau |
+| 2026-10-20 | Troubleshooting: dedicated section for the silent `socket_vmnet` daemon death — host-side diagnosis (`netstat`, `pgrep`, hostagent log) and recovery, verified against a live incident | Jasper Frumau |
 
 ---
 
