@@ -5,6 +5,68 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-10-20
+
+Tool-execution patch, born from a live Vibe + Lima Node session: while
+probing a target, `dirb` and `ffuf` failed through the MCP server on every
+call — including against the Node's own localhost — even though both ran
+fine by hand inside the guest. The mechanism was the service's own
+sandboxing, and neither tool needs the root the sandbox was blocking them
+from writing as.
+
+### Fixed
+
+- **`dirb` and `ffuf` no longer run under `sudo`** (`servers/src/kali/tools.js`).
+  `runTool` executes every binary as `sudo -n <bin>` when the server is not
+  root, and sudo's `env_reset` hands the child `HOME=/root`. The unit's
+  `ProtectHome=read-only` makes `/root` unwritable, and both tools write to
+  their `$HOME` from inside that home: `dirb` writes its
+  `/root/.cache/dirb/resume/options.dump` resume state on **every** run and
+  dies with `(!) FATAL: Error opening output file` (when `HOME` is unset
+  entirely — as under a bare `systemd-run` repro — it segfaults at
+  "Calculating NOT_FOUND code" instead), and `ffuf` creates
+  `/root/.config/ffuf/{scraper,autocalibration,history}` on its first run
+  and dies with `open /root/.config/ffuf/scraper: no such file or
+  directory`. Both now run with the `useSudo: false` option `tshark`
+  already uses, so they inherit the service user's writable home — which
+  `ReadWritePaths` already covers in both unit flavors (`/home/mshin` on
+  the real Node, the guest home on Lima). Neither tool needs root: they
+  read a wordlist and speak HTTP. The sudoers allowlist entries stay —
+  they still serve hand-run invocations; the service just no longer uses
+  them for these two.
+- **Wordlist path examples point at a path that exists on Debian**
+  (`servers/src/kali/tools.js`, `ffuf` and `gobuster` schemas). The
+  descriptions recommended `/usr/share/wordlists/dirb/common.txt` — a
+  Kali-only alias installed by Kali's `wordlists` metapackage. On the
+  plain-Debian Lima Node that path does not exist (only
+  `/usr/share/dirb/wordlists/common.txt` does), so the first live ffuf
+  call of the session failed on the schema's own recommended example
+  before the sandbox bug was even reached. Both descriptions now give
+  the path valid on Kali and Debian alike and name the alias as
+  Kali-only.
+
+### Verified
+
+- **The defect, reproduced and bisected on the Lima node.** Through the
+  live service, `dirb` died in under a second and `ffuf` on its
+  `scraper`; both exited 0 when run by hand in the guest. `systemd-run`
+  repros isolated the mechanism: dirb segfaults with `HOME` unset, dies
+  on the resume dump with `HOME=/root` under `ProtectHome=read-only`,
+  and exits 0 with any writable `HOME`; ffuf fails only when it cannot
+  create `/root/.config/ffuf` — manual runs that could create it are what
+  made the ffuf failure look intermittent.
+- **Post-patch, live through the MCP server** (patched `tools.js` copied
+  to the guest's `/opt/mshin`, service restarted): `dirb` completes a
+  full 4612-word scan of its own `/` and `ffuf` completes the same
+  wordlist against `/FUZZ`, both `isError: false`, and the journal shows
+  no `sudo` session for either — they run as the service user.
+- `npm test` in `servers/src/kali/` passes 57/57 and in
+  `clients/mshin-cli/` passes 114/114. Note for anyone running them from
+  a shell that exports `MSHIN_NODE_TOKEN`: the three transport tests boot
+  the real server, see the token, and fail 401 until the variable is
+  unset for the run — pre-existing behavior, hit here and worked around
+  with `env -u MSHIN_NODE_TOKEN npm test`.
+
 ## [0.17.0] - 2026-10-20
 
 Host-side operations release, born from a live incident: a `socket_vmnet`

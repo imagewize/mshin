@@ -87,6 +87,11 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   // tshark is excluded: reading a user-owned PCAP as root triggers Wireshark's
   // file-owner check and fails, and tshark does not need privileges to read
   // capture files anyway.
+  // dirb and ffuf are excluded: sudo's env_reset hands them HOME=/root, which
+  // ProtectHome=read-only in the unit makes unwritable — dirb dies writing
+  // its $HOME/.cache/dirb resume dump on every run, and ffuf fails creating
+  // $HOME/.config/ffuf on its first. Neither needs root, and unsudoed they
+  // inherit the service user's writable home.
   const needsSudo = useSudo && process.getuid && process.getuid() !== 0;
   const cmd = needsSudo ? "sudo" : bin;
   const cmdArgs = needsSudo ? ["-n", bin, ...args] : args;
@@ -387,7 +392,7 @@ const tools = [
         },
         wordlist: {
           type: "string",
-          description: "Path to wordlist file, e.g. '/usr/share/wordlists/dirb/common.txt'.",
+          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali.",
         },
         options: {
           type: "string",
@@ -494,7 +499,7 @@ const tools = [
         assertSafe(options, "options");
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("dirb", args, 120_000);
+      const output = await runTool("dirb", args, 120_000, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -602,7 +607,7 @@ const tools = [
         },
         wordlist: {
           type: "string",
-          description: "Path to wordlist file, e.g. '/usr/share/wordlists/dirb/common.txt'.",
+          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali.",
         },
         options: {
           type: "string",
@@ -623,7 +628,7 @@ const tools = [
         assertSafe(options, "options", { pattern: SHELL_META_RE_ALLOW_AMP });
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("ffuf", args, 120_000);
+      const output = await runTool("ffuf", args, 120_000, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },
