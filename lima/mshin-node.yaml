@@ -9,8 +9,8 @@
 # production Node still runs real Kali; see docs/LIMA-LOCAL-DEV.md.
 #
 # Debian 13 with the full sixteen-tool set — nmap, whois, tshark and nikto from
-# Debian; hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux,
-# ffuf and john from Debian; metasploit and searchsploit from their upstream
+# Debian; hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, ffuf and john
+# from Debian; metasploit, searchsploit and enum4linux from their upstream
 # vendors — the Machin Shin MCP server, and the mshin-node systemd unit.
 # See docs/LIMA-LOCAL-DEV.md.
 #
@@ -58,14 +58,14 @@ networks:
 #     writable: true
 
 provision:
-  # Debian ships fourteen of the MCP server's sixteen tools: nmap, whois, tshark
+  # Debian ships thirteen of the MCP server's sixteen tools: nmap, whois, tshark
   # from main; nikto, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum,
-  # enum4linux, ffuf and john from various sources. The other two (metasploit,
-  # searchsploit) come from their upstream vendors in a later block -- Kali
-  # packages them, but neither is Kali-only, and neither needs Kali's repo
-  # grafted onto Debian (that part is still unsupported). Keep this list, the
-  # sudoers allowlist and the unit's --tools flag below in sync; see the
-  # tool-list invariant in AGENTS.md.
+  # ffuf and john from various sources. The other three (metasploit, searchsploit,
+  # enum4linux) come from their upstream vendors in a later block -- Kali
+  # packages them, but none is Kali-only, and none needs Kali's repo grafted onto
+  # Debian (that part is still unsupported). Keep this list, the sudoers
+  # allowlist and the unit's --tools flag below in sync; see the tool-list
+  # invariant in AGENTS.md.
   - mode: system
     script: |
       #!/bin/bash
@@ -82,12 +82,14 @@ provision:
           sed -i "s/^Components: main$/Components: main non-free/" /etc/apt/sources.list.d/debian.sources
       fi
       apt-get update
-      apt-get install -y curl git nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum enum4linux ffuf john
+      # samba-common-bin and smbclient are enum4linux's wrappers (net, nmblookup,
+      # rpcclient, smbclient); perl is enum4linux itself.
+      apt-get install -y curl git perl samba-common-bin smbclient nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum ffuf john
       curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
       apt-get install -y nodejs
 
-  # searchsploit and metasploit, from the vendors rather than from Kali.
-  # Split from the block above because metasploit is a ~400MB download: a
+  # searchsploit, metasploit and enum4linux, from the vendors rather than from
+  # Kali. Split from the block above because metasploit is a ~400MB download: a
   # failure here should not force the base tools to be reinstalled.
   - mode: system
     script: |
@@ -102,6 +104,15 @@ provision:
               /opt/exploitdb
           # tools.js looks for /usr/bin/searchsploit specifically.
           ln -sf /opt/exploitdb/searchsploit /usr/bin/searchsploit
+      fi
+      # enum4linux left Debian after buster, so Debian 13 cannot apt-install it.
+      # Like searchsploit it is a script (Perl, wrapping the samba tools installed
+      # in the block above), so the clone is the install.
+      # tools.js looks for /usr/bin/enum4linux specifically.
+      if ! command -v enum4linux >/dev/null 2>&1; then
+          git clone --depth 1 https://github.com/CiscoCXSecurity/enum4linux.git \
+              /opt/enum4linux
+          ln -sf /opt/enum4linux/enum4linux.pl /usr/bin/enum4linux
       fi
       # Rapid7's own apt repo, which publishes amd64 and arm64, so this works on
       # both the Intel and Apple Silicon guests this template produces.
@@ -172,7 +183,8 @@ provision:
       install -m 644 /opt/mshin/configs/mcp-kali.service "${UNIT}"
       # The shipped unit runs as a dedicated 'mshin' user. In a throwaway
       # guest, run as the Lima login user instead; the tool list is the same
-      # sixteen, now that the block above provides metasploit and searchsploit.
+      # sixteen, now that the block above provides metasploit, searchsploit
+      # and enum4linux.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
       sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
       sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john|" "${UNIT}"
