@@ -21,6 +21,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `AGENTS.md`) was updated. Historical entries below keep the filenames
   as they were at the time.
 
+## [0.16.1] - 2026-10-20
+
+Test-only patch. Grows `node:test` coverage for the two code paths
+`docs/REFACTORING-IDEAS.md` named as the hardest to reason about and the most
+dangerous to break silently: context compaction (`compactContext`) and the
+fabrication heuristics. No behavior change — every assertion pins existing
+behavior.
+
+### Added
+
+- **Compaction coverage** (`clients/mshin-cli/agent.test.js`). New cases pin:
+  - `compressToolResult` treats the line cap as inclusive (output at exactly
+    `maxLines` lines is unchanged; one more is compressed).
+  - A small history under every budget passes through `compactContext`
+    unchanged.
+  - Compaction never mutates the caller's transcript: the compacted copy the
+    model sees is slimmed, but the original message objects keep their full
+    tool output — the copy `AgentMemory` persists.
+  - Eviction fires on the token budget alone, under the message-count cap,
+    dropping the oldest tool results first and keeping the newest.
+  - Eviction halts at the preserved floor (system prompt, user goal, findings
+    summary, plus two history slots) rather than eating preserved slots while
+    the token budget is still exceeded.
+  - `compactContext` updates `contextHighWaterTokens` and a smaller later pass
+    never lowers it.
+  - The user goal survives when there is no system prompt to anchor the array,
+    and no findings summary is inserted without one.
+- **Fabrication-heuristic coverage**. New cases pin:
+  - `ungroundedToolsIn` lists only known tools that never returned a result,
+    matches tool names case-insensitively, never matches inside another word,
+    and returns empty for absent content.
+  - The detector's deliberate narrowness: a plain code fence with no scan
+    signature, and a `Result:` label followed by non-scan prose, both reach
+    the operator — the detector targets confident invention, not any code
+    block or use of the word "result".
+  - An unfenced `<port>/udp` signature beside a state word is caught like
+    the tcp one.
+- **`docs/REFACTORING-IDEAS.md`** prunes the completed coverage item from the
+  backlog, per its own instructions.
+
+### Changed
+
+- **Package versions aligned** to `0.16.1` in
+  `servers/src/kali/package.json` and `clients/mshin-cli/package.json`.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 114/114 cases (102 existing plus
+  the 12 new compaction and fabrication cases).
+- `npm test` in `servers/src/kali/` passes 57/57 cases (not changed in this
+  release, run as the pre-commit check).
+
 ## [0.16.0] - 2026-10-20
 
 Security-hardening release. Adds bearer-token authentication to the MCP Node
