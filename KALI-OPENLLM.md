@@ -55,7 +55,7 @@ This setup allows your LLM to **directly execute cybersecurity tools** in real-t
 **Total Cost:** **~$150–350** if you already have a 32GB machine for the Core — which
 is the intended starting point. Add the EVO-X3 only when you have a concrete reason to
 run a model that doesn't fit; see
-[Sizing the Core](docs/architecture.md#sizing-the-core).
+[Sizing the Core](docs/ARCHITECTURE.md#sizing-the-core).
 
 > **RAM does not buy speed.** It buys *capacity* — which models fit. A 32GB box and a
 > 128GB box with the same memory bus run a 24B model at the same tokens/sec. Read the

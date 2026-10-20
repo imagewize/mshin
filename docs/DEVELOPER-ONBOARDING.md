@@ -2,7 +2,7 @@
 
 > *"The way of the leaf is not always the easiest path, but it is the path of wisdom. So too with code: the path of understanding may be long, but it leads to mastery."*
 
-A learning path for developers joining Machin Shin, and a map of how the JavaScript fits together. For proposed cleanups and the reasoning behind them, see [Refactoring Ideas](refactoring-ideas.md).
+A learning path for developers joining Machin Shin, and a map of how the JavaScript fits together. For proposed cleanups and the reasoning behind them, see [Refactoring Ideas](REFACTORING-IDEAS.md).
 
 ---
 
@@ -24,7 +24,7 @@ A learning path for developers joining Machin Shin, and a map of how the JavaScr
 - `README.md` — project overview and quick start
 - `CLAUDE.md` — canonical repo facts and conventions (the source of truth)
 - `AGENTS.md` — working rules for anyone (human or agent) changing the code
-- `docs/architecture.md` — system design, including "Why Ollama (and not raw llama.cpp)?"
+- `docs/ARCHITECTURE.md` — system design, including "Why Ollama (and not raw llama.cpp)?"
 
 **Key concepts:**
 1. **Two-machine architecture:** Core (LLM inference + CLI) ↔ Node (Kali tools + MCP server, port 3000).
@@ -150,8 +150,8 @@ tools.js
 
 ## See Also
 
-- [Refactoring Ideas](refactoring-ideas.md) — proposed cleanups and the reasoning behind them
-- [Architecture](architecture.md) — system design and components
+- [Refactoring Ideas](REFACTORING-IDEAS.md) — proposed cleanups and the reasoning behind them
+- [Architecture](ARCHITECTURE.md) — system design and components
 - [CLAUDE.md](../CLAUDE.md) — repo facts, the four-places rule, commit conventions
 - [AGENTS.md](../AGENTS.md) — working rules for contributors
 

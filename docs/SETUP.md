@@ -19,7 +19,7 @@ This guide will walk you through setting up **Machin Shin**, the **Wheel of Time
 The 32GB minimum is a real minimum, not a polite one — it runs the default
 `mistral-small` (24B) model and every workflow in this guide. **Use a machine you
 already own before buying anything.** More RAM buys larger models, not faster ones;
-[Sizing the Core](architecture.md#sizing-the-core) explains the trade-off and when the
+[Sizing the Core](ARCHITECTURE.md#sizing-the-core) explains the trade-off and when the
 128GB box is actually worth it.
 
 
@@ -398,7 +398,7 @@ ollama pull mistral-small
 ```
 
 Larger models, **only if your Core has the memory for them** (see
-[Sizing the Core](architecture.md#sizing-the-core)) — they are not required:
+[Sizing the Core](ARCHITECTURE.md#sizing-the-core)) — they are not required:
 
 ```bash
 ollama pull qwen3:32b      # ~20GB, needs ~48GB+ RAM
@@ -511,7 +511,7 @@ If everything is set up correctly, Machin Shin should:
 
 Once Machin Shin is set up, explore the following:
 
-1. **Try the example workflows** in [docs/workflows.md](mshin-workflows).
+1. **Try the example workflows** in [docs/WORKFLOWS.md](mshin-workflows).
 2. **Add more tools** to the MCP server (edit the `--tools` flag in the service file).
 3. **Customize prompts** for your LLM (see [configs/ollama-modelfile](mshin-ollama-modelfile)).
 

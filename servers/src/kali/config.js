@@ -1,6 +1,6 @@
 // Central place for the Kali MCP server's tunables. Pulled out of tools.js so
 // they're discoverable in one file instead of scattered through the module;
-// see docs/refactoring-ideas.md. No behavior change from moving them here --
+// see docs/REFACTORING-IDEAS.md. No behavior change from moving them here --
 // values and comments are carried over as-is.
 
 // Full paths to the Kali tools as installed by apt.

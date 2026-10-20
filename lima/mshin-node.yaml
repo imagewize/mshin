@@ -6,13 +6,13 @@
 # Named for its architectural role (the Node), not its OS. It was mshin-kali,
 # but this guest is Debian, not Kali Linux — naming it for the OS was wrong the
 # moment the OS did not match, so it now pairs with mshin-core by role. The
-# production Node still runs real Kali; see docs/lima-local-dev.md.
+# production Node still runs real Kali; see docs/LIMA-LOCAL-DEV.md.
 #
 # Debian 13 with the full sixteen-tool set — nmap, whois, tshark and nikto from
 # Debian; hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux,
 # ffuf and john from Debian; metasploit and searchsploit from their upstream
 # vendors — the Machin Shin MCP server, and the mshin-node systemd unit.
-# See docs/lima-local-dev.md.
+# See docs/LIMA-LOCAL-DEV.md.
 #
 # `arch` is deliberately unset: Lima defaults to the host architecture, so this
 # one file gives an Intel Mac an x86_64 guest and an Apple Silicon Mac an
@@ -36,7 +36,7 @@ containerd:
   system: false
   user: false
 
-# Requires the one-time host setup described in docs/lima-local-dev.md:
+# Requires the one-time host setup described in docs/LIMA-LOCAL-DEV.md:
 #   brew install socket_vmnet
 #   limactl sudoers | sudo tee /etc/sudoers.d/lima
 # Gives the guest a lima0 interface with a DHCP address in 192.168.105.0/24.
@@ -199,5 +199,5 @@ message: |
   ------
   limactl shell {{.Name}} -- ip -4 -br addr show lima0
   ------
-  That address is <NODE_IP> in docs/lima-local-dev.md. Verify it from the Core
+  That address is <NODE_IP> in docs/LIMA-LOCAL-DEV.md. Verify it from the Core
   guest with: curl http://<NODE_IP>:3000/health

@@ -64,7 +64,7 @@ Have an idea for a new feature or tool integration? Open an issue with:
    git clone https://github.com/imagewize/mshin.git
    cd mshin
   ```
-2. Set up the **Machin Shin Node** and **Machin Shin Core** as described in the [Setup Guide](docs/setup.md).
+2. Set up the **Machin Shin Node** and **Machin Shin Core** as described in the [Setup Guide](docs/SETUP.md).
 3. Test your changes locally before submitting a pull request.
 
 ---
@@ -79,16 +79,16 @@ mshin/
 ├── AGENTS.md                  # Guidelines for AI agents
 ├── KALI-OPENLLM.md            # Complete single-file master guide
 ├── docs/
-│   ├── architecture.md        # System architecture
-│   ├── setup.md               # Setup instructions
-│   ├── workflows.md           # Example workflows
-│   ├── lima-local-dev.md      # Lima VM local development on macOS
-│   ├── developer-onboarding.md # Learning path and architecture
-│   ├── refactoring-ideas.md    # Cleanups worth doing (and ones avoided)
-│   ├── cybersecurity-agent-roadmap.md  # Agent roadmap
+│   ├── ARCHITECTURE.md        # System architecture
+│   ├── SETUP.md               # Setup instructions
+│   ├── WORKFLOWS.md           # Example workflows
+│   ├── LIMA-LOCAL-DEV.md      # Lima VM local development on macOS
+│   ├── DEVELOPER-ONBOARDING.md # Learning path and architecture
+│   ├── REFACTORING-IDEAS.md    # Cleanups worth doing (and ones avoided)
+│   ├── CYBERSECURITY-AGENT-ROADMAP.md  # Agent roadmap
 │   ├── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
-│   ├── raspberry-pi-node.md            # Raspberry Pi Node guide
-│   └── mac-mini-m4-core.md             # Mac Mini M4 Pro Core guide
+│   ├── RASPBERRY-PI-NODE.md            # Raspberry Pi Node guide
+│   └── MAC-MINI-M4-CORE.md             # Mac Mini M4 Pro Core guide
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
 │   └── setup_ollama.sh        # Ollama / Core setup script
@@ -163,7 +163,7 @@ mshin/
 | **Documentation**  | Improve guides, add examples, or tutorials | Edit files in `/docs`               |
 | **Scripts**        | Automate setup or common tasks             | Add to `/scripts`                   |
 | **Configurations** | Add new model files or service configs     | Add to `/configs`                   |
-| **Workflows**      | Share example prompts or use cases         | Add to `/docs/workflows.md`         |
+| **Workflows**      | Share example prompts or use cases         | Add to `/docs/WORKFLOWS.md`         |
 
 
 ---

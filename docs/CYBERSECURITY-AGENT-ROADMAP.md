@@ -37,7 +37,7 @@ As of September 2026, DDR5 module prices have risen sharply on AI-driven demand 
 | GMKtec EVO-X3 (128GB/2TB)  | ~$2,300       | **~$3,800**           | Current SKU, Ryzen AI Max+ 395, soldered LPDDR5X |
 | RTX 4090 (24GB)            | ~$1,600       | ~$1,800               | Discrete GPU path (see caveats below)        |
 
-> **First: don't buy anything yet.** With memory priced like this, the cheapest correct move is to run the Core on a machine you already own. A 32GB desktop or Mac runs `mistral-small` (24B) fine, and the work that remains on this roadmap — the agent loop, context management, safety gating, reporting — is **model-agnostic harness code**. You can build and test all of it against a 24B model, then let real measurements (tokens per session, context high-water mark, tool-call success rate by model) tell you which box to buy. See [Sizing the Core](architecture.md#sizing-the-core).
+> **First: don't buy anything yet.** With memory priced like this, the cheapest correct move is to run the Core on a machine you already own. A 32GB desktop or Mac runs `mistral-small` (24B) fine, and the work that remains on this roadmap — the agent loop, context management, safety gating, reporting — is **model-agnostic harness code**. You can build and test all of it against a 24B model, then let real measurements (tokens per session, context high-water mark, tool-call success rate by model) tell you which box to buy. See [Sizing the Core](ARCHITECTURE.md#sizing-the-core).
 >
 > **If you do buy, the unified-memory APU is still the right shape — even at ~$3,800.** The surge hits **memory chips across the board**, so these boxes climbed too. The current-gen **GMKtec EVO-X3** (Ryzen AI Max+ 395, 128GB, 2TB) lists around **$3,800**. It is genuinely pricey, and it is genuinely close to the best local-inference machine available at that price. But the comparison that matters is *cost per GB of model-capable memory*. A discrete build that can hold a Q4 70B needs both a 48GB-class card (or 2× 24GB) **and** a big DIMM kit — realistically **~$7,000–8,000** once you add CPU/board/PSU — and it still caps at the card's VRAM. The single ~$3,800 APU box holds a Q4 70B (and even a ~120B MoE) in its 128GB unified pool: roughly **half the cost for more model capacity**. At that tier 128GB is the floor — a 64GB SKU of the same machine loses the 70B/120B headroom that is the entire reason to buy it. But that is an argument about *which* box to buy, not about *whether* you need one.
 
@@ -74,7 +74,7 @@ Sizes are for a Q4_K_M quant unless noted. On a unified-memory APU, "VRAM" is dr
 - **Cons**: No 70B/120B headroom; long, noisy agent sessions will eventually pressure a 32GB context budget
 - **Graduate when**: you measure context overflow, or a 24–32B model demonstrably fails the tool-calling reliability bar your loop needs — not before
 
-> **Planned personal deployment (late 2026):** Mac Mini as the Core and a Raspberry Pi as the Kali Node. This keeps the two-machine separation while using small, quiet hardware. A Raspberry Pi is sufficient for light recon tools (`nmap`, `whois`, `nikto`) but will struggle with heavier workloads such as Metasploit or large `sqlmap` runs; treat it as a low-cost entry point, not a full-speed offensive platform. A dedicated guide is now in `docs/raspberry-pi-node.md`; end-to-end verification of the Mac Mini + Raspberry Pi pairing is still pending.
+> **Planned personal deployment (late 2026):** Mac Mini as the Core and a Raspberry Pi as the Kali Node. This keeps the two-machine separation while using small, quiet hardware. A Raspberry Pi is sufficient for light recon tools (`nmap`, `whois`, `nikto`) but will struggle with heavier workloads such as Metasploit or large `sqlmap` runs; treat it as a low-cost entry point, not a full-speed offensive platform. A dedicated guide is now in `docs/RASPBERRY-PI-NODE.md`; end-to-end verification of the Mac Mini + Raspberry Pi pairing is still pending.
 
 ### Option A′: Pure Local — Unified-Memory APU (The Upgrade Target)
 ```
@@ -368,7 +368,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
 **Goal**: Scale to larger models and add security-specific features.
 
 - [ ] **Verify physical two-machine deployment** — the Lima local-dev path is verified; the production path (real Kali Node + Core on physical LAN) still needs end-to-end testing
-- [ ] **Verify Mac Mini + Raspberry Pi pairing** — guide is written (`docs/raspberry-pi-node.md`); real-hardware end-to-end run is pending
+- [ ] **Verify Mac Mini + Raspberry Pi pairing** — guide is written (`docs/RASPBERRY-PI-NODE.md`); real-hardware end-to-end run is pending
 - [ ] **Hardware Decision** — make it *after* Phase 1, using measurements from the harness (tokens/session, context high-water mark, tool-call success rate), not before:
   - A model-evaluation harness is implemented in `clients/mshin-cli/eval-harness.js`; run it against candidate models and compare JSON/CSV reports before buying hardware
   - **Stay on Option A**: if a 24–32B model is clearing your reliability bar, buy nothing
@@ -387,7 +387,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
   - `nmap`, `searchsploit`, `nikto`, `whois`, `tshark` (passive/recon)
   - `metasploit`, `hydra`, `sqlmap`, `john` (active/destructive or credential-revealing, require approval)
   - `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`, `enum4linux`, `ffuf` (scanning/enumeration)
-  - All documented in `docs/setup.md` and `KALI-OPENLLM.md`; sudoers configured in `scripts/setup_mcp_server.sh`
+  - All documented in `docs/SETUP.md` and `KALI-OPENLLM.md`; sudoers configured in `scripts/setup_mcp_server.sh`
   - Tool safety: `ACTIVE_TOOLS` set tracks destructive/credential-revealing tools; explicit approval required before execution
   - [ ] Implement sandboxing (Docker Compose config in roadmap; not yet integrated)
 

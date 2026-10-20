@@ -4,7 +4,7 @@
 
 This guide covers running **Machin Shin Core** (LLM inference server + CLI) on a **Mac Mini M4 Pro with 24GB unified memory**, paired with a **Raspberry Pi Node** running either the Kali Linux Raspberry Pi image or Raspberry Pi OS with the Kali repository. This hybrid approach lets you use your Mac Mini for regular work when not running Machin Shin, while still providing a capable Core for the system.
 
-The Mac Mini M4 Pro 24GB is **Tier 1** hardware for the Core role — comfortable for the default `mistral-small` (24B, ~14GB) model with headroom for context and tool use. See [Sizing the Core](architecture.md#sizing-the-core) for details.
+The Mac Mini M4 Pro 24GB is **Tier 1** hardware for the Core role — comfortable for the default `mistral-small` (24B, ~14GB) model with headroom for context and tool use. See [Sizing the Core](ARCHITECTURE.md#sizing-the-core) for details.
 
 ---
 
@@ -25,7 +25,7 @@ The Mac Mini M4 Pro 24GB is **Tier 1** hardware for the Core role — comfortabl
 
 > **When to use this:** You want to run Machin Shin without dedicated hardware, repurposing a capable Mac Mini for the Core role while keeping macOS available for daily use.
 
-> **When NOT to use this:** You need maximum inference speed (Lima guests have no GPU passthrough) or you plan to run very large models (>24B) that exceed 24GB RAM. For that, see [Tier 2 and 3 hardware](architecture.md#sizing-the-core) instead.
+> **When NOT to use this:** You need maximum inference speed (Lima guests have no GPU passthrough) or you plan to run very large models (>24B) that exceed 24GB RAM. For that, see [Tier 2 and 3 hardware](ARCHITECTURE.md#sizing-the-core) instead.
 
 ---
 
@@ -92,7 +92,7 @@ The Mac Mini runs **macOS natively** with a **single Lima VM** (`mshin-core`) ho
 brew install lima
 
 # Install socket_vmnet (required for Lima networking)
-# See lima-local-dev.md for the proper root-owned install:
+# See LIMA-LOCAL-DEV.md for the proper root-owned install:
 #   git clone https://github.com/lima-vm/socket_vmnet
 #   cd socket_vmnet && git checkout v1.2.2 && make
 #   sudo make PREFIX=/opt/socket_vmnet install.bin
@@ -102,7 +102,7 @@ brew install lima
 limactl --version    # Should show 2.0+
 ```
 
-> **Note:** The Core VM's traffic to the Node still passes through Lima's **shared vmnet network** (NAT mode) — it just doesn't stop there. vmnet NATs the outbound connection through the Mac's own interface, so it reaches the Pi's real address on your **physical LAN** (`192.168.1.100`) rather than another `192.168.105.0/24` guest. This is different from the [full Lima local dev setup](lima-local-dev.md), where both Core and Node are Lima guests on the *same* `192.168.105.0/24` shared network and talk to each other without ever leaving the Mac. Because the Core VM only ever *initiates* connections to the Node, NAT is enough — nothing needs to dial back into the VM.
+> **Note:** The Core VM's traffic to the Node still passes through Lima's **shared vmnet network** (NAT mode) — it just doesn't stop there. vmnet NATs the outbound connection through the Mac's own interface, so it reaches the Pi's real address on your **physical LAN** (`192.168.1.100`) rather than another `192.168.105.0/24` guest. This is different from the [full Lima local dev setup](LIMA-LOCAL-DEV.md), where both Core and Node are Lima guests on the *same* `192.168.105.0/24` shared network and talk to each other without ever leaving the Mac. Because the Core VM only ever *initiates* connections to the Node, NAT is enough — nothing needs to dial back into the VM.
 
 ---
 
@@ -212,7 +212,7 @@ Choose **one** of the following paths. Path A (Kali Linux Raspberry Pi image) is
 
 #### Path A: Kali Linux Raspberry Pi Image (Recommended)
 
-This is the cleanest path and mirrors the [Raspberry Pi Node guide](raspberry-pi-node.md) exactly.
+This is the cleanest path and mirrors the [Raspberry Pi Node guide](RASPBERRY-PI-NODE.md) exactly.
 
 ##### 2.1 Flash the Image
 
@@ -374,7 +374,7 @@ sudo usermod -aG sudo mshin
 
 # Set up sudoers allowlist
 sudo tee /etc/sudoers.d/mshin >/dev/null <<'EOF'
-# tshark is omitted - see docs/raspberry-pi-node.md for rationale
+# tshark is omitted - see docs/RASPBERRY-PI-NODE.md for rationale
 mshin ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 EOF
 sudo chmod 440 /etc/sudoers.d/mshin
@@ -539,9 +539,9 @@ mshin --node http://192.168.1.100:3000 --model mshin
 | Tool Category | Performance | Notes |
 | ------------- | ----------- | ----- |
 | Light scanners (nmap, nikto, whois) | Full speed | ARM64 native |
-| Heavy tools (metasploit, john, masscan) | Slow/constrained | See raspberry-pi-node.md for details |
+| Heavy tools (metasploit, john, masscan) | Slow/constrained | See RASPBERRY-PI-NODE.md for details |
 
-> **See also:** [What works well on a Pi](raspberry-pi-node.md#what-works-well-on-a-pi) and [What will be slow](raspberry-pi-node.md#what-will-be-slow-or-constrained)
+> **See also:** [What works well on a Pi](RASPBERRY-PI-NODE.md#what-works-well-on-a-pi) and [What will be slow](RASPBERRY-PI-NODE.md#what-will-be-slow-or-constrained)
 
 ---
 
@@ -594,11 +594,11 @@ node index.js --node http://192.168.1.100:3000 --ollama http://localhost:11434 -
 | VM won't start | `limactl list` shows error | `limactl delete mshin-core` and recreate |
 | Model won't load | `ollama list` shows model but `ollama run` fails | Check RAM: the guest may need more memory |
 | Slow inference | Tokens/sec is low | Expected for CPU-only; use smaller model or [host Ollama](#alternative-host-ollama-on-macos) |
-| `limactl create` fails | socket_vmnet not installed | Follow [shared networking setup](lima-local-dev.md#shared-networking-required-for-two-vms) |
+| `limactl create` fails | socket_vmnet not installed | Follow [shared networking setup](LIMA-LOCAL-DEV.md#shared-networking-required-for-two-vms) |
 
 ### Node (Raspberry Pi) Issues
 
-See the [Raspberry Pi Node troubleshooting section](raspberry-pi-node.md#troubleshooting) for Node-specific issues.
+See the [Raspberry Pi Node troubleshooting section](RASPBERRY-PI-NODE.md#troubleshooting) for Node-specific issues.
 
 ### Connection Issues
 
@@ -662,7 +662,7 @@ Consider a different architecture when:
 - **You need faster inference**: Use [native macOS Ollama](#alternative-host-ollama-on-macos) for GPU acceleration
 - **You run heavy Node tools regularly**: Move the Node to an x86_64 mini PC (Intel N100/N150, etc.)
 - **You need larger models**: Upgrade to a Core machine with 48GB+ RAM for Qwen3 32B or Llama 3.3 70B
-- **You want production use**: Follow the [full two-machine setup](setup.md) with dedicated hardware
+- **You want production use**: Follow the [full two-machine setup](SETUP.md) with dedicated hardware
 
 ---
 
@@ -671,8 +671,8 @@ Consider a different architecture when:
 | Setup | Core Hardware | Node Hardware | Inference Speed | Tool Speed | Isolation | Cost |
 | ----- | ------------ | ------------- | --------------- | ---------- | ---------- | ---- |
 | **This guide** | Mac Mini M4 Pro (Lima VM) | Raspberry Pi | CPU-only (~15-20 tok/s) | ARM64 native | Good | $0 (if you own Mac + Pi) |
-| [Full Setup](setup.md) | 32GB+ x86_64 Linux box | x86_64 mini PC | GPU possible | x86_64 native | Excellent | ~$350-600 |
-| [Lima Local Dev](lima-local-dev.md) | Mac (Lima VM) | Mac (Lima VM) | CPU-only | Emulated x86_64 | Good | $0 |
+| [Full Setup](SETUP.md) | 32GB+ x86_64 Linux box | x86_64 mini PC | GPU possible | x86_64 native | Excellent | ~$350-600 |
+| [Lima Local Dev](LIMA-LOCAL-DEV.md) | Mac (Lima VM) | Mac (Lima VM) | CPU-only | Emulated x86_64 | Good | $0 |
 | Host Ollama | Mac (native) | Raspberry Pi | GPU (~30-50 tok/s) | ARM64 native | Limited | $0 (if you own Mac + Pi) |
 
 ---
@@ -683,9 +683,9 @@ Consider a different architecture when:
 - [Lima Documentation](https://github.com/lima-vm/lima) — macOS virtual machines
 - [Ollama Documentation](https://github.com/jmorganca/ollama) — LLM runtime
 - [Kali Linux ARM](https://www.kali.org/docs/arm/) — ARM64 support
-- [Raspberry Pi Node Guide](raspberry-pi-node.md) — Node setup details
-- [Machin Shin Architecture](architecture.md) — System design and sizing
-- [Lima Local Dev Guide](lima-local-dev.md) — Full VM-based development
+- [Raspberry Pi Node Guide](RASPBERRY-PI-NODE.md) — Node setup details
+- [Machin Shin Architecture](ARCHITECTURE.md) — System design and sizing
+- [Lima Local Dev Guide](LIMA-LOCAL-DEV.md) — Full VM-based development
 
 ---
 

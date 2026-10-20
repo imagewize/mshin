@@ -118,7 +118,7 @@ model — not for Llama 70B.
   small-active-set MoE model comfortable.
 - **Cost per GB of model-capable memory**: substantially better than a discrete-GPU
   build that can hold the same models (see
-  [the roadmap's deployment options](cybersecurity-agent-roadmap.md#cloud-vs-local-deployment-options)).
+  [the roadmap's deployment options](CYBERSECURITY-AGENT-ROADMAP.md#cloud-vs-local-deployment-options)).
 
 **Why Ollama (and not raw llama.cpp)?**
 
@@ -316,7 +316,7 @@ A full-port nmap against a live host takes minutes, not seconds — at which poi
 model's tokens/sec stops being the interesting number. This is a further argument for
 starting on modest hardware: for single-tool prompts you are waiting on Kali, not on
 the LLM. Model speed only becomes the bottleneck once the
-[agent loop](cybersecurity-agent-roadmap.md) is making many sequential LLM calls per
+[agent loop](CYBERSECURITY-AGENT-ROADMAP.md) is making many sequential LLM calls per
 session.
 
 
