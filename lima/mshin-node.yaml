@@ -42,6 +42,20 @@ containerd:
 # Gives the guest a lima0 interface with a DHCP address in 192.168.105.0/24.
 networks:
   - lima: shared
+  # Bridged networking (opt-in) gives the guest a second interface directly on
+  # the physical LAN, where its root nmap can ARP-discover hosts that drop all
+  # unicast probes (Windows defaults do). Three things to know before enabling:
+  #   1. Over Wi-Fi this depends on the access point: the guest sends frames
+  #      with a virtual MAC the AP never associated with, and many APs drop
+  #      them. A wired host connection always works. Test your AP first —
+  #      see "Bridged networking (optional)" in docs/LIMA-LOCAL-DEV.md.
+  #   2. A "bridged" network must exist in ~/.lima/_config/networks.yaml,
+  #      bound to the wired interface.
+  #   3. The Node then accepts tool calls from the entire LAN: set
+  #      MSHIN_NODE_TOKEN on the unit inside the guest (see below) before
+  #      enabling, or anyone on the network can drive the tools as root.
+  # See "Bridged networking (optional)" in docs/LIMA-LOCAL-DEV.md.
+  # - lima: bridged
 
 # The guest cannot clone anonymously if the repo requires credentials, so mount
 # your host clone instead — either uncomment and set `location` below, or pass
