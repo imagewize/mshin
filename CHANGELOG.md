@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation guides renamed to UPPERCASE.** Every guide in `docs/` —
+  `ARCHITECTURE.md`, `CYBERSECURITY-AGENT-ROADMAP.md`,
+  `DEVELOPER-ONBOARDING.md`, `LIMA-LOCAL-DEV.md`, `MAC-MINI-M4-CORE.md`,
+  `RASPBERRY-PI-NODE.md`, `REFACTORING-IDEAS.md`, `SETUP.md`, and
+  `WORKFLOWS.md` — now uses an uppercase filename, matching the root-level
+  docs (`README.md`, `AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`,
+  `CONTRIBUTING.md`, `KALI-OPENLLM.md`). Renames were done with `git mv`;
+  every cross-reference (the guides themselves, the `lima/` templates, code
+  comments, and the doc maps in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md`,
+  and `AGENTS.md`) was updated. Historical entries below keep the filenames
+  as they were at the time.
+
 ## [0.16.0] - 2026-10-20
 
 Security-hardening release. Adds bearer-token authentication to the MCP Node
