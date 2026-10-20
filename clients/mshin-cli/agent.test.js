@@ -548,6 +548,163 @@ test("compactContext compresses long tool results before dropping messages", asy
   assert.equal(compacted.length, messages.length);
 });
 
+test("compressToolResult leaves output at exactly the line cap unchanged", () => {
+  // The cap is inclusive: maxLines lines fit without compression, one more
+  // does not.
+  const atCap = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n");
+  assert.equal(compressToolResult(atCap), atCap);
+
+  const overCap = atCap + "\nline 61";
+  assert.notEqual(compressToolResult(overCap), overCap);
+  assert.ok(compressToolResult(overCap).includes("lines omitted"));
+});
+
+test("compactContext leaves a small history unchanged", async (t) => {
+  const { agent } = await setup(t);
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+    { role: "assistant", content: "working on it" },
+    { role: "tool", name: "nmap", content: "22/tcp open ssh" },
+  ];
+
+  const compacted = agent.compactContext(messages);
+  assert.deepEqual(compacted, messages);
+});
+
+test("compactContext does not mutate the input messages", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: {
+      maxToolResultLines: 10,
+      toolResultHeadLines: 2,
+      toolResultTailLines: 2,
+    },
+  });
+
+  const longResult = Array.from({ length: 200 }, (_, i) => `scan line ${i + 1}`).join("\n");
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "scan everything" },
+    { role: "tool", name: "nmap", content: longResult },
+  ];
+
+  const compacted = agent.compactContext(messages);
+
+  // The compacted copy the model sees is slimmed...
+  const compactedTool = compacted.find((m) => m.role === "tool");
+  assert.ok(compactedTool.content.includes("lines omitted"));
+  // ...but the caller's transcript keeps the full output: it is what
+  // AgentMemory persists, and compaction must never hollow it out.
+  assert.equal(messages[2].content, longResult);
+  assert.notEqual(compacted, messages, "compaction must return a new array");
+});
+
+test("compactContext evicts by token budget even under the message cap", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: { maxHistoryMessages: 100, contextTokenBudget: 100 },
+  });
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+  ];
+  for (let i = 0; i < 20; i++) {
+    messages.push({ role: "tool", name: "nmap", content: `tool result number ${i}` });
+  }
+
+  const compacted = agent.compactContext(messages);
+  // The message count was well under the cap; only the token budget forced
+  // evictions.
+  assert.ok(compacted.length < messages.length);
+  assert.ok(
+    compacted.some((m) => m.role === "user" && m.content === "ORIGINAL GOAL"),
+    "the goal must survive token-budget eviction"
+  );
+  assert.ok(
+    !compacted.some((m) => m.content === "tool result number 0"),
+    "the oldest tool result must be evicted first"
+  );
+  assert.ok(
+    compacted.some((m) => m.content === "tool result number 19"),
+    "the newest tool result must survive"
+  );
+});
+
+test("compactContext stops at the preserved floor rather than dropping everything", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: { contextTokenBudget: 1 },
+  });
+  agent.findingsMemory.processToolResult(
+    "nmap",
+    "Nmap scan report for 10.0.0.5\n22/tcp open ssh OpenSSH 8.9"
+  );
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+    { role: "tool", name: "nmap", content: "tool output 1" },
+    { role: "tool", name: "nmap", content: "tool output 2" },
+    { role: "tool", name: "nmap", content: "tool output 3" },
+  ];
+
+  const compacted = agent.compactContext(messages);
+
+  // Preserved here: system, user goal, findings summary -- three slots, so
+  // eviction halts with five messages standing even though the token budget
+  // is still blown. Dropping past that floor would only eat preserved slots.
+  assert.equal(compacted.length, 5);
+  assert.ok(compacted.some((m) => m.content === "SYSTEM PROMPT"));
+  assert.ok(compacted.some((m) => m.content === "ORIGINAL GOAL"));
+  assert.ok(
+    compacted.some((m) => (m.content || "").startsWith("[Findings Summary")),
+    "the findings summary must survive at the floor"
+  );
+});
+
+test("compactContext tracks the context high-water mark", async (t) => {
+  const { agent } = await setup(t);
+
+  const messages = [
+    { role: "system", content: "SYSTEM PROMPT" },
+    { role: "user", content: "ORIGINAL GOAL" },
+    { role: "tool", name: "nmap", content: "22/tcp open ssh" },
+  ];
+  const expected = messages.reduce(
+    (sum, m) => sum + Math.ceil((m.content || "").length / 4) + 4,
+    0
+  );
+
+  agent.compactContext(messages);
+  assert.equal(agent.metrics.contextHighWaterTokens, expected);
+
+  // A second, smaller pass must not lower it.
+  agent.compactContext([{ role: "system", content: "short" }]);
+  assert.equal(agent.metrics.contextHighWaterTokens, expected);
+});
+
+test("compactContext preserves the user goal when there is no system prompt", async (t) => {
+  const { agent } = await setup(t, {
+    agentOptions: { maxHistoryMessages: 4 },
+  });
+
+  const messages = [{ role: "user", content: "ORIGINAL GOAL" }];
+  for (let i = 0; i < 20; i++) {
+    messages.push({ role: "tool", name: "nmap", content: `tool ${i}` });
+  }
+
+  const compacted = agent.compactContext(messages);
+  assert.ok(
+    compacted.some((m) => m.role === "user" && m.content === "ORIGINAL GOAL"),
+    "the goal must survive without a system prompt to anchor the array"
+  );
+  // No system message means no findings summary is inserted either; the
+  // preserved set is just the goal.
+  assert.ok(
+    !compacted.some((m) => (m.content || "").startsWith("[Findings Summary"))
+  );
+});
+
 // -----------------------------------------------------------------------------
 // Narrated tool calls
 //
@@ -1038,6 +1195,75 @@ test("a tool that returned nothing usable cannot ground its own report", async (
   // The error is honest output, but it is not a scan result.
   assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
   assert.doesNotMatch(answer, /443\/tcp/);
+});
+
+// -----------------------------------------------------------------------------
+// Fabrication-detection narrowness
+//
+// looksLikeFabricatedToolOutput is deliberately narrow: it targets confident
+// invention (scan signatures, "Result:"-labelled reports), not every code
+// fence or use of the word "result". These tests pin the non-firing cases so
+// the detector cannot quietly grow into blocking genuine answers.
+// -----------------------------------------------------------------------------
+
+test("ungroundedToolsIn lists only known tools that never returned a result", async (t) => {
+  const { agent } = await setup(t);
+
+  const succeeded = new Set(["nmap"]);
+  // Both tools are mentioned, but nmap succeeded: only metasploit is ungrounded.
+  assert.deepEqual(
+    agent.ungroundedToolsIn("The nmap scan and the metasploit module are done.", succeeded),
+    ["metasploit"]
+  );
+  // A mention of a succeeded tool grounds nothing.
+  assert.deepEqual(agent.ungroundedToolsIn("nmap found 22/tcp open", succeeded), []);
+});
+
+test("ungroundedToolsIn matches names case-insensitively but never inside words", async (t) => {
+  const { agent } = await setup(t);
+
+  assert.deepEqual(agent.ungroundedToolsIn("Nmap finished", new Set()), ["nmap"]);
+  // "nmapx" is a different word: naming it must not ground -- or accuse -- nmap.
+  assert.deepEqual(agent.ungroundedToolsIn("nmapx is not a tool", new Set()), []);
+  assert.deepEqual(agent.ungroundedToolsIn("", new Set()), []);
+  assert.deepEqual(agent.ungroundedToolsIn(null, new Set()), []);
+});
+
+test("a plain code fence with no scan signature is not treated as fabrication", async (t) => {
+  const { ollama, mcp, agent } = await setup(t);
+
+  ollama.queueFinal('Here is the config I recommend:\n```json\n{"ports": []}\n```');
+
+  const answer = await agent.run({ sessionId: "s-fence-benign", userGoal: "advise me" });
+
+  assert.equal(mcp.calls.length, 0);
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 0);
+  assert.match(answer, /\{"ports": \[\]\}/);
+});
+
+test("a 'Result:' label followed by non-scan prose is not treated as fabrication", async (t) => {
+  const { ollama, agent } = await setup(t);
+
+  ollama.queueFinal("Result: The host did not respond to any probe.");
+
+  const answer = await agent.run({ sessionId: "s-result-plain", userGoal: "scan it" });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 0);
+  assert.equal(answer, "Result: The host did not respond to any probe.");
+});
+
+test("an unfenced udp signature is caught like a tcp one", async (t) => {
+  const { ollama, agent } = await setup(t);
+
+  ollama.queueFinal(
+    "The scan found these open ports:\n- 53/udp (DNS)\n- 123/udp (NTP)"
+  );
+
+  const answer = await agent.run({ sessionId: "s-udp", userGoal: "scan it" });
+
+  assert.equal(agent.metrics.fabricatedOutputsBlocked, 1);
+  assert.doesNotMatch(answer, /53\/udp/);
+  assert.match(answer, /no tool executed/i);
 });
 
 // -----------------------------------------------------------------------------
