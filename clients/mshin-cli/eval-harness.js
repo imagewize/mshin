@@ -121,6 +121,10 @@ function loadConfig(configPath) {
   return {
     ollamaUrl: config.ollamaUrl || DEFAULT_OLLAMA_URL,
     nodeUrl: config.nodeUrl !== undefined ? config.nodeUrl : DEFAULT_NODE_URL,
+    // The config file wins over the environment; both are optional. When the
+    // Node has MSHIN_NODE_TOKEN set, MCP requests must carry it as a bearer
+    // token.
+    nodeToken: config.nodeToken || process.env.MSHIN_NODE_TOKEN || null,
     models,
     cases: config.cases,
   };
@@ -137,13 +141,16 @@ function mcpToolsToOllama(tools) {
   }));
 }
 
-async function createMcpClient(nodeUrl) {
+async function createMcpClient(nodeUrl, nodeToken) {
   const client = new Client(
     { name: "mshin-eval", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
   const mcpUrl = new URL("/mcp", nodeUrl);
-  const transport = new StreamableHTTPClientTransport(mcpUrl);
+  const transportOptions = nodeToken
+    ? { requestInit: { headers: { Authorization: `Bearer ${nodeToken}` } } }
+    : {};
+  const transport = new StreamableHTTPClientTransport(mcpUrl, transportOptions);
   await client.connect(transport);
   return client;
 }
@@ -482,6 +489,7 @@ async function main() {
   console.log(`  Config:  ${configPath}`);
   console.log(`  Ollama:  ${config.ollamaUrl}`);
   console.log(`  Node:    ${config.nodeUrl}`);
+  console.log(`  Token:   ${config.nodeToken ? "provided" : "none"}`);
   console.log(`  Models:  ${config.models.join(", ")}`);
   console.log(`  Cases:   ${config.cases.map((c) => c.name).join(", ")}`);
   console.log("");
@@ -490,7 +498,7 @@ async function main() {
   let ollamaTools = [];
 
   if (config.nodeUrl) {
-    client = await createMcpClient(config.nodeUrl);
+    client = await createMcpClient(config.nodeUrl, config.nodeToken);
     const mcpTools = await client.listTools();
     ollamaTools = mcpToolsToOllama(mcpTools.tools);
     console.log(`Connected. Node exposes ${ollamaTools.length} tool(s).\n`);
