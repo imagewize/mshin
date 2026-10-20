@@ -157,6 +157,50 @@ test("loadConfig defaults ollamaUrl and nodeUrl", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("loadConfig reads nodeToken from the config file", () => {
+  const dir = makeTempDir();
+  const path = configFile(dir, {
+    nodeToken: "from-config",
+    cases: [{ name: "ping", prompt: "hello" }],
+  });
+  const config = loadConfig(path);
+  assert.equal(config.nodeToken, "from-config");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("loadConfig falls back to MSHIN_NODE_TOKEN, then null", () => {
+  const dir = makeTempDir();
+  const path = configFile(dir, {
+    cases: [{ name: "ping", prompt: "hello" }],
+  });
+  const saved = process.env.MSHIN_NODE_TOKEN;
+  try {
+    process.env.MSHIN_NODE_TOKEN = "from-env";
+    assert.equal(loadConfig(path).nodeToken, "from-env");
+    delete process.env.MSHIN_NODE_TOKEN;
+    assert.equal(loadConfig(path).nodeToken, null);
+  } finally {
+    if (saved !== undefined) process.env.MSHIN_NODE_TOKEN = saved;
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("loadConfig prefers the config file's nodeToken over the environment", () => {
+  const dir = makeTempDir();
+  const path = configFile(dir, {
+    nodeToken: "from-config",
+    cases: [{ name: "ping", prompt: "hello" }],
+  });
+  const saved = process.env.MSHIN_NODE_TOKEN;
+  try {
+    process.env.MSHIN_NODE_TOKEN = "from-env";
+    assert.equal(loadConfig(path).nodeToken, "from-config");
+  } finally {
+    if (saved !== undefined) process.env.MSHIN_NODE_TOKEN = saved;
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // Harness execution
 // ---------------------------------------------------------------------------
