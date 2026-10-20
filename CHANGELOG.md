@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-10-20
+
+Vibe-and-Lima release. A third deployment option joins the two-machine setup
+and the cloud-inference hybrid: run Mistral Vibe as the agent (inference via a
+Mistral Pro subscription) with the Node in a Lima guest on the same Mac —
+no Core, no Ollama, no `mshin-cli`. The Lima Node template also gains a fix
+its first 16-tool provisioning run exposed: `enum4linux` is not in Debian 13.
+
+### Added
+
+- **Mistral Vibe CLI + Lima Node option** (`README.md`, Architecture). Vibe
+  speaks the same Streamable HTTP MCP the Node already serves, so the Node
+  needs no new code — register it in `~/.vibe/config.toml` as a
+  `streamable-http` MCP server and Vibe's agent loop replaces the Core
+  machine entirely. Verified against a live guest: `initialize`, `tools/list`
+  and session teardown all work from the host, and a Vibe session connects
+  and lists the tools.
+
+### Fixed
+
+- **Lima Node template provisions `enum4linux` from upstream**
+  (`lima/mshin-node.yaml`). Debian dropped `enum4linux` after buster, so the
+  template's `apt-get install` line failed with
+  `E: Unable to locate package enum4linux` and took the rest of provisioning
+  down with it. The tool now clones from
+  `https://github.com/CiscoCXSecurity/enum4linux.git` (the clone is the
+  install, as with searchsploit), with its samba wrappers (`net`,
+  `nmblookup`, `rpcclient`, `smbclient`) installed from Debian's
+  `samba-common-bin` and `smbclient`. `docs/LIMA-LOCAL-DEV.md` is synced to
+  match: thirteen tools from Debian, three from upstream, sixteen total,
+  everywhere the guide and template previously said thirteen.
+
 ## [0.16.2] - 2026-10-20
 
 Model-evaluation measurement release. The first harness-driven model

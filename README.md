@@ -67,6 +67,58 @@ your Pi. Offensive traffic originates from your LAN, not the cloud provider —
 see [Cloud vs. Local](docs/CYBERSECURITY-AGENT-ROADMAP.md#cloud-vs-local-deployment-options)
 for provider guidance and sizing.
 
+### Mistral Vibe CLI + Lima Node (no Ollama)
+
+You can drop the Core entirely. Run **[Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)**
+as the agent on your Mac — inference through your **Mistral Pro** subscription —
+and let the Node run in a **Lima guest** on the same Mac. Vibe is itself an MCP
+client, so it replaces both Ollama and `mshin-cli`; the Node needs no new code
+either — Vibe speaks the same Streamable HTTP MCP the CLI does:
+
+```
+┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
+│ Mistral Platform  │◄───►│ macOS Host        │◄───►│ Lima Guest        │
+│ (Mistral Pro)     │     │ Mistral Vibe CLI  │     │ mshin-node        │
+│ - Inference       │     │ - Agent loop      │     │ - MCP Server      │
+│ - No local model  │     │ - MCP client      │     │ - 16 Kali tools   │
+└───────────────────┘     └───────────────────┘     └───────────────────┘
+```
+
+Set it up like this:
+
+```bash
+# 1. Node: create the Lima guest (provisions all sixteen tools)
+limactl create --name=mshin-node lima/mshin-node.yaml
+limactl start mshin-node
+
+# Read the guest's address on the shared network — it is <NODE_IP> below
+limactl shell mshin-node -- ip -4 -br addr show lima0
+```
+
+```toml
+# 2. Core: register the Node as an MCP server in ~/.vibe/config.toml
+[[mcp_servers]]
+name = "mshin"
+transport = "streamable-http"
+url = "http://<NODE_IP>:3000/mcp"
+```
+
+Then ask Vibe, e.g. *"Run an Nmap scan on 127.0.0.1 and analyze the results."*
+
+Caveats worth knowing:
+
+- **Not private and offline.** Prompts and tool results go to Mistral's cloud —
+  this mode trades the privacy of the local setups for managed inference.
+- The guest's address is DHCP-assigned; if it changes, update the URL.
+- Set `MSHIN_NODE_TOKEN` on the Node and configure matching auth in Vibe before
+  exposing the Node beyond a trusted LAN.
+- The Node's server-side guards (`assertSafe` in `servers/src/kali/tools.js`)
+  still apply, but Vibe does not load the Ollama persona from
+  `configs/ollama-modelfile`.
+
+See [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) for the guest's requirements
+(macOS, `socket_vmnet` shared networking) and cleanup.
+
 ---
 
 ## Quick Start

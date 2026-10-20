@@ -36,13 +36,13 @@ For **local development, testing, or constrained hardware**, you can consolidate
 │                                                                                     │
 │  ┌──────────────────────────┐               ┌────────────────────────────────────┐  │
 │  │ Lima: mshin-core         │               │ Lima: mshin-node                   │  │
-│  │ Ubuntu, aarch64          │               │ Debian, all 13 tools               │  │
+│  │ Ubuntu, aarch64          │               │ Debian, all 16 tools               │  │
 │  │                          │               │                                    │  │
 │  │  ┌──────────────────────┐│               │ MCP server   :3000                 │  │
-│  │  │ Ollama       :11434  ││               │ nmap, nikto, whois, tshark,        │  │
-│  │  │ mistral (7B, ~4GB)   ││               │ hydra, sqlmap, gobuster, masscan,  │  │
-│  │  └──────────────────────┘│               │ dirb, arping, dnsenum,             │  │
-│  │      │                   │               │ metasploit, searchsploit           │  │
+│  │  │ Ollama       :11434  ││               │ nmap, nikto, whois, tshark, hydra, │  │
+│  │  │ mistral (7B, ~4GB)   ││               │ sqlmap, gobuster, masscan, dirb,   │  │
+│  │  └──────────────────────┘│               │ arping, dnsenum, enum4linux, ffuf, │  │
+│  │      │                   │               │ john, metasploit, searchsploit     │  │
 │  │  ┌──────────────────────┐│               │                                    │  │
 │  │  │ Machin Shin CLI      ││  ── HTTP ──▶  │                                    │  │
 │  │  │ (MCP client)         ││               │                                    │  │
@@ -154,15 +154,16 @@ limactl start mshin-node
 
 That is the whole step. On first boot the template:
 
-1. Installs all thirteen tools — `nmap`, `nikto`, `whois`, `tshark`, `hydra`,
-   `sqlmap`, `gobuster`, `masscan`, `dirb`, `arping` and `dnsenum` from Debian,
-   `searchsploit` from exploit-db's git repo and `metasploit` from Rapid7's apt
+1. Installs all sixteen tools — `nmap`, `nikto`, `whois`, `tshark`, `hydra`,
+   `sqlmap`, `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`, `ffuf` and
+   `john` from Debian, `searchsploit` from exploit-db's git repo,
+   `enum4linux` from its upstream repo and `metasploit` from Rapid7's apt
    repo — plus `git` and Node.js 20, and warms metasploit's one-time setup.
 2. Clones this repo to `/opt/mshin` and runs `npm install` for the MCP server.
 3. Writes the `NOPASSWD` sudoers allowlist those tools need (all but `tshark`,
    which runs unprivileged).
 4. Installs `configs/mcp-kali.service` as `mshin-node`, rewritten for the Lima
-   login user, exposing all thirteen tools.
+   login user, exposing all sixteen tools.
 
 Lima then waits on a probe until `curl :3000/health` answers, so `limactl start` returning means the MCP server is up. It prints the command that reads the guest's address on the shared network.
 
@@ -225,13 +226,22 @@ sudo sed -i 's/^Components: main$/Components: main non-free/' \
   /etc/apt/sources.list.d/debian.sources
 sudo apt update
 
-# Install the eleven tools Debian ships
-sudo apt install -y nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum
+# Install the thirteen tools Debian ships. enum4linux left Debian after
+# buster, so it comes from upstream below. perl is enum4linux itself;
+# samba-common-bin and smbclient are its wrappers (net, nmblookup,
+# rpcclient, smbclient).
+sudo apt install -y perl samba-common-bin smbclient nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum ffuf john
 
 # searchsploit: a shell script over the exploit-db data repo. The clone is the
 # install, and it is arch-independent. tools.js expects /usr/bin/searchsploit.
 sudo git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb
 sudo ln -sf /opt/exploitdb/searchsploit /usr/bin/searchsploit
+
+# enum4linux: left Debian after buster. A Perl script wrapping the samba tools
+# installed above, so the clone is the install.
+# tools.js expects /usr/bin/enum4linux.
+sudo git clone --depth 1 https://github.com/CiscoCXSecurity/enum4linux.git /opt/enum4linux
+sudo ln -sf /opt/enum4linux/enum4linux.pl /usr/bin/enum4linux
 
 # metasploit: Rapid7's own apt repo, which publishes amd64 and arm64.
 curl -fsSL https://apt.metasploit.com/metasploit-framework.gpg.key \
@@ -256,7 +266,7 @@ gobuster --version
 
 > **`nikto` needs `non-free`.** Debian 13's cloud image enables only the `main` component, and `nikto` is packaged in `non-free` — without the `sed` above, `apt install` fails with `E: Unable to locate package nikto` and takes the rest of the command down with it. Debian's `nikto` is also **1:2.1.5**, against Kali's 2.5.x: the plugin database is years older, so findings will differ from a real Node.
 
-> **The last two tools come from upstream, not Kali.** `searchsploit` and `metasploit` are the tools Kali is known for, but neither is Kali-only: exploit-db publishes searchsploit as a git repo, and Rapid7 publishes metasploit through its own apt repo (with arm64 builds, so this works on Apple Silicon). Installing them this way keeps the guest on Debian without grafting Kali's repo onto it — which remains unsupported and can break the base. This is exactly what `lima/mshin-node.yaml` does; the manual steps above mirror it.
+> **The last three tools come from upstream, not Kali.** `searchsploit`, `enum4linux` and `metasploit` are tools Kali is known for, but none is Kali-only: exploit-db publishes searchsploit as a git repo, Cisco CX Security publishes enum4linux as a git repo (Debian dropped it after buster), and Rapid7 publishes metasploit through its own apt repo (with arm64 builds, so this works on Apple Silicon). Installing them this way keeps the guest on Debian without grafting Kali's repo onto it — which remains unsupported and can break the base. This is exactly what `lima/mshin-node.yaml` does; the manual steps above mirror it.
 
 ##### Set up the MCP server
 
@@ -280,7 +290,7 @@ The server shells out as `sudo -n <tool>` whenever it is not running as root (`s
 # omitted because reading user-owned PCAP files as root triggers Wireshark's
 # file-owner check; tshark needs no privileges to analyze existing captures.
 sudo tee /etc/sudoers.d/mshin >/dev/null <<EOF
-$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum
+$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 EOF
 sudo chmod 440 /etc/sudoers.d/mshin
 ```
@@ -288,7 +298,7 @@ sudo chmod 440 /etc/sudoers.d/mshin
 Test it in the foreground before daemonising:
 
 ```bash
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
 # Expect: [INFO] Machin Shin Node listening on http://0.0.0.0:3000
 # Ctrl-C to stop
 ```
@@ -299,12 +309,12 @@ Then install the unit the repo already ships:
 sudo cp /opt/mshin/configs/mcp-kali.service /etc/systemd/system/mshin-node.service
 
 # The shipped unit runs as a dedicated 'mshin' user. In a throwaway Lima VM,
-# run as your own login user instead; the tool list is the same thirteen, since
-# the steps above installed the other eleven from Debian and metasploit and
-# searchsploit from upstream.
+# run as your own login user instead; the tool list is the same sixteen, since
+# the steps above installed the other thirteen from Debian and metasploit,
+# searchsploit and enum4linux from upstream.
 sudo sed -i "s|^User=.*|User=$(whoami)|" /etc/systemd/system/mshin-node.service
 sudo sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin $HOME|" /etc/systemd/system/mshin-node.service
-sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum|" /etc/systemd/system/mshin-node.service
+sudo sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john|" /etc/systemd/system/mshin-node.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now mshin-node
@@ -444,7 +454,7 @@ If the connection fails:
    ```bash
    # On Node VM, start the server manually
    cd /opt/mshin/servers/src/kali
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
    ```
 
 ---
@@ -772,7 +782,7 @@ The two templates live in this repo:
 
 | File | Guest |
 | ---- | ----- |
-| `lima/mshin-node.yaml` | Debian 13 + all thirteen tools + `mshin-node` MCP server |
+| `lima/mshin-node.yaml` | Debian 13 + all sixteen tools + `mshin-node` MCP server |
 | `lima/mshin-core.yaml` | Ubuntu LTS + Ollama + the `mshin` persona and CLI |
 
 Copy one, edit it, and pass its **path** to `limactl create`. (`~/.lima/` holds created *instances*, not templates — a file dropped there is not picked up.)
