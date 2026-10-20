@@ -327,7 +327,73 @@ You will see the active scope logged at startup:
 [INFO] Target scope allowlist: 192.168.1.0/24, 127.0.0.1, *.example.com
 ```
 
-### **1.11 Verify the Node Tools**
+### **1.11 Require Node Authentication with `MSHIN_NODE_TOKEN`**
+
+The Node listens on `0.0.0.0:3000`, so any host on the LAN can reach `/mcp` and drive the tools — including the active ones (`metasploit`, `hydra`, `sqlmap`, `john`). The allowlist above constrains *which targets* the tools may touch; authentication constrains *who may call* the Node at all.
+
+Generate a token:
+
+```bash
+openssl rand -hex 32
+```
+
+Set it in the systemd unit (`/etc/systemd/system/mshin-node.service`):
+
+```ini
+Environment=MSHIN_NODE_TOKEN="<output of openssl rand -hex 32>"
+```
+
+`scripts/setup_mcp_server.sh` does this for you: it generates a token, stores it root-only in `/etc/mshin-node-token`, and injects the `Environment=` line into the unit. Re-running the script reuses the stored token, so the Core never loses access.
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart mshin-node
+sudo journalctl -u mshin-node -f
+```
+
+You will see the mode logged at startup:
+```
+[INFO] Bearer-token authentication: enabled (MSHIN_NODE_TOKEN set)
+```
+
+On the **Core**, pass the same token to the CLI — as a flag or an environment variable:
+
+```bash
+mshin --token "<token>" 192.168.1.100
+# or
+MSHIN_NODE_TOKEN="<token>" mshin 192.168.1.100
+# or run the client directly:
+/opt/mshin/clients/mshin-cli/index.js --node http://192.168.1.100:3000 --model mshin --token "<token>"
+```
+
+The evaluation harness takes it from the config file or the environment:
+
+```json
+{ "nodeToken": "<token>", "nodeUrl": "http://192.168.1.100:3000", "cases": [ ... ] }
+```
+
+Verify from the Node itself — without the token the MCP endpoint refuses, with it the handshake proceeds:
+
+```bash
+# 401 — rejected
+curl -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/mcp \
+  -H 'content-type: application/json' -d '{}'
+
+# 200 — accepted
+curl -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer <token>" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+`/health` stays open without a token so the documented health check and monitoring keep working; it reports only status and the tool list. Leave `MSHIN_NODE_TOKEN` unset to keep the legacy open behavior — not recommended for a Node reachable by other hosts.
+
+> **The token is a credential.** Anyone who reads it can run every tool the Node exposes. Keep it out of shell history, the repo, and world-readable files; `/etc/mshin-node-token` is mode 600 for a reason.
+
+### **1.12 Verify the Node Tools**
 
 Once the Core is set up and the CLI is pointed at the Node (`http://192.168.1.100:3000`), use these prompts to exercise each tool against systems you own. `metasploit`, `hydra`, `sqlmap`, and `john` are destructive-by-default and the CLI will ask for approval before any of them runs; the rest are passive.
 

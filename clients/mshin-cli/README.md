@@ -27,6 +27,10 @@ mshin 192.168.1.100
 
 # Use a different model:
 mshin --model llama3.3:70b 192.168.1.100
+
+# Authenticate to a Node that has MSHIN_NODE_TOKEN set:
+mshin --token <token> 192.168.1.100
+# or export MSHIN_NODE_TOKEN=<token> once and run mshin as usual
 ```
 
 ## Requirements
@@ -151,6 +155,7 @@ Create a JSON file like `eval-config.json`:
   "models": ["mshin", "mistral-small"],
   "ollamaUrl": "http://localhost:11434",
   "nodeUrl": "http://192.168.1.100:3000",
+  "nodeToken": "<token>",
   "cases": [
     {
       "name": "nmap-localhost",
@@ -168,6 +173,8 @@ Create a JSON file like `eval-config.json`:
   ]
 }
 ```
+
+When the Node requires authentication (`MSHIN_NODE_TOKEN` set on the server), add `nodeToken` to the config as above, or export `MSHIN_NODE_TOKEN` in the environment — the config file wins when both are present. The harness sends the token as `Authorization: Bearer <token>` on every MCP request.
 
 ### A harder case set
 
