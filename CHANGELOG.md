@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.2] - 2026-10-20
+
+Wordlist release. The dirb package's `common.txt` (4614 generic words) is the
+only stock list on the Node, and an MCP-driven probe with it runs straight
+past the ~60s client-side hangup documented in 0.16.4 — the scan keeps
+running on the server while the client gives up. The session that produced
+0.17.1 fell back to a hand-rolled 52-word list to finish under the window;
+that list now ships with the repo.
+
+### Added
+
+- **`servers/src/kali/wordlists/sensitive-paths.txt`** — the high-signal
+  probe list born from that session: upload/storage directories
+  (`uploads`, `storage`, `backup`, `dumps`...), WordPress paths
+  (`wp-content/uploads`, `wp-content/upgrade`, `wp-content/backup-db`,
+  `wp-config.php.bak`, `xmlrpc.php`), and dotfile/sensitive targets
+  (`.env`, `.git/HEAD`, `.htpasswd`, `id_rsa`). 53 entries, so an ffuf or
+  dirb run with it finishes in seconds — well inside the client-side
+  timeout. It deploys with no provisioning: the Lima Node mounts the repo
+  at `/opt/mshin` and a bare-metal Node clones there, so the absolute path
+  is `/opt/mshin/servers/src/kali/wordlists/sensitive-paths.txt` on both.
+- **The `ffuf`, `dirb`, and `gobuster` schema descriptions** now name that
+  shipped list, so an LLM caller reaching for a wordlist finds the fast
+  targeted one before the 4614-word default.
+
+### Verified
+
+- Live through the MCP server on the Lima Node: an ffuf run over the
+  shipped list against `https://imagewize.com` and
+  `https://demo.imagewize.com` completes in seconds and returns real hits
+  (`/backup/`, `wp-content/upgrade`, `wp-content/backup-db`, WordPress
+  logins on both vhosts).
+- `npm test` in `servers/src/kali/` passes 57/57 and in
+  `clients/mshin-cli/` passes 114/114.
+
 ## [0.17.1] - 2026-10-20
 
 Tool-execution patch, born from a live Vibe + Lima Node session: while
