@@ -19,7 +19,7 @@ The Node, sandboxed: Docker becomes the portable deployment artifact and the def
 
 ### Changed
 
-- **Docker is the default local-development path**; Lima is demoted to production-shape emulation (systemd unit, Debian host, bridged LAN access). `docs/LIMA-LOCAL-DEV.md` now says so up front, and `README.md`/`CONTRIBUTING.md`/`AGENTS.md`/`CLAUDE.md`/the roadmap cross-reference the new guide. The tool-list invariant gains the Docker location: under `configs/Dockerfile`, the apt list and sudoers collapse into `KALI_TOOLS`, and the `--tools` flag appears in the `CMD`.
+- **Docker is the default local-development path**; Lima is demoted to production-shape emulation (systemd unit, Debian host, bridged LAN access). `docs/LIMA-LOCAL-DEV.md` now says so up front, and the README's Vibe and OpenCode mode sections set the Node up as the container (`localhost:3000`) with Lima as the alternative; `README.md`/`CONTRIBUTING.md`/`AGENTS.md`/`CLAUDE.md`/the roadmap cross-reference the new guide. The tool-list invariant gains the Docker location: under `configs/Dockerfile`, the apt list and sudoers collapse into `KALI_TOOLS`, and the `--tools` flag appears in the `CMD`.
 - **Package versions aligned** to `0.19.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, and both `package-lock.json` files resynced — they had drifted to `0.17.2` behind the `0.18.x` docs releases.
 
 ### Verified
