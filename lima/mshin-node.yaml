@@ -98,7 +98,7 @@ provision:
       apt-get update
       # samba-common-bin and smbclient are enum4linux's wrappers (net, nmblookup,
       # rpcclient, smbclient); perl is enum4linux itself.
-      apt-get install -y curl git perl samba-common-bin smbclient nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping dnsenum ffuf john
+      apt-get install -y curl git perl samba-common-bin smbclient nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping arp-scan dnsenum ffuf john
       curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
       apt-get install -y nodejs
 
@@ -184,7 +184,7 @@ provision:
       # Wireshark's file-owner check, and tshark needs no privileges to read
       # capture files.
       cat >/etc/sudoers.d/mshin <<'EOF'
-      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
+      {{.User}} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/nikto, /usr/bin/whois, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/sbin/arp-scan, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
       EOF
       chmod 440 /etc/sudoers.d/mshin
       visudo -cf /etc/sudoers.d/mshin
@@ -201,7 +201,7 @@ provision:
       # and enum4linux.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
       sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
-      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john|" "${UNIT}"
+      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john|" "${UNIT}"
       systemctl daemon-reload
       systemctl enable mshin-node
       systemctl restart mshin-node

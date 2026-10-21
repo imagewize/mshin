@@ -59,8 +59,13 @@ async function connectClient() {
 before(async () => {
     const port = await freePort();
     baseUrl = `http://127.0.0.1:${port}`;
+    // These tests pin the session lifecycle, not auth: boot the server without
+    // a token even when the host shell exports MSHIN_NODE_TOKEN (a configured
+    // deployment does), or every /mcp request answers 401.
+    const env = { ...process.env, MSHIN_NODE_PORT: String(port) };
+    delete env.MSHIN_NODE_TOKEN;
     child = spawn(process.execPath, [ENTRY, "--tools", "nmap,whois"], {
-        env: { ...process.env, MSHIN_NODE_PORT: String(port) },
+        env,
         stdio: ["ignore", "ignore", "pipe"],
     });
     child.stderr.resume();

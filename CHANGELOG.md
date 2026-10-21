@@ -5,6 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-10-21
+
+Honesty release, born from a live session that asked the Docker Node for the LAN's hosts and got 256/256 "up" when five were real. The Node now refuses to return fabricated discovery results, real ARP discovery is a first-class tool, the Mac-side workflow is one command, and the docs state plainly which network position can see what: Docker for evals and internet targets, Lima bridged for LAN discovery on a Mac, a VPS for internet-facing targets — and never anyone's home LAN from the wrong side of a NAT.
+
+### Added
+
+- **Discovery fabrication guard** (`servers/src/kali/tools.js`). An `nmap -sn` (or legacy `-sP`) against a range where *every single address* answered — from 17 addresses up — now fails with `Refusing to return a fabricated discovery result` instead of handing back a fake host list, with the recovery path in the error text. Enumerated `targets` lists of live hosts are untouched (an all-up result is legitimate for a known list); port/service scans are untouched; ranges of 16 addresses or fewer are below the heuristic. On a real segment the guard cannot fire: the network and broadcast addresses never answer ARP.
+- **`arp-scan` tool** — real ARP discovery with IP/MAC/vendor output: the tool that is either right or visibly wrong. The tool-list invariant is updated in all five places plus the Lima template mirror (apt list, sudoers, `--tools`): `servers/src/kali/config.js` + `tools.js`, `scripts/setup_mcp_server.sh` (apt, `--tools`, sudoers), `configs/mcp-kali.service`, `configs/Dockerfile` (`KALI_TOOLS` + `CMD`), `lima/mshin-node.yaml`. The binary path is `/usr/sbin/arp-scan` on both Kali and Debian — measured inside the image after the first attempt assumed `/usr/bin` and failed, not guessed a second time.
+- **`scripts/lan_inventory.sh`** — host-side LAN inventory on macOS: detects the subnet itself (`ipconfig getifaddr`), ping-sweeps, filters `arp -a` to real MACs, resolves best-effort names, and prints a ready-to-use `targets` array for the Node. Documents the VPN/hostname caveat inline.
+- **`scripts/setup_bridged_node.sh`** — the one-command bridged Lima Node (`mshin-node-bridged`): the real LAN vantage point on a Mac. Enforces the token (a bridged Node is LAN-reachable), sets it as a systemd drop-in inside the guest, reads the `lima1` DHCP address, warns about the localhost:3000 port-forwarding collision with other mshin guests, and prints verification and cleanup steps.
+- **`docs/VPS-NODE.md`** — the cloud Node guide, led by its Layer-2 truth table: a VPS Node is faithful for internet-facing targets and its own cloud subnet, and cannot see any LAN it is not physically on. Setup (base `compose.yaml` unchanged — host networking is real on a Linux kernel), the mandatory token/scope/firewall posture, and troubleshooting entries for the guard's refusal.
+
+### Changed
+
+- **The docs now tell the LAN-position truth.** `docs/DOCKER-LOCAL-DEV.md` gains the plain rule up front — Docker Node for evals, internet targets, and targeted scans; the Mac itself (`lan_inventory.sh`) or the bridged Lima Node for LAN discovery — and its capability matrix gains the `arp-scan` row and the guard. `AGENTS.md`'s "Local LAN work on macOS" procedure now starts with `lan_inventory.sh`, names the guard, and points at the bridged script and the VPS truth; its tool-list invariant also names the Lima template's three mirrored locations. `CLAUDE.md`'s convention bullet records the refusal; its layout section lists the new script and doc. `README.md` and `CONTRIBUTING.md` cross-reference `docs/VPS-NODE.md` and both scripts.
+- **Package versions aligned** to `0.22.0` in both packages, locks resynced.
+
+### Fixed
+
+- **`transport.test.js` no longer inherits the host shell's `MSHIN_NODE_TOKEN`** — the spawned test server demanded a bearer token on any machine where the variable is exported (every configured deployment), failing the three session-lifecycle tests with 401. The child env is scrubbed, so the suite passes 67/67 regardless of the host environment.
+
+### Verified
+
+- **The guard fires live**: `nmap -sn 192.168.0.0/24` through the rebuilt Docker Desktop container returns the fabrication error (the pre-guard behavior, all 256 "up", is what motivated this release). A targeted `-sV -p 80` of the LAN gateway through the same Node returns the real banner — the faithful path is unchanged.
+- **`arp-scan` live through the container**: the `tools/call` round trip ARP-scans the requested range from the bridge and honestly reports `0 responded` — no fabricated MACs. `/health` lists all seventeen tools.
+- **`scripts/lan_inventory.sh` live on the Mac**: found the real hosts with MACs and built the `targets` array; a host that had joined the network since the session's first manual sweep was picked up.
+- `npm test` in `servers/src/kali/` passes 67/67 (63 existing plus four guard tests; the `arp-scan` injection cases extend the existing suites, and the tool-contract test now pins seventeen). `npm test` in `clients/mshin-cli/` passes 114/114 (client unchanged; pre-commit check).
+- `bash -n` on all touched/new scripts; `limactl template validate` passes on the updated template.
+
+### Not verified
+
+- **`scripts/setup_bridged_node.sh` end to end** — creating a bridged guest takes minutes and modifies the host's Lima setup, so the script was verified by inspection and `bash -n`, not by running it. Every command it issues mirrors steps documented and previously verified in `docs/LIMA-LOCAL-DEV.md` (bridged create, token drop-in, `lima1` address read).
+- **The `arp-scan` sudo path on a bare-metal Node** — the container runs as root (no sudo), so the `/usr/sbin/arp-scan` allowlist entry is synced in both sudoers locations but unexercised on real metal.
+
 ## [0.21.0] - 2026-10-21
 
 Two born-from-a-live-session changes. The nmap tool gains multi-target calls, because scanning a discovered host list one host at a time wastes an agent turn per host. And the Docker guide gains the LAN-discovery truth this session measured the hard way: host discovery through Docker Desktop's bridge is fabricated, targeted scans are faithful, and ARP-based discovery needs the bridged-guest hybrid.

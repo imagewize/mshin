@@ -36,7 +36,7 @@ fi
 
 MSHIN_DIR="/opt/mshin"
 MSHIN_USER="mshin"
-TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john"
+TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
 # Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
 MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
@@ -62,6 +62,7 @@ apt-get install -y \
     masscan \
     dirb \
     arping \
+    arp-scan \
     dnsenum \
     enum4linux \
     ffuf \
@@ -136,7 +137,7 @@ echo "[+] Configuring sudoers for '${MSHIN_USER}'..."
 # triggers Wireshark's file-owner check, and tshark needs no privileges to
 # analyze existing captures.
 cat > /etc/sudoers.d/mshin <<EOF
-${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
+${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/sbin/arp-scan, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 EOF
 chmod 440 /etc/sudoers.d/mshin
 

@@ -112,6 +112,47 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   return output.trim();
 }
 
+// Host-discovery fabrication guard.
+//
+// Docker Desktop's NAT (and other virtualization fabrics) answer discovery
+// probes on behalf of every address in a scanned range, dead or alive — a
+// container-side `nmap -sn <LAN>/24` through the bridge returned all 256
+// addresses "up" at sub-millisecond latency when the real segment had 5 live
+// hosts (measured 2026-10-21; see docs/DOCKER-LOCAL-DEV.md, Troubleshooting).
+// On a real segment that result is impossible: the network and broadcast
+// addresses never answer ARP, and sleeping phones do not answer anything.
+//
+// So instead of handing the model a fabricated host list, the nmap handler
+// throws. The heuristic applies only to range scans (`/` in a spec) where
+// every single address answered, and only from 17 addresses up — an
+// enumerated list of live hosts may legitimately be all-up, and no real /27
+// or larger has ever been measured with 100% response.
+const FABRICATED_DISCOVERY_THRESHOLD = 17;
+const NMAP_DONE_RE = /Nmap done: (\d+) IP addresses? \((\d+) hosts? up\)/;
+
+function assertDiscoveryNotFabricated(flags, specs, output) {
+  const isDiscoveryScan = flags.includes("-sn") || flags.includes("-sP");
+  if (!isDiscoveryScan) return;
+  if (!specs.some((s) => s.includes("/"))) return;
+  const m = NMAP_DONE_RE.exec(output);
+  if (!m) return;
+  const total = parseInt(m[1], 10);
+  const up = parseInt(m[2], 10);
+  if (total >= FABRICATED_DISCOVERY_THRESHOLD && up === total) {
+    throw new Error(
+      `Refusing to return a fabricated discovery result: all ${total} addresses ` +
+      `in the scanned range reported "up", which is the signature of a NAT'd ` +
+      `network position answering probes on behalf of every address, dead or ` +
+      `alive (measured on Docker Desktop's bridge). Host discovery from this ` +
+      `Node is not trustworthy. Get the live host list from a machine on the ` +
+      `physical network (on macOS: scripts/lan_inventory.sh, or ipconfig ` +
+      `getifaddr en0, a ping sweep, then arp -a), then scan those hosts ` +
+      `individually through this Node — targeted scans are faithful. See ` +
+      `docs/DOCKER-LOCAL-DEV.md, Troubleshooting.`
+    );
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Tool definitions exposed to MCP clients
 // -----------------------------------------------------------------------------
@@ -174,6 +215,7 @@ const tools = [
         throw new Error("Provide 'target' or 'targets' — nothing to scan.");
       }
       const output = await runTool("nmap", [...flags, ...specs]);
+      assertDiscoveryNotFabricated(flags, specs, output);
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -570,6 +612,48 @@ const tools = [
     },
   },
   {
+    name: "arp-scan",
+    description:
+      "ARP-scan a local network segment for live hosts, reporting IP, MAC and vendor. " +
+      "Truthful only from a real position on the segment (bare-metal Node, host-mode " +
+      "container, bridged guest); from behind NAT it returns nothing or fabricates — " +
+      "discover from a machine on the physical network instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description:
+            "CIDR range or comma-separated IP list to ARP-scan, e.g. '192.168.1.0/24'.",
+        },
+        iface: {
+          type: "string",
+          description: "Network interface to scan on, e.g. 'eth0'. Optional.",
+        },
+        options: {
+          type: "string",
+          description: "Additional arp-scan options, e.g. '--retry 5 --interval 100'.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, iface, options }) => {
+      assertSafe(target, "target");
+      assertTargetListInScope(target, "target");
+      const args = [target];
+      if (iface) {
+        assertSafe(iface, "iface");
+        args.push("--interface", iface);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("arp-scan", args, 60_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
     name: "dnsenum",
     description:
       "Run DNSEnum for DNS enumeration and reconnaissance.",
@@ -707,5 +791,5 @@ const tools = [
   },
 ];
 
-export { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs };
+export { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, assertDiscoveryNotFabricated };
 export default tools;

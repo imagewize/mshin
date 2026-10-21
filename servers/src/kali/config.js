@@ -19,6 +19,10 @@ export const TOOL_PATHS = {
   masscan: "/usr/bin/masscan",
   dirb: "/usr/bin/dirb",
   arping: "/usr/bin/arping",
+  // arp-scan installs to /usr/sbin on Kali and Debian alike (it is an admin
+  // tool); every other tool here is /usr/bin. The sudoers allowlist entries
+  // match these paths exactly.
+  "arp-scan": "/usr/sbin/arp-scan",
   dnsenum: "/usr/bin/dnsenum",
   enum4linux: "/usr/bin/enum4linux",
   ffuf: "/usr/bin/ffuf",

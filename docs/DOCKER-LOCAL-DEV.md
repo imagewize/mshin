@@ -6,6 +6,8 @@ This guide describes how to run a **local, single-machine Machin Shin developmen
 
 For the Lima-VM alternative, see [Lima Local Dev](LIMA-LOCAL-DEV.md) — it is no longer the default local path, but it remains the way to emulate the **production shape** (systemd unit, Debian host, bridged LAN access).
 
+> **Plain rule for LAN work on a Mac:** the Docker Node cannot see your physical LAN and will not pretend to (it refuses fabricated discovery results — see Troubleshooting). For **discovery on your own network**, use the Mac itself (`scripts/lan_inventory.sh`) or the bridged Lima Node (`scripts/setup_bridged_node.sh`); keep this Docker Node for **evals, internet-facing targets, and targeted scans of hosts already known live**. Docker is the deployment artifact; Lima is the LAN vantage point.
+
 ---
 
 ## Overview
@@ -14,7 +16,7 @@ For the Lima-VM alternative, see [Lima Local Dev](LIMA-LOCAL-DEV.md) — it is n
 | ------ | ---------- | ---------------- |
 | Machines | 2 physical boxes | 1 macOS host |
 | Core | Separate machine, 32GB+ RAM | Native Ollama on the Mac (7–8B model tier) |
-| Node | Kali on its own box | `mshin-node` container, all 16 tools |
+| Node | Kali on its own box | `mshin-node` container, all 17 tools |
 | Cost | ~$150–350 (the Node) | $0 (uses existing Mac) |
 | Portability | — | The **same compose files** run on a Linux Node or VPS |
 | Sandbox | The Node machine is the boundary | Plus container isolation: dropped capabilities, read-only rootfs |
@@ -33,7 +35,7 @@ For the Lima-VM alternative, see [Lima Local Dev](LIMA-LOCAL-DEV.md) — it is n
 │                    |  (configs/compose.local.yaml publishes :3000) │
 │  ┌─────────────────v───────────────────────────────────────────┐  │
 │  │ Docker Desktop VM ── mshin-node container                  │  │
-│  │  16 Kali tools • cap NET_RAW/NET_ADMIN • read-only rootfs   │  │
+│  │  17 Kali tools • cap NET_RAW/NET_ADMIN • read-only rootfs   │  │
 │  └─────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -61,7 +63,7 @@ That is why Docker is the deployment artifact: one image from laptop to VPS.
 | Requirement | Notes |
 | ----------- | ----- |
 | Docker Desktop (or any Docker 24+) | Verified against daemon 29.8.2 on Apple Silicon |
-| ~10 GB disk | The image with all 16 tools is ~3.1 GB |
+| ~10 GB disk | The image with all 17 tools is ~3.1 GB |
 | Apple Silicon or x86_64 | The image builds natively on both; `FROM kalilinux/kali-rolling` is multi-arch |
 | Ollama (native) | For the Core side — see [Lima Local Dev](LIMA-LOCAL-DEV.md)'s model guidance (7–8B tier on 16 GB) |
 
@@ -91,7 +93,7 @@ curl http://localhost:3000/health
 
 ## Usage
 
-The MCP surface is identical to any other Node: point the CLI (`--mcp-url http://localhost:3000/mcp --token <value>`), Vibe, or OpenCode at `localhost:3000`. Verified in this environment: `tools/list` exposes all sixteen tools, a `tools/call` round trip to `nmap` returns real scan output (11.3 s), and `POST /mcp` without the token answers 401.
+The MCP surface is identical to any other Node: point the CLI (`--mcp-url http://localhost:3000/mcp --token <value>`), Vibe, or OpenCode at `localhost:3000`. Verified in this environment: `tools/list` exposes all seventeen tools, a `tools/call` round trip to `nmap` returns real scan output (11.3 s), and `POST /mcp` without the token answers 401.
 
 What the sandbox changes relative to a bare-metal Node:
 
@@ -108,7 +110,7 @@ The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work ag
 
 **`localhost:3000` answers 401 with the right token — or connects to the wrong Node.** If a Lima `mshin-node` guest is running, **Lima automatically forwards the guest's listening ports to the Mac's localhost** and will silently claim `localhost:3000` before Docker does. The request then reaches the *guest's* systemd Node (with *its* token), not your container. Fix: `limactl stop mshin-node`, then `docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d --force-recreate`. This collision is measured behavior, not speculation — it cost an hour of confused 401s during this guide's own verification.
 
-**Host discovery from the container reports every address as up.** Measured on this setup: `nmap -sn <LAN>/24` through the bridge override returned all 256 addresses "up" with sub-millisecond latencies — Docker Desktop's NAT answers discovery probes on behalf of every address, dead or alive, so an "up" verdict from inside the container means nothing. Targeted scans of genuinely live hosts are faithful (a scan of the LAN gateway matched a native scan byte-for-byte, banners included), but you cannot tell live from dead from inside. Get the host list from something with a real network position — the Mac's `arp -a` after a ping sweep, or the router's client list — then scan those specific hosts through the Node, or use the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) for real discovery.
+**Host discovery from the container reports every address as up.** Measured on this setup: `nmap -sn <LAN>/24` through the bridge override returned all 256 addresses "up" with sub-millisecond latencies — Docker Desktop's NAT answers discovery probes on behalf of every address, dead or alive, so an "up" verdict from inside the container means nothing. Targeted scans of genuinely live hosts are faithful (a scan of the LAN gateway matched a native scan byte-for-byte, banners included), but you cannot tell live from dead from inside. **The Node now refuses to return such results:** an `nmap -sn` against a CIDR where every single address answered fails with `Refusing to return a fabricated discovery result` instead of handing back a fake host list. Get the host list from something with a real network position — the Mac's `scripts/lan_inventory.sh` (or `arp -a` after a ping sweep), or the router's client list — then scan those specific hosts through the Node, or use the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) for real discovery.
 
 **`nmap` fails with `Operation not permitted` at exec.** Kali ships `/usr/lib/nmap/nmap` with file capabilities; `no-new-privileges` makes any privilege-gaining exec fail with EPERM. The Dockerfile strips them (`setcap -r`) — if a rebuild regresses this, that line is the fix.
 
@@ -124,7 +126,8 @@ A container on Docker Desktop **cannot** sit on the physical LAN: the Docker VM'
 | ------ | --------- |
 | Internet egress (`whois`, `dnsenum`, public targets) | Yes |
 | Targeted scan of a **known-live** LAN host | Yes — byte-identical port states and banners to a native scan |
-| Host **discovery** across the LAN | **No — fabricated** (see Troubleshooting) |
+| Host **discovery** across the LAN | **No — fabricated** (see Troubleshooting). The Node now *refuses* such results (`nmap -sn` against a CIDR where every address answers returns an error, not a fake list) |
+| ARP discovery (`arp-scan`, `nmap -sn -PR`) | **No** — the container has no Layer-2 presence on the LAN. Use the Mac (`scripts/lan_inventory.sh`) or the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) |
 
 When you need real ARP-based discovery — finding machines that drop all unicast probes (Windows defaults, sleeping phones) — run the *same container image* on a machine that is itself on the LAN:
 
