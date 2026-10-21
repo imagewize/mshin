@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, assertDiscoveryNotFabricated } from "./tools.js";
 import { isTargetAllowed, assertTargetInScope } from "./config.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
@@ -154,7 +154,55 @@ test("nmap rejects a null byte in the target", async () => {
   await assert.rejects(nmap.handler({ target: "8.8.8.8\0evil" }), /unsafe characters|null byte/);
 });
 
-test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, dnsenum, enum4linux, ffuf and john reject shell metacharacters", async () => {
+// -----------------------------------------------------------------------------
+// Discovery fabrication guard — see the guard's comment in tools.js for the
+// measured failure it exists to stop (Docker Desktop's NAT answers probes for
+// every address in a scanned range, dead or alive).
+// -----------------------------------------------------------------------------
+
+const ALL_UP_256 =
+  "Host is up (0.0067s latency).\nNmap done: 256 IP addresses (256 hosts up) scanned in 9.32 seconds";
+
+test("fabrication guard refuses an all-up CIDR discovery scan", () => {
+  assert.throws(
+    () => assertDiscoveryNotFabricated(["-sn"], ["192.168.0.0/24"], ALL_UP_256),
+    /fabricated discovery result/
+  );
+  // -sP is nmap's legacy alias for -sn and must be guarded too.
+  assert.throws(
+    () => assertDiscoveryNotFabricated(["-sP"], ["192.168.0.0/24"], ALL_UP_256),
+    /fabricated discovery result/
+  );
+});
+
+test("fabrication guard passes a truthful discovery result", () => {
+  const fiveUp =
+    "Host is up (0.0048s latency).\nNmap done: 256 IP addresses (5 hosts up) scanned in 9.32 seconds";
+  assertDiscoveryNotFabricated(["-sn"], ["192.168.0.0/24"], fiveUp);
+});
+
+test("fabrication guard leaves enumerated host lists alone", () => {
+  // An all-up result is legitimate for a targets list of live hosts the
+  // caller already knows about; only range scans can be fabricated.
+  const twentyUp =
+    "Nmap done: 20 IP addresses (20 hosts up) scanned in 9.32 seconds";
+  assertDiscoveryNotFabricated(
+    ["-sn"],
+    ["192.168.0.1", "192.168.0.2", "192.168.0.3"],
+    twentyUp
+  );
+});
+
+test("fabrication guard ignores small ranges and non-discovery scans", () => {
+  const sixteenUp =
+    "Nmap done: 16 IP addresses (16 hosts up) scanned in 2.00 seconds";
+  // A /28 is below the threshold — tiny ranges stay out of the heuristic.
+  assertDiscoveryNotFabricated(["-sn"], ["192.168.0.0/28"], sixteenUp);
+  // Port/service scans report hosts too, but the guard is about discovery.
+  assertDiscoveryNotFabricated(["-sV"], ["192.168.0.0/24"], ALL_UP_256);
+});
+
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf and john reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
