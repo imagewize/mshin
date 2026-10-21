@@ -108,16 +108,37 @@ The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work ag
 
 **`localhost:3000` answers 401 with the right token — or connects to the wrong Node.** If a Lima `mshin-node` guest is running, **Lima automatically forwards the guest's listening ports to the Mac's localhost** and will silently claim `localhost:3000` before Docker does. The request then reaches the *guest's* systemd Node (with *its* token), not your container. Fix: `limactl stop mshin-node`, then `docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d --force-recreate`. This collision is measured behavior, not speculation — it cost an hour of confused 401s during this guide's own verification.
 
+**Host discovery from the container reports every address as up.** Measured on this setup: `nmap -sn <LAN>/24` through the bridge override returned all 256 addresses "up" with sub-millisecond latencies — Docker Desktop's NAT answers discovery probes on behalf of every address, dead or alive, so an "up" verdict from inside the container means nothing. Targeted scans of genuinely live hosts are faithful (a scan of the LAN gateway matched a native scan byte-for-byte, banners included), but you cannot tell live from dead from inside. Get the host list from something with a real network position — the Mac's `arp -a` after a ping sweep, or the router's client list — then scan those specific hosts through the Node, or use the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) for real discovery.
+
 **`nmap` fails with `Operation not permitted` at exec.** Kali ships `/usr/lib/nmap/nmap` with file capabilities; `no-new-privileges` makes any privilege-gaining exec fail with EPERM. The Dockerfile strips them (`setcap -r`) — if a rebuild regresses this, that line is the fix.
 
 **`compose up` fails: env file missing.** Expected: the `env_file` is required so the stack fails closed without a token. Create `configs/mshin-node.env` (see Setup).
 
 **Metasploit's first call after a restart is slow.** msfconsole's one-time init runs against the `/tmp` tmpfs once per container start (pre-warming at build time would be masked by the tmpfs, so the Dockerfile deliberately does not).
 
+## LAN discovery on macOS — the bridged-guest hybrid
+
+A container on Docker Desktop **cannot** sit on the physical LAN: the Docker VM's NIC is NAT'd by macOS and no bridge to `en0` exists, so `macvlan`/`host` tricks from Linux simply do not apply. What each path can and cannot do, measured on this setup:
+
+| Operation from the container | Faithful? |
+| ------ | --------- |
+| Internet egress (`whois`, `dnsenum`, public targets) | Yes |
+| Targeted scan of a **known-live** LAN host | Yes — byte-identical port states and banners to a native scan |
+| Host **discovery** across the LAN | **No — fabricated** (see Troubleshooting) |
+
+When you need real ARP-based discovery — finding machines that drop all unicast probes (Windows defaults, sleeping phones) — run the *same container image* on a machine that is itself on the LAN:
+
+1. **Create the Lima guest with bridged networking** — follow [Lima Local Dev](LIMA-LOCAL-DEV.md)'s bridged mode (a `bridged` network in `~/.lima/_config/networks.yaml` bound to the wired interface, plus the `- lima: bridged` entry in the template). Bridged was verified working over Wi-Fi on this project's own TOTOLINK router; test your AP first.
+2. **Install Docker in the guest** — `sudo apt-get install -y docker.io docker-compose` (the same in-guest setup the 0.19.0 verification used).
+3. **Run the base compose file inside the guest** — `configs/compose.yaml` with **no** override: `network_mode: host` inside the guest makes the container share the guest's bridged NIC, which puts the tools directly on the physical LAN with working ARP.
+4. **Point clients at the guest's bridged IP** — `http://<GUEST_LAN_IP>:3000/mcp` with the same `configs/mshin-node.env` token. The Node is now LAN-reachable, so the token is mandatory and `MSHIN_ALLOWED_TARGETS` is strongly recommended.
+
+The production equivalent is simpler: a real Linux Node or VPS runs `configs/compose.yaml` unchanged, and `network_mode: host` there means real LAN presence with no VM at all. The hybrid above is what you use when the only hardware you have is the Mac.
+
 ## Limitations
 
 - Scanning targets are still governed by the repo's rules: `127.0.0.1` or RFC 5737 ranges in examples and tests, and by `MSHIN_ALLOWED_TARGETS` in practice.
-- The container cannot reach the Mac's physical LAN; ARP-discovery workflows need the Lima bridged mode or a real Node.
+- The container cannot reach the Mac's physical LAN from the bridge override; ARP-based discovery needs the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) or a real Linux Node.
 - This is for development and testing, never production scanning of machines you do not own.
 
 ## Changelog

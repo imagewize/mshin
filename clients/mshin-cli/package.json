@@ -1,6 +1,6 @@
 {
   "name": "mshin-cli",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Interactive CLI harness that connects Ollama to the Machin Shin Kali MCP server.",
   "type": "module",
   "main": "index.js",
