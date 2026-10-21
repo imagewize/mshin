@@ -185,6 +185,22 @@ Ask first: `rm -rf`, `git reset --hard`, `git clean -fd`, dropping a VM, overwri
 - Lima provision scripts re-run on every boot — keep each one guarded and idempotent
 - The guest home is `/home/<user>.linux`, not `/home/<user>`; use `{{.Home}}` in a template and `$HOME` in the guest
 
+### Local LAN work on macOS — discovery truth
+
+The sandboxed Docker Node on Docker Desktop **cannot discover LAN hosts**: Docker's NAT answers discovery probes on behalf of every address, so any Node-side discovery scan (`nmap -sn <LAN>/24`, `arping` sweeps) reports all 256 addresses "up" with sub-millisecond latency. **That result is fabricated** — it has produced false host reports before. Never trust an "up" verdict from a discovery scan through the container, and never present such a list as real hosts.
+
+When a task needs the machine's actual LAN (live hosts, IPs, MACs), work from the Mac — it is the only thing on the physical network:
+
+1. Derive the subnet yourself; do not ask the user for it:
+   `SUBNET=$(ipconfig getifaddr en0 | cut -d. -f1-3)` (fall back to `en1` on wired Macs).
+2. Populate the ARP table with a ping sweep, then read it:
+   `for i in $(seq 1 254); do ping -c 1 -W 300 "$SUBNET.$i" >/dev/null 2>&1 & done; wait; arp -a -i en0`
+   Only entries with a MAC address are live; `(incomplete)` means dead.
+3. Use the Node only for **targeted** scans of hosts already known live — those results are faithful (measured; see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md)).
+4. Do not expect hostnames: consumer routers rarely serve reverse DNS, and Bonjour/mDNS browsing can fail when a VPN interface owns the default route. Pull names from service banners instead, and say so when a host's name is unknown.
+
+Real ARP-based discovery from the tool side needs the [bridged-guest hybrid](docs/DOCKER-LOCAL-DEV.md#lan-discovery-on-macos--the-bridged-guest-hybrid) or a real Linux Node on the LAN.
+
 ---
 
 ## Cybersecurity-Specific Rules
