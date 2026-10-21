@@ -89,6 +89,7 @@ mshin/
 │   ├── CYBERSECURITY-AGENT-ROADMAP.md  # Agent roadmap
 │   ├── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
 │   ├── EVAL-RUN-2026-10-20.md         # First model-comparison eval measurements
+│   ├── EVAL-RUN-2026-10-21.md         # Same suite against the Docker Node
 │   ├── RASPBERRY-PI-NODE.md            # Raspberry Pi Node guide
 │   └── MAC-MINI-M4-CORE.md             # Mac Mini M4 Pro Core guide
 ├── scripts/
