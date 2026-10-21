@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-10-21
+
+Measurement release. The full model-comparison suite re-run against the **sandboxed Docker Node**, closing the gap 0.19.0 itself flagged as not verified. No code changed — the harness, case set, and models are identical to the 2026-10-20 baseline; only the Node moved, from a Lima guest to the capabilities-limited container.
+
+### Added
+
+- **`docs/EVAL-RUN-2026-10-21.md`** — the raw harness report plus the run's reasoning, mirroring the 2026-10-20 record: what changed in the environment (the Node's `127.0.0.1` is now the container; tool calls cross the bridge/published-port path), the findings table, and the reproduction command.
+- **Eval-harness run artifacts are gitignored** (`.gitignore`). The harness writes transcripts, `AgentMemory` (`eval-results/.mshin-eval/memory.json`), and reports under `clients/mshin-cli/eval-results/` at run time; none of it is source. Curated records are committed deliberately as `docs/EVAL-RUN-*.md`, as both runs now are.
+
+### Changed
+
+- **Roadmap Phase 2** records the second comparison run; `docs/DOCKER-LOCAL-DEV.md`'s "not re-run" caveat is replaced by the measured result; `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` cross-reference the new record.
+- **Package versions aligned** to `0.20.0` in both packages, locks resynced — the docs-only 0.18.x releases had left them drifted at 0.17.2 before 0.19.0 fixed them; this release keeps the new habit.
+
+### Verified
+
+- **The suite ran end to end against the Docker container** (`configs/compose.yaml` + `compose.local.yaml`, bridge override, bearer token from `configs/mshin-node.env`), after confirming `/health` listed all sixteen tools and a `tools/call` round trip to `nmap` returned real scan output.
+- **The 8B tier is unchanged from the Lima baseline**: `mshin` and `qwen3:8b` both 4/4 — zero narrated calls, zero fabricated outputs, context high-water 902 tokens (baseline: 947). Both models handled the case-set quirk the container introduced (the web server is on `:3000`, not `:80`) by pivoting `nikto` to the right port. Verdict: the sandbox is a drop-in Node for the harness.
+- **`qwen3:4b` remains below the bar** (2/4, baseline 3/4): `chain-with-dependency` failed on a fabricated output the backstop blocked — same failure class as the baseline run; `recon-chain` died on an MCP request timeout (`-32001`) during an exploratory `dnsenum` call the model chose beyond the expected set. The cause of that one is not established (model choice vs. container DNS path) and moot on a rejected tier; the record says so rather than dressing it up.
+- **One wall-clock caveat, recorded honestly**: `nikto`'s ~8000 requests through the bridge/published-port path are slower than a guest-local path — `chain-with-dependency` took ~105 s per 8B model against ~68 s on the guest. Scores unaffected.
+- `npm test` in `servers/src/kali/` passes 57/57 and in `clients/mshin-cli/` passes 114/114 (pre-commit check; no code changed).
+
 ## [0.19.0] - 2026-10-21
 
 The Node, sandboxed: Docker becomes the portable deployment artifact and the default local-development path. One image runs the MCP server and all sixteen Kali tools as root *inside a capabilities-limited jail*, so a bad flag or a hijacked model prompt trashes a disposable container instead of the Node's OS — and the sudo-root hot path disappears entirely (no sudo is installed in the image, so the sudoers allowlist and the tshark/dirb/ffuf sudo exceptions are moot).
@@ -1767,7 +1789,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/imagewize/mshin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/imagewize/mshin/compare/v0.18.1...v0.19.0
 [0.13.0]: https://github.com/imagewize/mshin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/imagewize/mshin/compare/v0.10.1...v0.12.0
