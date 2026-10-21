@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-10-21
+
+Two born-from-a-live-session changes. The nmap tool gains multi-target calls, because scanning a discovered host list one host at a time wastes an agent turn per host. And the Docker guide gains the LAN-discovery truth this session measured the hard way: host discovery through Docker Desktop's bridge is fabricated, targeted scans are faithful, and ARP-based discovery needs the bridged-guest hybrid.
+
+### Added
+
+- **`nmap` accepts a `targets` array** (`servers/src/kali/tools.js`). nmap takes host specs as separate arguments — a single comma-joined argv is parsed as a hostname and fails with `Failed to resolve` (verified against Kali's nmap 7.991), so the handler splits comma-separated strings and array entries into one argv per spec. `target` (single spec or comma list) still works; either alone suffices; neither rejects with a clear error. Scope checks run per host via `assertTargetListInScope`, so a `MSHIN_ALLOWED_TARGETS` allowlist of individual IPs admits a discovered host list instead of rejecting the joined string.
+- **LAN-discovery section in `docs/DOCKER-LOCAL-DEV.md`** — the measured capability matrix (internet egress yes; targeted scans of live hosts yes; host discovery no) and the **bridged-guest hybrid**: the same container image running inside a Lima guest with `- lima: bridged`, under the base `compose.yaml`'s host networking — putting the tools directly on the physical LAN with working ARP. The production equivalent (real Linux Node, `compose.yaml` unchanged) is named as the simpler path.
+
+### Changed
+
+- **Troubleshooting entry for fabricated discovery** (`docs/DOCKER-LOCAL-DEV.md`): `nmap -sn <LAN>/24` through the bridge returns *all 256* addresses "up" at sub-millisecond latencies — Docker Desktop's NAT answers discovery probes for every address, dead or alive. Measured against ground truth: a host the container reported "up" was down per a native scan, and the live gateway's service scan matched the native result byte-for-byte (banners included). Rule: get the host list from something with a real network position, then scan those hosts through the Node.
+- **Package versions aligned** to `0.21.0`, locks resynced.
+
+### Verified
+
+- **Live through the rebuilt container**: one `tools/call` with `targets: ["127.0.0.1","192.168.0.1"]` and `-sV -p 22,80,3000` scanned both hosts in a single call — the container's own Express on `:3000` and the LAN gateway's web UI — two scan reports, real banners, 19.3 s.
+- `npm test` in `servers/src/kali/` passes 63/63 (57 existing plus six new: schema contract, targets-array dispatch, comma-list dispatch, injection rejection per entry, non-array rejection, and neither-argument rejection). The existing `/must be a string/` contract tests pass unchanged — `assertSafe` still produces them.
+- `npm test` in `clients/mshin-cli/` passes 114/114 (client unchanged; pre-commit check).
+
 ## [0.20.0] - 2026-10-21
 
 Measurement release. The full model-comparison suite re-run against the **sandboxed Docker Node**, closing the gap 0.19.0 itself flagged as not verified. No code changed — the harness, case set, and models are identical to the 2026-10-20 baseline; only the Node moved, from a Lima guest to the capabilities-limited container.
@@ -1789,7 +1809,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/imagewize/mshin/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/imagewize/mshin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/imagewize/mshin/compare/v0.18.1...v0.19.0
 [0.13.0]: https://github.com/imagewize/mshin/compare/v0.12.0...v0.13.0
