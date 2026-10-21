@@ -392,7 +392,7 @@ const tools = [
         },
         wordlist: {
           type: "string",
-          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali.",
+          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali. For a fast, high-signal probe (upload dirs, WordPress paths, dotfiles) the Node ships '/opt/mshin/servers/src/kali/wordlists/sensitive-paths.txt'.",
         },
         options: {
           type: "string",
@@ -480,7 +480,7 @@ const tools = [
         },
         wordlist: {
           type: "string",
-          description: "Path to wordlist file. Default is '/usr/share/dirb/wordlists/common.txt'.",
+          description: "Path to wordlist file. Default is '/usr/share/dirb/wordlists/common.txt'. For a fast, high-signal probe (upload dirs, WordPress paths, dotfiles) the Node ships '/opt/mshin/servers/src/kali/wordlists/sensitive-paths.txt'.",
           default: "/usr/share/dirb/wordlists/common.txt",
         },
         options: {
@@ -607,7 +607,7 @@ const tools = [
         },
         wordlist: {
           type: "string",
-          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali.",
+          description: "Path to wordlist file, e.g. '/usr/share/dirb/wordlists/common.txt' — valid on both Kali and plain Debian; the '/usr/share/wordlists/dirb/...' alias exists only on Kali. For a fast, high-signal probe (upload dirs, WordPress paths, dotfiles) the Node ships '/opt/mshin/servers/src/kali/wordlists/sensitive-paths.txt'.",
         },
         options: {
           type: "string",

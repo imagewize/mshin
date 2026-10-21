@@ -106,7 +106,9 @@ mshin/
 │       ├── index.js
 │       ├── tools.js
 │       ├── tools.test.js
-│       └── transport.test.js
+│       ├── transport.test.js
+│       └── wordlists/
+│           └── sensitive-paths.txt  # High-signal upload/WordPress/dotfile probe list
 ├── clients/
 │   └── mshin-cli/             # Ollama + MCP client harness
 │       ├── package.json
