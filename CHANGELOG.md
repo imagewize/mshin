@@ -22,6 +22,10 @@ Honesty release, born from a live session that asked the Docker Node for the LAN
 - **The docs now tell the LAN-position truth.** `docs/DOCKER-LOCAL-DEV.md` gains the plain rule up front — Docker Node for evals, internet targets, and targeted scans; the Mac itself (`lan_inventory.sh`) or the bridged Lima Node for LAN discovery — and its capability matrix gains the `arp-scan` row and the guard. `AGENTS.md`'s "Local LAN work on macOS" procedure now starts with `lan_inventory.sh`, names the guard, and points at the bridged script and the VPS truth; its tool-list invariant also names the Lima template's three mirrored locations. `CLAUDE.md`'s convention bullet records the refusal; its layout section lists the new script and doc. `README.md` and `CONTRIBUTING.md` cross-reference `docs/VPS-NODE.md` and both scripts.
 - **Package versions aligned** to `0.22.0` in both packages, locks resynced.
 
+### Fixed
+
+- **`transport.test.js` no longer inherits the host shell's `MSHIN_NODE_TOKEN`** — the spawned test server demanded a bearer token on any machine where the variable is exported (every configured deployment), failing the three session-lifecycle tests with 401. The child env is scrubbed, so the suite passes 67/67 regardless of the host environment.
+
 ### Verified
 
 - **The guard fires live**: `nmap -sn 192.168.0.0/24` through the rebuilt Docker Desktop container returns the fabrication error (the pre-guard behavior, all 256 "up", is what motivated this release). A targeted `-sV -p 80` of the LAN gateway through the same Node returns the real banner — the faithful path is unchanged.
