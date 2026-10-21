@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`scripts/setup_bridged_node.sh` keeps the bridged Node's internet egress.** The bridged interface's DHCP lease installs its own default route (metric 100), which outranks Lima's NAT default (metric 200) — and a home router will not usually forward the guest's off-LAN traffic, so every internet-bound probe from the Node died and `nmap` reported `Host seems down` for targets that answered from the Mac. The script now deletes the `lima1` default route, guarded and idempotent: `lima1` keeps the on-link LAN route, the NAT interface carries the internet. Measured live on `mshin-node-bridged`: before the fix every guest-side scan of a public VPS failed; after it, `nmap -sV` through the Node's `tools/call` returned the real banners (OpenSSH, nginx) at the real ~0.37 s RTT.
+
+### Documented
+
+- **Lima's user-mode NAT answers ICMP on behalf of any address.** From inside the bridged guest, `ping` against a public VPS ~400 ms away returned sub-millisecond replies; TCP forwards faithfully, so internet hosts must be judged by TCP or pinged from the Mac. Recorded in `docs/DOCKER-LOCAL-DEV.md` Troubleshooting, alongside the Docker Desktop fabrication truth it mirrors, with both measured caveats noted in the bridged-guest hybrid section.
+
 ## [0.22.0] - 2026-10-21
 
 Honesty release, born from a live session that asked the Docker Node for the LAN's hosts and got 256/256 "up" when five were real. The Node now refuses to return fabricated discovery results, real ARP discovery is a first-class tool, the Mac-side workflow is one command, and the docs state plainly which network position can see what: Docker for evals and internet targets, Lima bridged for LAN discovery on a Mac, a VPS for internet-facing targets — and never anyone's home LAN from the wrong side of a NAT.

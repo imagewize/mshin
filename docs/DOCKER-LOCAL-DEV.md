@@ -114,6 +114,10 @@ The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work ag
 
 **`nmap` fails with `Operation not permitted` at exec.** Kali ships `/usr/lib/nmap/nmap` with file capabilities; `no-new-privileges` makes any privilege-gaining exec fail with EPERM. The Dockerfile strips them (`setcap -r`) — if a rebuild regresses this, that line is the fix.
 
+**Every internet target reports `Host seems down` from a bridged Lima guest.** The bridged interface's DHCP lease installs its own default route (metric 100), which outranks Lima's NAT default (metric 200) — and a home router will not usually forward the guest's off-LAN traffic. Every non-LAN probe dies: `nmap` reports the host down and `curl` times out, while the same target answers from the Mac. `scripts/setup_bridged_node.sh` now deletes the `lima1` default route (guarded, so it survives re-provisioning): `lima1` keeps the on-link LAN route, the NAT interface carries the internet. Measured 2026-10-21: before the fix, every guest-side scan of a public VPS ~400 ms away failed while the Mac reached it; after it, `nmap -sV` through the Node returned the real banners at the real latency.
+
+**Ping from inside a Lima guest lies about internet hosts.** Lima's user-mode NAT answers ICMP on behalf of *any* address: from inside the guest, `ping` against a public VPS whose real RTT is ~400 ms returned sub-millisecond replies. TCP is unaffected — connections forward to the real host, and nmap's banners and latencies are faithful. Never trust an ICMP verdict (or an RTT) for a non-LAN target from inside the guest; judge internet hosts by TCP, or ping from the Mac. This is the same family as Docker Desktop's fabricated discovery above, one layer up the stack — and a reason the discovery guard's refusal is scoped to discovery, not to TCP.
+
 **`compose up` fails: env file missing.** Expected: the `env_file` is required so the stack fails closed without a token. Create `configs/mshin-node.env` (see Setup).
 
 **Metasploit's first call after a restart is slow.** msfconsole's one-time init runs against the `/tmp` tmpfs once per container start (pre-warming at build time would be masked by the tmpfs, so the Dockerfile deliberately does not).
@@ -136,6 +140,8 @@ When you need real ARP-based discovery — finding machines that drop all unicas
 3. **Run the base compose file inside the guest** — `configs/compose.yaml` with **no** override: `network_mode: host` inside the guest makes the container share the guest's bridged NIC, which puts the tools directly on the physical LAN with working ARP.
 4. **Point clients at the guest's bridged IP** — `http://<GUEST_LAN_IP>:3000/mcp` with the same `configs/mshin-node.env` token. The Node is now LAN-reachable, so the token is mandatory and `MSHIN_ALLOWED_TARGETS` is strongly recommended.
 
+Two measured truths about the guest's vantage point, discovered 2026-10-21 and both handled in [Troubleshooting](#troubleshooting): the bridged DHCP default route shadows Lima's NAT route and kills internet egress until the setup script removes it, and Lima's NAT answers ICMP for any address — so a ping-based verdict for an internet host from inside the guest means nothing. TCP through the guest is faithful in both directions: real banners, real latencies.
+
 The production equivalent is simpler: a real Linux Node or VPS runs `configs/compose.yaml` unchanged, and `network_mode: host` there means real LAN presence with no VM at all. The hybrid above is what you use when the only hardware you have is the Mac.
 
 ## Limitations
@@ -146,6 +152,7 @@ The production equivalent is simpler: a real Linux Node or VPS runs `configs/com
 
 ## Changelog
 
+- **2026-10-21 (second session)** — Two more measured truths documented: the bridged Lima guest's DHCP default route silently killed all internet egress (fixed in `scripts/setup_bridged_node.sh`), and Lima's user-mode NAT answers ICMP on behalf of any address, so ping-based verdicts for internet hosts from inside the guest are meaningless while TCP remains faithful.
 - **2026-10-21** — Guide created with the sandboxed Docker Node. The Lima-vs-Docker comparison was measured, not estimated: identical full-stack `nmap` round trips (11.2–11.3 s) across native Lima, Docker-in-Lima, and Docker Desktop.
 
 ## See Also

@@ -103,6 +103,19 @@ if [ -z "${LAN_IP}" ]; then
     exit 1
 fi
 
+# The bridged DHCP lease installs its own default route (metric 100), which
+# beats Lima's NAT route (metric 200). The router on the physical LAN will
+# usually not forward (or not answer for) the guest's traffic, so every
+# internet-bound probe from the Node dies — nmap of a non-LAN target reports
+# "host down" and curl times out. Keep lima1 for the LAN itself (the on-link
+# 192.168.0.0/24 route stays) and let the NAT interface carry the default.
+# Guarded: a no-op when the route is already gone, and provisioning re-runs
+# on every boot.
+if limactl shell "${GUEST}" -- ip route show default 2>/dev/null | grep -q "dev lima1"; then
+    limactl shell "${GUEST}" -- sudo ip route del default dev lima1
+    echo "[INFO] Removed lima1 default route — internet via Lima NAT, LAN stays on lima1."
+fi
+
 # The token must reach the unit inside the guest. A systemd drop-in keeps the
 # repo-shipped unit untouched.
 limactl shell "${GUEST}" -- sudo mkdir -p /etc/systemd/system/mshin-node.service.d
