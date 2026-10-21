@@ -612,6 +612,48 @@ const tools = [
     },
   },
   {
+    name: "arp-scan",
+    description:
+      "ARP-scan a local network segment for live hosts, reporting IP, MAC and vendor. " +
+      "Truthful only from a real position on the segment (bare-metal Node, host-mode " +
+      "container, bridged guest); from behind NAT it returns nothing or fabricates — " +
+      "discover from a machine on the physical network instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description:
+            "CIDR range or comma-separated IP list to ARP-scan, e.g. '192.168.1.0/24'.",
+        },
+        iface: {
+          type: "string",
+          description: "Network interface to scan on, e.g. 'eth0'. Optional.",
+        },
+        options: {
+          type: "string",
+          description: "Additional arp-scan options, e.g. '--retry 5 --interval 100'.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, iface, options }) => {
+      assertSafe(target, "target");
+      assertTargetListInScope(target, "target");
+      const args = [target];
+      if (iface) {
+        assertSafe(iface, "iface");
+        args.push("--interface", iface);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("arp-scan", args, 60_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
     name: "dnsenum",
     description:
       "Run DNSEnum for DNS enumeration and reconnaissance.",

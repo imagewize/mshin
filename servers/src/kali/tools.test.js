@@ -37,9 +37,10 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the sixteen documented tools with complete metadata", () => {
+test("exposes exactly the seventeen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
+    "arp-scan",
     "arping",
     "dirb",
     "dnsenum",
@@ -213,6 +214,7 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     ["masscan", (p) => ({ target: p })],
     ["dirb", (p) => ({ url: p })],
     ["arping", (p) => ({ target: p })],
+    ["arp-scan", (p) => ({ target: p })],
     ["dnsenum", (p) => ({ domain: p })],
     ["enum4linux", (p) => ({ target: p })],
     ["ffuf", (p) => ({ url: p, wordlist: "/usr/share/wordlists/dirb/common.txt" })],
