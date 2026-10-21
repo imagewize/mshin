@@ -116,6 +116,87 @@ Caveats worth knowing:
   still apply, but Vibe does not load the Ollama persona from
   `configs/ollama-modelfile`.
 
+### OpenCode CLI + local Ollama + Lima Node
+
+You can also keep inference **local** and still drop `mshin-cli`. Run **[OpenCode](https://opencode.ai)**
+as the agent — it is an MCP client like Vibe, but it talks to your **local Ollama** instead of a
+cloud API, so this mode stays private and offline. The Node still needs no new code — OpenCode
+speaks the same Streamable HTTP MCP the CLI does:
+
+```
+┌──────────────────────────────┐         ┌───────────────────┐
+│ macOS Host                   │         │ Lima Guest        │
+│ - Ollama (local inference)   │ ◄─────► │ mshin-node        │
+│ - OpenCode (agent + MCP      │         │ - MCP Server      │
+│   client, runs Mistral Small)│         │ - 16 Kali tools   │
+└──────────────────────────────┘         └───────────────────┘
+```
+
+Set it up like this:
+
+```bash
+# 1. Node: create the Lima guest exactly as in the Vibe mode above
+limactl create --name=mshin-node lima/mshin-node.yaml
+limactl start mshin-node
+
+# Read the guest's address on the shared network — it is <NODE_IP> below
+limactl shell mshin-node -- ip -4 -br addr show lima0
+```
+
+```bash
+# 2. Host: register the Node as a remote MCP server
+opencode mcp add mshin --global --url http://<NODE_IP>:3000/mcp
+```
+
+The Node requires a bearer token, so add the auth header in
+`~/.config/opencode/opencode.jsonc` (OpenCode interpolates `{env:...}`):
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "mshin": {
+        "type": "remote",
+        "url": "http://<NODE_IP>:3000/mcp",
+        "headers": {
+          "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
+        }
+      }
+    }
+  }
+}
+```
+
+OpenCode auto-discovers Ollama on `localhost:11434`, so any local model shows up as
+`ollama/<tag>`. Declaring the provider explicitly (as in
+[ollama-opencode-setup](https://github.com/imagewize/ollama-opencode-setup), with
+`@ai-sdk/openai-compatible` pointed at `http://localhost:11434/v1`) gives you control
+over which model variants are offered. Then run it, e.g.:
+
+```bash
+opencode run -m ollama/<MODEL_TAG> "Run an Nmap scan on 127.0.0.1 and analyze the results."
+```
+
+Caveats worth knowing — these come from a live run of this mode against a Lima guest
+(opencode v2.0.32, `ministral-3:8b-32k`, all 16 tools connected):
+
+- **Private and offline**, like the two-machine setup — but one host must fit both the
+  model and the agent.
+- Use a **tool-calling model** with roomy context. OpenCode asks for 64k+ context; bake
+  `num_ctx` into a model variant (e.g. `ollama create` from `configs/ollama-modelfile`) —
+  that also carries the Machin Shin persona, which OpenCode does not load on its own.
+  Small-context defaults drop the tool schemas and the model fabricates results.
+- Small local models often will not emit a direct call to a namespaced MCP tool
+  (`tools.mshin.whois`). The reliable path is OpenCode's **execute tool**, where the
+  model calls `await tools.mshin.whois({ target: '...' })` in code — a prompt that says
+  "run this in the execute tool and report the raw output" produced real Node data,
+  while an open-ended "run whois" produced fabricated answers.
+- OpenCode keeps a background service. If a remote MCP server sticks in a failed state
+  after the Node's address changes or a sleep/wake cycle, `opencode service restart`
+  reconnects it.
+- The Node's server-side guards (`assertSafe` in `servers/src/kali/tools.js`) still apply.
+- The `--auto` flag auto-approves tool calls; omit it to approve each Kali tool run by hand.
+
 See [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) for the guest's requirements
 (macOS, `socket_vmnet` shared networking) and cleanup.
 
