@@ -244,8 +244,8 @@ See [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) for the guest's requirements
 - [Architecture](docs/ARCHITECTURE.md) – System design and components
 - [Setup Guide](docs/SETUP.md) – Step-by-step installation
 - [Workflows](docs/WORKFLOWS.md) – Example cybersecurity tasks
-- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Single-machine development environment on macOS
-  - Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
+- [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) – Node in a Docker container; the default local path on macOS, with the Lima-vs-Docker measurements
+- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Single-machine development environment on macOS  - Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
 - [Developer Onboarding](docs/DEVELOPER-ONBOARDING.md) – Learning path and architecture for new contributors
 - [Refactoring Ideas](docs/REFACTORING-IDEAS.md) – Cleanups worth doing, and the ones deliberately avoided
 - [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed

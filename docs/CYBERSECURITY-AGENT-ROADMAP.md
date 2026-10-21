@@ -391,7 +391,7 @@ def parse_nmap_xml(xml_output: str) -> Dict:
   - `gobuster`, `masscan`, `dirb`, `arping`, `dnsenum`, `enum4linux`, `ffuf` (scanning/enumeration)
   - All documented in `docs/SETUP.md` and `KALI-OPENLLM.md`; sudoers configured in `scripts/setup_mcp_server.sh`
   - Tool safety: `ACTIVE_TOOLS` set tracks destructive/credential-revealing tools; explicit approval required before execution
-  - [ ] Implement sandboxing (Docker Compose config in roadmap; not yet integrated)
+  - [x] **Sandboxing implemented** (`configs/Dockerfile` + `configs/compose.yaml`): the Node runs in a container with `cap_drop: ALL` + `NET_RAW`/`NET_ADMIN` (raw sockets without host root), `no-new-privileges: true`, a read-only rootfs over a `/tmp` tmpfs, and `mem_limit`/`pids_limit` against runaway scans. The sudo-hot-path and its sudoers allowlist disappear entirely in this mode. Verified end to end on a Linux host (Lima guest, Debian) and on Docker Desktop: `tools/list` exposes all sixteen tools, a `tools/call` round trip to `nmap` returns real scan output, and unauthenticated `POST /mcp` answers 401. Measured against the bare Lima Node: identical full-stack `nmap` round trips (11.2–11.3 s) — the sandbox costs nothing that matters. See `docs/DOCKER-LOCAL-DEV.md`. Later, optional: a PentAGI-style separate worker daemon with an OPA authorization policy.
 
 **Deliverable**: A scalable agent capable of running complex security workflows.
 

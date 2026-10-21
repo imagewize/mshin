@@ -24,6 +24,8 @@ Documentation map:
 | `docs/SETUP.md` | Step-by-step installation |
 | `docs/WORKFLOWS.md` | Example cybersecurity tasks |
 | `docs/LIMA-LOCAL-DEV.md` | Single-machine Lima setup on macOS |
+| `docs/DOCKER-LOCAL-DEV.md` | Docker local dev: the default local path, the sandboxed Node, and the Lima-vs-Docker measurements |
+| `configs/Dockerfile`, `configs/compose*.yaml` | The containerized Node and its compose files |
 | `lima/*.yaml` | Lima templates backing that guide |
 | `docs/CYBERSECURITY-AGENT-ROADMAP.md` | Where the agent loop is headed |
 | `docs/EVAL-RUN-2026-10-20.md` | First model-comparison eval measurements (raw harness reports) |
@@ -103,6 +105,8 @@ Adding, removing, or renaming an MCP tool means updating **all** of these, or th
 3. `scripts/setup_mcp_server.sh` — the `NOPASSWD` sudoers allowlist for the `mshin` user
 4. `configs/mcp-kali.service` — the `--tools` flag in `ExecStart`
 5. `configs/ollama-modelfile` — the documented tool list in the system prompt
+
+Under the **Docker deployment** (`configs/Dockerfile`), points 2 and 3 collapse into the image: the apt list becomes the `KALI_TOOLS` build arg, and there is no sudoers entry at all — the container needs no sudo. The `--tools` list still appears once more in the Dockerfile's `CMD`, so a tool change touches `KALI_TOOLS` **and** `CMD` there. See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md).
 
 The sudoers entry is the one people forget. `servers/src/kali/tools.js` runs every binary as `sudo -n` when the process is not root, so a tool missing from the allowlist fails at runtime with `sudo: a password is required`, not at startup.
 
