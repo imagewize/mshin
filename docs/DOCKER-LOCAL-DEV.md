@@ -100,7 +100,7 @@ What the sandbox changes relative to a bare-metal Node:
 - **Nothing persists.** The rootfs is read-only; writable state is a `/tmp` tmpfs (msfconsole's first-run init, sqlmap output, resume dumps all land there and die with the container).
 - **File-taking tools have no host files.** `tshark`, `john`, `sqlmap` see only the container's filesystem. Mount a volume in `compose.local.yaml` if you need to feed them files.
 
-The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work against this Node unchanged — the transport is the same Streamable HTTP. The full model-comparison suite has **not** been re-run against the Docker Node; only the transport round trip above was verified in this session.
+The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work against this Node unchanged — the transport is the same Streamable HTTP. The full model-comparison suite **was re-run against the Docker Node on 2026-10-21** (see [Eval Run 2026-10-21](EVAL-RUN-2026-10-21.md)): the 8B tier scores 4/4 on both models, identical to the Lima baseline, with zero fabricated outputs — the sandbox is a drop-in Node for the harness. One wall-clock caveat: `nikto`'s ~8000 requests through the bridge/published-port path are slower than a guest-local path (~40 s per affected case); scores are unaffected.
 
 ---
 

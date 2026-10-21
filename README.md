@@ -266,6 +266,7 @@ for the production-shape (systemd, Debian, bridged LAN) alternative.
 - [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed
 - [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
 - [Eval Run 2026-10-20](docs/EVAL-RUN-2026-10-20.md) – First model-comparison measurements: 7–8B pass, 4B fabricates, 32B unrunnable on 16GB
+- [Eval Run 2026-10-21](docs/EVAL-RUN-2026-10-21.md) – The same suite against the sandboxed Docker Node: 8B tier unchanged, sandbox is a drop-in Node
 - [Raspberry Pi Node](docs/RASPBERRY-PI-NODE.md) – Running the Node on a Raspberry Pi
 - [Mac Mini M4 Pro Core](docs/MAC-MINI-M4-CORE.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
