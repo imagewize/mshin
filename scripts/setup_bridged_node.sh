@@ -59,23 +59,38 @@ if [ -z "${MSHIN_NODE_TOKEN:-}" ]; then
     exit 1
 fi
 
+# Capture the list once. `grep -q` closes its stdin on the first match, and
+# under `set -o pipefail` the SIGPIPE that kills `limactl list` mid-write
+# would fail the whole pipeline — an existing guest would be reported
+# absent, and the create below would die on "already exists".
+LIMA_INSTANCES="$(limactl list 2>/dev/null || true)"
+
 # Lima automatically forwards a guest's listening ports to the Mac's
 # localhost, so two running Node guests would fight over localhost:3000.
 # Warn, do not block: the user may know the other guest is stopped.
-if limactl list 2>/dev/null | grep -q "mshin"; then
+if grep -q "mshin" <<<"${LIMA_INSTANCES}"; then
     echo "[WARN] An mshin guest appears in 'limactl list'. If another Node guest is" >&2
     echo "       running, stop it first (limactl stop <name>) — both would claim" >&2
     echo "       localhost:3000 via Lima's automatic port forwarding." >&2
 fi
 
-if limactl list 2>/dev/null | grep -q "^${GUEST}\b"; then
+if grep -q "^${GUEST}\b" <<<"${LIMA_INSTANCES}"; then
     echo "[INFO] Guest ${GUEST} exists — starting it."
     limactl start "${GUEST}"
 else
     echo "[+] Creating ${GUEST} from lima/mshin-node.yaml with the bridged network."
     echo "    This provisions Debian plus the full tool set; several minutes."
+    # The repo is private, so the guest cannot clone it anonymously (the
+    # template's fallback clone dies on a credential prompt). Mount this clone
+    # at /opt/mshin instead — the template's documented path for credentialed
+    # repos; npm writes node_modules back into it (gitignored).
     limactl create --name="${GUEST}" --network=lima:bridged \
+        --set ".mounts += [{\"location\":\"${REPO_ROOT}\",\"mountPoint\":\"/opt/mshin\",\"writable\":true}]" \
         "${REPO_ROOT}/lima/mshin-node.yaml"
+    # Lima 2.x leaves a created instance stopped; boot it (first boot runs
+    # the provisioning) before the shell steps below. On 1.x, where create
+    # already started it, this is a no-op.
+    limactl start "${GUEST}"
 fi
 
 # The bridged interface is lima1 inside the guest. Read its DHCP address.
@@ -96,6 +111,10 @@ printf '[Service]\nEnvironment=MSHIN_NODE_TOKEN=%s\n' "${MSHIN_NODE_TOKEN}" \
 limactl shell "${GUEST}" -- sudo systemctl daemon-reload
 limactl shell "${GUEST}" -- sudo systemctl restart mshin-node
 
+# systemctl restart returns before node has bound the port; wait for it.
+limactl shell "${GUEST}" -- bash -c \
+    'for i in $(seq 1 20); do curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+
 echo "[+] Bridged Node is up: http://${LAN_IP}:3000/mcp"
 limactl shell "${GUEST}" -- curl -fsS http://127.0.0.1:3000/health
 
@@ -106,7 +125,7 @@ Next steps:
   1. Verify the vantage point from the Mac (expect the real LAN, MACs included):
        ping -c 3 ${LAN_IP}
   2. ARP-discover the segment from inside the guest:
-       limactl shell ${GUEST} -- sudo -n arp-scan --localnet
+       limactl shell ${GUEST} -- sudo -n arp-scan --interface=lima1 --localnet
   3. Point your client at the Node:
        http://${LAN_IP}:3000/mcp  (bearer token: the MSHIN_NODE_TOKEN you set)
   4. Strongly consider scoping the tools to your LAN:
