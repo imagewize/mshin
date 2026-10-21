@@ -31,6 +31,7 @@ Documentation map:
 | `docs/EVAL-RUN-2026-10-20.md` | First model-comparison eval measurements (raw harness reports) |
 | `docs/EVAL-RUN-2026-10-21.md` | Same suite against the sandboxed Docker Node (raw harness report) |
 | `docs/RASPBERRY-PI-NODE.md` | Raspberry Pi Node guide |
+| `docs/VPS-NODE.md` | VPS Node guide: internet targets, never your home LAN |
 | `docs/MAC-MINI-M4-CORE.md` | Mac Mini M4 Pro Core with Pi Node guide |
 
 ---
@@ -110,6 +111,8 @@ Adding, removing, or renaming an MCP tool means updating **all** of these, or th
 Under the **Docker deployment** (`configs/Dockerfile`), points 2 and 3 collapse into the image: the apt list becomes the `KALI_TOOLS` build arg, and there is no sudoers entry at all — the container needs no sudo. The `--tools` list still appears once more in the Dockerfile's `CMD`, so a tool change touches `KALI_TOOLS` **and** `CMD` there. See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md).
 
 The sudoers entry is the one people forget. `servers/src/kali/tools.js` runs every binary as `sudo -n` when the process is not root, so a tool missing from the allowlist fails at runtime with `sudo: a password is required`, not at startup.
+
+`lima/mshin-node.yaml` mirrors three of the five for the Lima path: its apt install list stands in for the setup script's, and its sudoers block and unit `sed` line for the `--tools` flag. A tool change touches all three there too.
 
 ### Docs cross-reference each other
 
@@ -191,13 +194,10 @@ The sandboxed Docker Node on Docker Desktop **cannot discover LAN hosts**: Docke
 
 When a task needs the machine's actual LAN (live hosts, IPs, MACs), work from the Mac — it is the only thing on the physical network:
 
-1. Derive the subnet yourself; do not ask the user for it:
-   `SUBNET=$(ipconfig getifaddr en0 | cut -d. -f1-3)` (fall back to `en1` on wired Macs).
-2. Populate the ARP table with a ping sweep, then read it:
-   `for i in $(seq 1 254); do ping -c 1 -W 300 "$SUBNET.$i" >/dev/null 2>&1 & done; wait; arp -a -i en0`
-   Only entries with a MAC address are live; `(incomplete)` means dead.
-3. Use the Node only for **targeted** scans of hosts already known live — those results are faithful (measured; see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md)).
-4. Do not expect hostnames: consumer routers rarely serve reverse DNS, and Bonjour/mDNS browsing can fail when a VPN interface owns the default route. Pull names from service banners instead, and say so when a host's name is unknown.
+1. Run `scripts/lan_inventory.sh` — it derives the subnet itself (`ipconfig getifaddr en0`), ping-sweeps, and prints live IPs, MACs, best-effort names, and a ready `targets` array. Manual equivalent: `SUBNET=$(ipconfig getifaddr en0 | cut -d. -f1-3)`, ping sweep, `arp -a -i en0`.
+2. Use the Node only for **targeted** scans of hosts already known live — those results are faithful (measured; see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md)). The Node also refuses discovery scans whose result would be fabricated (`nmap -sn` on a CIDR where every address answered), so a fabricated host list can no longer reach a user.
+3. Do not expect hostnames: consumer routers rarely serve reverse DNS, and Bonjour/mDNS browsing can fail when a VPN interface owns the default route. Pull names from service banners instead, and say so when a host's name is unknown.
+4. For Node-side ARP discovery on a Mac (hosts that drop all unicast probes), use the bridged Lima Node: `scripts/setup_bridged_node.sh` — the Docker Node cannot do this at all. A VPS Node cannot see any LAN it is not physically on (see [VPS Node](docs/VPS-NODE.md)).
 
 Real ARP-based discovery from the tool side needs the [bridged-guest hybrid](docs/DOCKER-LOCAL-DEV.md#lan-discovery-on-macos--the-bridged-guest-hybrid) or a real Linux Node on the LAN.
 

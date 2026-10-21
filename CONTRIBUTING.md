@@ -91,10 +91,13 @@ mshin/
 │   ├── EVAL-RUN-2026-10-20.md         # First model-comparison eval measurements
 │   ├── EVAL-RUN-2026-10-21.md         # Same suite against the Docker Node
 │   ├── RASPBERRY-PI-NODE.md            # Raspberry Pi Node guide
+│   ├── VPS-NODE.md                    # VPS Node guide (internet targets, not your LAN)
 │   └── MAC-MINI-M4-CORE.md             # Mac Mini M4 Pro Core guide
 ├── scripts/
 │   ├── setup_mcp_server.sh    # MCP server setup script
 │   ├── probe_mcp_server.sh    # Host-side Node health/transport probe (minimal MCP client)
+│   ├── lan_inventory.sh       # Host-side LAN inventory (macOS): live IPs, MACs, names
+│   ├── setup_bridged_node.sh  # One-command bridged Lima Node (real LAN discovery on a Mac)
 │   └── setup_ollama.sh        # Ollama / Core setup script
 ├── configs/
 │   ├── mcp-kali.service       # systemd service for MCP server
