@@ -5,7 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-10-21
+
+The Node, sandboxed: Docker becomes the portable deployment artifact and the default local-development path. One image runs the MCP server and all sixteen Kali tools as root *inside a capabilities-limited jail*, so a bad flag or a hijacked model prompt trashes a disposable container instead of the Node's OS — and the sudo-root hot path disappears entirely (no sudo is installed in the image, so the sudoers allowlist and the tshark/dirb/ffuf sudo exceptions are moot).
+
+### Added
+
+- **`configs/Dockerfile`** — Kali image with all sixteen tools as one `KALI_TOOLS` build arg (the tool list's image-side counterpart of `TOOL_PATHS`; under Docker, the setup script's apt list and sudoers allowlist both collapse into it), the MCP server with `npm install --omit=dev`, and `HOME=/tmp` so runtime writes land on the tmpfs under the read-only rootfs. `setcap -r /usr/lib/nmap/nmap` is load-bearing: Kali ships nmap's real binary with file capabilities, and `no-new-privileges` makes any privilege-gaining exec fail with EPERM — measured, the first nmap call died with `Operation not permitted` until that line existed. A `getcap -r /` sweep over the whole image finds capabilities on that one file only.
+- **`configs/compose.yaml`** — the production Node shape: `network_mode: host` (raw-socket tools must reach the LAN from the host's own IP), `cap_drop: ALL` + `cap_add: NET_RAW, NET_ADMIN`, `security_opt: no-new-privileges: true`, `read_only: true` with a `/tmp` tmpfs, `mem_limit: 2g`, `pids_limit: 512`, `init: true` for zombie reaping, and a healthcheck on `/health`. Runtime secrets come from a required `env_file` (`configs/mshin-node.env`, gitignored, chmod 600) rather than compose interpolation, so `build`/`ps`/`logs` never need the token — and a missing file fails `up`, fail-closed: with host networking, an unauthenticated Node is drivable by anyone on the LAN.
+- **`configs/compose.local.yaml`** — the macOS override: Docker Desktop does not publish host-network services to the Mac (`host` there is the Docker VM's network), so local dev switches to bridge with `3000:3000` published. The base file keeps host networking for Linux Nodes and VPSes.
+- **`.dockerignore`** — keeps host `node_modules` and the docs out of the build context (the context transfers 122 kB, not the whole clone).
+- **`docs/DOCKER-LOCAL-DEV.md`** — the default local-dev guide (Ollama native on the Mac + the Node container), including the **measured Lima-vs-Docker comparison** that decided the pivot: a full-stack `nmap` MCP round trip ties at 11.32 s (native Lima) / 11.21 s (container in Lima) / 11.30 s (Docker Desktop); the native guest is only ~5–8% faster on a 0.4 s localhost microbenchmark. Also documents the Lima port-forward collision that silently claims `localhost:3000`.
+
+### Changed
+
+- **Docker is the default local-development path**; Lima is demoted to production-shape emulation (systemd unit, Debian host, bridged LAN access). `docs/LIMA-LOCAL-DEV.md` now says so up front, and `README.md`/`CONTRIBUTING.md`/`AGENTS.md`/`CLAUDE.md`/the roadmap cross-reference the new guide. The tool-list invariant gains the Docker location: under `configs/Dockerfile`, the apt list and sudoers collapse into `KALI_TOOLS`, and the `--tools` flag appears in the `CMD`.
+- **Package versions aligned** to `0.19.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, and both `package-lock.json` files resynced — they had drifted to `0.17.2` behind the `0.18.x` docs releases.
+
+### Verified
+
+- **On a Linux host (the `mshin-node` Lima guest, Debian 13, arm64, Docker 26.1.5 installed in-guest):** `docker-compose build` produces the 3.09 GB image; `up -d` brings it up healthy; `GET /health` reports all sixteen tools; `POST /mcp` without a token answers 401; an authenticated initialize → `tools/call` round trip to `nmap` (`-sV -p 22,3000` on `127.0.0.1`) returns real scan output (OpenSSH and the Node's own Express service detected, 11.21 s). `docker exec` confirms `NoNewPrivs: 1` and `CapEff/CapBnd` = exactly `NET_ADMIN|NET_RAW`.
+- **On Docker Desktop (macOS, Apple Silicon, daemon 29.8.2):** the same image (transferred, not rebuilt) with the compose override reaches `localhost:3000`; the same authenticated nmap round trip returns real output in 11.30 s; the healthcheck reports healthy. Also verified: with only the base compose file (host networking), nothing answers on the Mac's `localhost:3000` — the documented reason the override exists. A Lima `mshin-node` guest running at the same time silently claims `localhost:3000` via Lima's automatic port forwarding and answers 401 to the container's token — both gotchas are now troubleshooting entries in the guide.
+- **Benchmarks** (same Mac, same day, same image where applicable): `nmap -sS -p-` localhost 0.37–0.38 s (native Lima) vs 0.39–0.42 s (container) vs 0.40–0.41 s (Docker Desktop); `openssl speed` aes-256-cbc 1,057–1,120 MB/s across all three (noise-level spread); full MCP nmap round trips within 11.2–11.3 s of each other everywhere.
+- **Not verified in this session:** the eval harness itself was not re-run against the Docker Node (only the transport round trip was); the file-taking tools (`tshark`, `john`, `sqlmap`) were not exercised against mounted files; the Raspberry Pi was not in scope.
+
 ## [0.18.0] - 2026-10-21
+
 
 Docs-only release, born from a live session: a fourth deployment mode joins the
 two-machine setup, the cloud-inference hybrid, and the Vibe mode. Run **OpenCode**
@@ -1742,7 +1767,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/imagewize/mshin/compare/v0.18.1...v0.19.0
 [0.13.0]: https://github.com/imagewize/mshin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/imagewize/mshin/compare/v0.10.1...v0.12.0
 [0.10.1]: https://github.com/imagewize/mshin/compare/v0.10.0...v0.10.1
