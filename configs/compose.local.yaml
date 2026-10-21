@@ -1,0 +1,20 @@
+# macOS local-dev override for the Machin Shin Node.
+#
+#   docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
+#
+# Docker Desktop on macOS does not publish host-network services to the Mac:
+# `network_mode: host` there means the Docker VM's network, so nothing listens
+# on the Mac's localhost:3000 (verified — and Lima's automatic port
+# forwarding makes this worse by silently claiming localhost:3000 for a
+# running mshin-node guest; see docs/DOCKER-LOCAL-DEV.md, Troubleshooting).
+#
+# The override switches to Docker's default bridge and publishes the port.
+# Raw sockets still work (cap_add survives the merge), so nmap/hydra/masscan
+# run fine — only their "localhost" is the container's, not the Mac's. The
+# base file keeps host networking for real Linux Nodes and VPSes, where the
+# tools must reach the LAN from the host's own IP.
+services:
+  mshin-node:
+    network_mode: bridge
+    ports:
+      - "3000:3000"

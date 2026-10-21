@@ -1,0 +1,10 @@
+# The image build only needs servers/src/kali; keep everything else out of
+# the context, and above all keep the host's node_modules (wrong platform,
+# stale deps) from being COPYed over the image's own install.
+**/node_modules
+**/.git
+docs
+clients
+lima
+scripts
+assets
