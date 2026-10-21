@@ -183,9 +183,15 @@ Caveats worth knowing — these come from a live run of this mode against a Lima
 - **Private and offline**, like the two-machine setup — but one host must fit both the
   model and the agent.
 - Use a **tool-calling model** with roomy context. OpenCode asks for 64k+ context; bake
-  `num_ctx` into a model variant (e.g. `ollama create` from `configs/ollama-modelfile`) —
-  that also carries the Machin Shin persona, which OpenCode does not load on its own.
-  Small-context defaults drop the tool schemas and the model fabricates results.
+  `num_ctx` (and `temperature 0`) into a model variant, e.g. `ollama create` from a
+  Modelfile, as `configs/ollama-modelfile` does for the Core. Small-context defaults
+  drop the tool schemas and the model fabricates results.
+- **The Machin Shin persona does not survive this mode.** A Modelfile's `SYSTEM` line
+  applies only when the request carries no system message — and OpenCode always sends
+  its own, which replaces it (verified against `mshin:latest`: driven with a neutral
+  system prompt, the model answered as that prompt's assistant, not Machin Shin). What
+  a baked variant still contributes is the sampling and context settings. To run the
+  persona here, recreate it as an OpenCode custom agent's system prompt.
 - Small local models often will not emit a direct call to a namespaced MCP tool
   (`tools.mshin.whois`). The reliable path is OpenCode's **execute tool**, where the
   model calls `await tools.mshin.whois({ target: '...' })` in code — a prompt that says

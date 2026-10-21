@@ -25,12 +25,15 @@ Streamable HTTP MCP OpenCode connects to.
   provider explicitly (as in
   [ollama-opencode-setup](https://github.com/imagewize/ollama-opencode-setup))
   controls which model variants are offered. The section's caveats come from the
-  live run below: context must be baked into the model variant (`num_ctx`), small
-  local models rarely emit a direct call to a namespaced MCP tool and the
-  reliable path is OpenCode's execute tool calling `tools.mshin.<tool>()` in
-  code, `opencode service restart` recovers a stuck remote-MCP connection, and
-  `--auto` auto-approves Kali tool runs while the Node's `assertSafe` guards
-  still apply.
+  live run below: context and `temperature 0` must be baked into the model
+  variant (`num_ctx`), the **Machin Shin persona does not survive this mode** —
+  a Modelfile's `SYSTEM` applies only when the request carries no system
+  message, and OpenCode always sends its own, so a baked variant contributes
+  only its sampling and context settings — small local models rarely emit a
+  direct call to a namespaced MCP tool and the reliable path is OpenCode's
+  execute tool calling `tools.mshin.<tool>()` in code, `opencode service
+  restart` recovers a stuck remote-MCP connection, and `--auto` auto-approves
+  Kali tool runs while the Node's `assertSafe` guards still apply.
 
 ### Verified
 
@@ -53,6 +56,14 @@ Streamable HTTP MCP OpenCode connects to.
 - **Negative results consistent with the 0.16.2 eval**: `qwen3:32b` on the 16GB
   authoring host stalled (loaded at 21 GB split 47%/53% CPU/GPU, no tool call
   before the run was abandoned), matching the unrunnable-on-16GB measurement.
+- **The persona override, verified against the model, not inferred**:
+  `ollama show mshin:latest` confirms the modelfile bakes the Machin Shin
+  `SYSTEM` prompt plus `temperature 0` and `num_ctx 16384` onto a qwen3:8b
+  base, but an `api/chat` request carrying its own system message replaces the
+  baked one — driven with a neutral accounting-assistant system prompt, the
+  model answered as that assistant, not Machin Shin. Since OpenCode always
+  sends its own system prompt, the persona is absent in this mode and the
+  variant's remaining value is the sampling and context settings.
 - `README.md` is the only file changed; no code under `servers/` or `clients/`
   was touched, so the `npm test` pre-commit check does not apply.
 
