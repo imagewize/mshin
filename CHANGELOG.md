@@ -5,6 +5,57 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-10-21
+
+Docs-only release, born from a live session: a fourth deployment mode joins the
+two-machine setup, the cloud-inference hybrid, and the Vibe mode. Run **OpenCode**
+as the agent driving a **local Ollama** model, with the Node in a Lima guest on the
+same host — like the Vibe mode it replaces `mshin-cli`, but inference stays local,
+so it is private and offline. No code changed; the Node already speaks the same
+Streamable HTTP MCP OpenCode connects to.
+
+### Added
+
+- **OpenCode CLI + local Ollama + Lima Node option** (`README.md`, Architecture).
+  Register the Node as a remote MCP server
+  (`opencode mcp add mshin --global --url http://<NODE_IP>:3000/mcp`) and add the
+  bearer-token header in `~/.config/opencode/opencode.jsonc` — OpenCode
+  interpolates `{env:MSHIN_NODE_TOKEN}`, so the token never lands in the config
+  file. OpenCode auto-discovers Ollama on `localhost:11434`; declaring the
+  provider explicitly (as in
+  [ollama-opencode-setup](https://github.com/imagewize/ollama-opencode-setup))
+  controls which model variants are offered. The section's caveats come from the
+  live run below: context must be baked into the model variant (`num_ctx`), small
+  local models rarely emit a direct call to a namespaced MCP tool and the
+  reliable path is OpenCode's execute tool calling `tools.mshin.<tool>()` in
+  code, `opencode service restart` recovers a stuck remote-MCP connection, and
+  `--auto` auto-approves Kali tool runs while the Node's `assertSafe` guards
+  still apply.
+
+### Verified
+
+- **Live, opencode v2.0.32 against the running `mshin-node` Lima guest**
+  (`192.168.105.5:3000`): after `mcp add` with the `Authorization: Bearer
+  {env:MSHIN_NODE_TOKEN}` header, the service log shows `mcp connected
+  server=mshin tools=16`. The first connection attempt surfaced two OpenCode
+  quirks worth recording: the Node's 401 without a token surfaces as a bare
+  `FailedToOpenSocket`, and the long-lived background service keeps a failed
+  connection in failed state until `opencode service restart` — the documented
+  recovery for both.
+- **A real tool call round trip** with `ministral-3:8b-32k` (the context-baked
+  32k variant): prompted to run `tools.mshin.whois({ target: 'example.com' })`
+  in the execute tool, the model called the Node's `whois` and reported the real
+  record — Cloudflare name servers and the DNSSEC DS key matched the Node's
+  direct `whois` output byte for byte. Open-ended prompts ("run whois") produced
+  fabricated answers from the same model, and `qwen3:8b` stopped after its
+  reasoning block with no tool call — the caveat that small models need the
+  explicit execute-tool prompt is measured, not guessed.
+- **Negative results consistent with the 0.16.2 eval**: `qwen3:32b` on the 16GB
+  authoring host stalled (loaded at 21 GB split 47%/53% CPU/GPU, no tool call
+  before the run was abandoned), matching the unrunnable-on-16GB measurement.
+- `README.md` is the only file changed; no code under `servers/` or `clients/`
+  was touched, so the `npm test` pre-commit check does not apply.
+
 ## [0.17.2] - 2026-10-20
 
 Wordlist release. The dirb package's `common.txt` (4614 generic words) is the
