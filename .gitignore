@@ -17,6 +17,10 @@
 *.bak
 tmp/
 
+# Eval-harness run artifacts (transcripts, memory, reports). The curated
+# evidence lives in docs/EVAL-RUN-*.md, committed deliberately.
+clients/mshin-cli/eval-results/
+
 # Environment / secrets
 .env
 .env.*
