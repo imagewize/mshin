@@ -120,14 +120,21 @@ const tools = [
   {
     name: "nmap",
     description:
-      "Run an nmap port/service scan against a single host or CIDR range. " +
+      "Run an nmap port/service scan against one or more hosts or CIDR ranges. " +
       "Only safe flags are accepted; targets are validated to prevent shell injection.",
     inputSchema: {
       type: "object",
       properties: {
         target: {
           type: "string",
-          description: "IP address, hostname, or CIDR range to scan.",
+          description:
+            "IP address, hostname, or CIDR range to scan. A comma-separated list is accepted.",
+        },
+        targets: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Multiple IPs/hostnames/CIDR ranges to scan in one call, e.g. a discovered host list. Prefer this over 'target' when scanning several hosts.",
         },
         flags: {
           type: "array",
@@ -137,13 +144,36 @@ const tools = [
           default: ["-sV"],
         },
       },
-      required: ["target"],
+      required: [],
     },
-    handler: async ({ target, flags = ["-sV"] }) => {
-      assertSafe(target, "target");
-      assertTargetInScope(target, "target");
+    handler: async ({ target, targets, flags = ["-sV"] }) => {
       assertSafeArray(flags, "flags");
-      const output = await runTool("nmap", [...flags, target]);
+      // nmap takes host specs as separate arguments — a single comma-joined
+      // argv is parsed as a hostname and fails with "Failed to resolve"
+      // (verified against Kali's nmap 7.991). Accept a single spec, a
+      // comma-separated list, or an array, and hand nmap one argv per spec.
+      const specs = [];
+      const pushSpec = (value, name) => {
+        // assertSafe carries the house error messages for non-strings,
+        // metacharacters and null bytes; the empty check is separate so
+        // assertSafe's /must be a string/ contract tests keep passing.
+        assertSafe(value, name);
+        // Scope-check every host in the list, not the raw string, so an
+        // allowlist of individual IPs admits a discovered host list.
+        assertTargetListInScope(value, name);
+        specs.push(...value.split(",").map((s) => s.trim()).filter(Boolean));
+      };
+      if (target !== undefined) pushSpec(target, "target");
+      if (targets !== undefined) {
+        if (!Array.isArray(targets)) {
+          throw new Error("targets must be an array of IPs/hostnames/CIDR ranges.");
+        }
+        for (const t of targets) pushSpec(t, "targets");
+      }
+      if (specs.length === 0) {
+        throw new Error("Provide 'target' or 'targets' — nothing to scan.");
+      }
+      const output = await runTool("nmap", [...flags, ...specs]);
       return { content: [{ type: "text", text: output }] };
     },
   },

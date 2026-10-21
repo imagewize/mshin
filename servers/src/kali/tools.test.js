@@ -91,6 +91,59 @@ test("nmap rejects a non-array flags value", async () => {
   await assert.rejects(nmap.handler({ target: "192.168.1.1", flags: "-sV" }), /must be an array/);
 });
 
+// -----------------------------------------------------------------------------
+// nmap target lists — one call, several hosts (see the handler for why the
+// specs are split into separate argvs rather than joined with commas)
+// -----------------------------------------------------------------------------
+
+test("nmap schema accepts both a single target and a targets array", () => {
+  const nmap = byName("nmap");
+  assert.ok(nmap.inputSchema.properties.target, "target property");
+  assert.ok(nmap.inputSchema.properties.targets, "targets property");
+  assert.deepEqual(nmap.inputSchema.required, []);
+});
+
+test("nmap dispatches a targets array", async () => {
+  const nmap = byName("nmap");
+  // On a host without the binary, a well-formed call passes validation and
+  // dispatch and fails only at the binary lookup — the established
+  // success-path pattern for this suite.
+  await assert.rejects(
+    nmap.handler({ targets: ["192.168.1.1", "192.168.1.2"] }),
+    /Tool binary not found/
+  );
+});
+
+test("nmap dispatches a comma-separated target list", async () => {
+  const nmap = byName("nmap");
+  await assert.rejects(
+    nmap.handler({ target: "192.168.1.1,192.168.1.2" }),
+    /Tool binary not found/
+  );
+});
+
+test("nmap rejects shell metacharacters in a targets entry", async () => {
+  const nmap = byName("nmap");
+  for (const payload of SHELL_PAYLOADS) {
+    await assert.rejects(
+      nmap.handler({ targets: ["192.168.1.1", payload] }),
+      /unsafe characters/,
+      payload
+    );
+  }
+});
+
+test("nmap rejects a non-array targets value", async () => {
+  const nmap = byName("nmap");
+  await assert.rejects(nmap.handler({ targets: "192.168.1.1" }), /must be an array/);
+});
+
+test("nmap rejects a call with neither target nor targets", async () => {
+  const nmap = byName("nmap");
+  await assert.rejects(nmap.handler({}), /nothing to scan/);
+  await assert.rejects(nmap.handler({ target: "" }), /nothing to scan/);
+});
+
 test("nmap rejects a non-string target", async () => {
   const nmap = byName("nmap");
   await assert.rejects(nmap.handler({ target: 42 }), /must be a string/);
