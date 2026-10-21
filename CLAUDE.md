@@ -29,6 +29,8 @@ When changing the tool set, four places must stay in sync:
 3. The `sudoers` allowlist for the `mshin` user in the setup script.
 4. The tool list in `servers/src/kali/tools.js` (and any tool metadata there).
 
+Under the Docker deployment (`configs/Dockerfile`), the apt list and the sudoers allowlist both collapse into the image's `KALI_TOOLS` build arg — the container runs tools as root inside the jail and needs no sudo — and the `--tools` list appears once more in the Dockerfile's `CMD`.
+
 `configs/ollama-modelfile` is deliberately **not** on that list: its system prompt must not enumerate the tools. A hand-written tool list with shell-command examples trains smaller models to emit tool calls as text instead of native `tool_calls`, which breaks the agent loop (verified on a Lima Core guest — see `CHANGELOG.md`).
 
 The sudoers entry is the easiest to miss: `servers/src/kali/tools.js` runs each binary as `sudo -n` whenever the process is not root, so a tool absent from the allowlist fails at call time, not at startup.
@@ -39,9 +41,9 @@ The sudoers entry is the easiest to miss: `servers/src/kali/tools.js` runs each 
 
 The layout matches what `README.md` and `CONTRIBUTING.md` describe:
 
-- `docs/` holds the split guides: `ARCHITECTURE.md`, `SETUP.md`, `WORKFLOWS.md`, `CYBERSECURITY-AGENT-ROADMAP.md`, `LIMA-LOCAL-DEV.md`.
+- `docs/` holds the split guides: `ARCHITECTURE.md`, `SETUP.md`, `WORKFLOWS.md`, `CYBERSECURITY-AGENT-ROADMAP.md`, `DOCKER-LOCAL-DEV.md` (the default local path), `LIMA-LOCAL-DEV.md` (production-shape emulation).
 - `scripts/` holds both provisioning scripts: `setup_mcp_server.sh` (Node) and `setup_ollama.sh` (Core).
-- `configs/` holds `mcp-kali.service` (systemd unit) and `ollama-modelfile` (Ollama Modelfile).
+- `configs/` holds `mcp-kali.service` (systemd unit), `ollama-modelfile` (Ollama Modelfile), and the Dockerized Node: `Dockerfile` (Kali + all tools, no sudo), `compose.yaml` (production shape: host networking, dropped capabilities, read-only rootfs), `compose.local.yaml` (macOS override: bridge network, published :3000).
 - `lima/` holds the two Lima templates for the macOS local-dev path: `mshin-node.yaml` (Node guest) and `mshin-core.yaml` (Core guest). The Node guest is named **mshin-node**, not mshin-kali: it is Debian, not Kali Linux, so it is named for its architectural role (pairing with mshin-core) rather than the OS (the production Node still runs real Kali). It now provisions the full six-tool set — nmap, whois, tshark and nikto from Debian, metasploit and searchsploit from their upstream vendors (Rapid7's apt repo and exploit-db's git repo, not Kali's repo). The persona is built on a 7B model rather than the Modelfile's `mistral-small`.
 - `servers/src/kali/` holds the custom Kali MCP server (`index.js`, `tools.js`, `package.json`).
 - `clients/mshin-cli/` holds the Ollama + MCP CLI harness (`index.js`, `agent.js`, `session-logger.js`, `eval-harness.js`, `package.json`).

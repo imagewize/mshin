@@ -4,6 +4,8 @@
 
 This guide describes how to run a **local, single-machine Machin Shin development environment** on macOS using **Lima VMs**, **Ollama with a small local model**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
 
+> **Prefer Docker for local development.** The [Docker Local Dev](DOCKER-LOCAL-DEV.md) guide is now the default local path: the Node runs in a container with the same compose files a real Linux box or VPS would use, and the measured performance is identical to Lima (a full `nmap` MCP round trip ties at 11.2–11.3 s across native Lima, Docker-in-Lima, and Docker Desktop). Lima keeps two genuine advantages this guide serves: emulating the **production shape** (systemd unit, Debian host, the two-machine split) and **bridged LAN access** for ARP-discovery workloads Docker Desktop cannot do. Choose Lima when you want those, Docker when you want the artifact you will actually deploy.
+
 ---
 
 ## Overview

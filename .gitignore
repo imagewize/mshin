@@ -21,6 +21,7 @@ tmp/
 .env
 .env.*
 *.local
+configs/mshin-node.env
 
 # Python (provisioning helpers)
 __pycache__/

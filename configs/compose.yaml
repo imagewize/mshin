@@ -1,0 +1,90 @@
+# Machin Shin Node under Docker Compose — the sandboxed Node.
+#
+#   MSHIN_NODE_TOKEN=$(sudo cat /etc/mshin-node-token) \
+#     docker compose -f configs/compose.yaml up -d
+#
+# The threat model, in one line: tools.js executes what the model asks for,
+# and without this file that runs as real root on the Node's OS. With it, the
+# same commands run as root *inside a namespaced jail* whose capabilities,
+# filesystem and process budget are all bounded here.
+#
+# What this protects: the Node machine — a bad flag or a hijacked model prompt
+# trashes a disposable container, not the host filesystem, and the sudo-root
+# escalation path is gone entirely (no sudo is installed in the image).
+# What it does NOT protect: the network. host networking is required so nmap,
+# masscan and arping can raw-socket the LAN — anything in the container can
+# still reach what the Node can reach. The MSHIN_NODE_TOKEN auth and the
+# MSHIN_ALLOWED_TARGETS scope allowlist remain the network-facing defenses.
+
+services:
+  mshin-node:
+    build:
+      context: ".."
+      dockerfile: configs/Dockerfile
+    image: mshin-node:latest
+    container_name: mshin-node
+
+    # Raw-socket scanning (nmap -sS, masscan, arping) must reach the LAN from
+    # the Node's own IP. Bridged/NAT networking would hide the Node's identity
+    # behind Docker's bridge and break ARP-based discovery.
+    network_mode: host
+
+    # Root in the container only keeps the two capabilities the tools actually
+    # need: raw sockets (NET_RAW) and interface configuration (NET_ADMIN, for
+    # masscan's route checks and promiscuous-mode capture). Everything else
+    # root normally has — mounting, CAP_SYS_ADMIN, device access — is dropped.
+    # If a tool ever fails with EPERM, compare against Docker's default set
+    # before adding a capability back, and record why it is needed.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+    # No tool or child process may gain privileges it did not start with.
+    # This flag is impossible on the bare-metal Node (it blocks the sudo
+    # hot path) and is the whole point of containerizing.
+    security_opt:
+      - no-new-privileges:true
+
+    # The image is immutable at runtime; all writable state lands on the /tmp
+    # tmpfs (HOME=/tmp in the Dockerfile). Nothing a tool writes survives a
+    # restart, and nothing it writes can reach the host filesystem.
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+
+    # Runtime configuration comes from this file, never from compose
+    # interpolation, so build/ps/logs never need secrets in the environment
+    # (interpolated ${VAR:?...} would fail those subcommands too). The path is
+    # relative to this file, so it works on the Linux Node and on a macOS
+    # local-dev host alike — the docker CLI (not the daemon) reads it, so it
+    # must stay readable by the user who runs compose, which rules out a
+    # root-only /etc path for local dev. Create it once, keep it out of git
+    # (configs/mshin-node.env is in .gitignore):
+    #   printf 'MSHIN_NODE_TOKEN=%s\n' "$(openssl rand -hex 32)" \
+    #     > configs/mshin-node.env
+    #   chmod 600 configs/mshin-node.env
+    #   echo 'MSHIN_ALLOWED_TARGETS=192.168.1.0/24' >> configs/mshin-node.env
+    # Compose requires the file to exist before starting the container, so a
+    # missing file fails `up` — fail-closed on purpose: with host networking,
+    # an unauthenticated Node is drivable by anyone on the LAN.
+    env_file:
+      - ./mshin-node.env
+
+    # Reap zombie children the CLI tools leave behind.
+    init: true
+
+    # A runaway scan (masscan at full rate, a fork-bombing exploit) must not
+    # take the whole Node with it.
+    mem_limit: 2g
+    pids_limit: 512
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

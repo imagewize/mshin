@@ -83,6 +83,7 @@ mshin/
 │   ├── SETUP.md               # Setup instructions
 │   ├── WORKFLOWS.md           # Example workflows
 │   ├── LIMA-LOCAL-DEV.md      # Lima VM local development on macOS
+│   ├── DOCKER-LOCAL-DEV.md    # Docker local development (default local path)
 │   ├── DEVELOPER-ONBOARDING.md # Learning path and architecture
 │   ├── REFACTORING-IDEAS.md    # Cleanups worth doing (and ones avoided)
 │   ├── CYBERSECURITY-AGENT-ROADMAP.md  # Agent roadmap
@@ -96,7 +97,10 @@ mshin/
 │   └── setup_ollama.sh        # Ollama / Core setup script
 ├── configs/
 │   ├── mcp-kali.service       # systemd service for MCP server
-│   └── ollama-modelfile       # Custom Ollama model configuration
+│   ├── ollama-modelfile       # Custom Ollama model configuration
+│   ├── Dockerfile             # Sandboxed Node image (Kali + 16 tools)
+│   ├── compose.yaml           # Docker Compose: the Node, sandboxed
+│   └── compose.local.yaml     # macOS override (bridge network, published :3000)
 ├── lima/
 │   ├── mshin-node.yaml     # Lima template: Node guest (Debian + offensive tools)
 │   └── mshin-core.yaml     # Lima template: Core guest (Ollama + CLI)

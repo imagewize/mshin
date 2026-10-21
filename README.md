@@ -67,17 +67,17 @@ your Pi. Offensive traffic originates from your LAN, not the cloud provider —
 see [Cloud vs. Local](docs/CYBERSECURITY-AGENT-ROADMAP.md#cloud-vs-local-deployment-options)
 for provider guidance and sizing.
 
-### Mistral Vibe CLI + Lima Node (no Ollama)
+### Mistral Vibe CLI + Docker Node (no Ollama)
 
 You can drop the Core entirely. Run **[Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)**
 as the agent on your Mac — inference through your **Mistral Pro** subscription —
-and let the Node run in a **Lima guest** on the same Mac. Vibe is itself an MCP
+and let the Node run as the **Docker container** on the same Mac. Vibe is itself an MCP
 client, so it replaces both Ollama and `mshin-cli`; the Node needs no new code
 either — Vibe speaks the same Streamable HTTP MCP the CLI does:
 
 ```
 ┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
-│ Mistral Platform  │◄───►│ macOS Host        │◄───►│ Lima Guest        │
+│ Mistral Platform  │◄───►│ macOS Host        │◄───►│ Docker Container  │
 │ (Mistral Pro)     │     │ Mistral Vibe CLI  │     │ mshin-node        │
 │ - Inference       │     │ - Agent loop      │     │ - MCP Server      │
 │ - No local model  │     │ - MCP client      │     │ - 16 Kali tools   │
@@ -87,21 +87,30 @@ either — Vibe speaks the same Streamable HTTP MCP the CLI does:
 Set it up like this:
 
 ```bash
-# 1. Node: create the Lima guest (provisions all sixteen tools)
-limactl create --name=mshin-node lima/mshin-node.yaml
-limactl start mshin-node
-
-# Read the guest's address on the shared network — it is <NODE_IP> below
-limactl shell mshin-node -- ip -4 -br addr show lima0
+# 1. Node: build and start the sandboxed container (see Docker Local Dev
+#    for the full guide). The token file is required — compose fails
+#    closed without it.
+printf 'MSHIN_NODE_TOKEN=%s\n' "$(openssl rand -hex 32)" > configs/mshin-node.env
+chmod 600 configs/mshin-node.env
+docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 ```
 
 ```toml
-# 2. Core: register the Node as an MCP server in ~/.vibe/config.toml
+# 2. Host: register the Node as an MCP server in ~/.vibe/config.toml
 [[mcp_servers]]
 name = "mshin"
 transport = "streamable-http"
-url = "http://<NODE_IP>:3000/mcp"
+url = "http://localhost:3000/mcp"
+
+[mcp_servers.auth]
+type = "static"
+api_key_env = "MSHIN_NODE_TOKEN"
+api_key_header = "Authorization"
+api_key_format = "Bearer {token}"
 ```
+
+Vibe loads `MSHIN_NODE_TOKEN` from `~/.vibe/.env` — put the same value the Node
+got in step 1 there, then restart Vibe.
 
 Then ask Vibe, e.g. *"Run an Nmap scan on 127.0.0.1 and analyze the results."*
 
@@ -109,14 +118,14 @@ Caveats worth knowing:
 
 - **Not private and offline.** Prompts and tool results go to Mistral's cloud —
   this mode trades the privacy of the local setups for managed inference.
-- The guest's address is DHCP-assigned; if it changes, update the URL.
-- Set `MSHIN_NODE_TOKEN` on the Node and configure matching auth in Vibe before
-  exposing the Node beyond a trusted LAN.
-- The Node's server-side guards (`assertSafe` in `servers/src/kali/tools.js`)
-  still apply, but Vibe does not load the Ollama persona from
-  `configs/ollama-modelfile`.
+- The Node runs with dropped capabilities and a read-only rootfs, but its
+  server-side guards (`assertSafe` in `servers/src/kali/tools.js`) still apply;
+  Vibe does not load the Ollama persona from `configs/ollama-modelfile`.
+- If you want the production shape instead (systemd, Debian host, bridged LAN
+  access), the Node can still run in a [Lima guest](docs/LIMA-LOCAL-DEV.md) —
+  point the URL at the guest's IP instead of `localhost`.
 
-### OpenCode CLI + local Ollama + Lima Node
+### OpenCode CLI + local Ollama + Docker Node
 
 You can also keep inference **local** and still drop `mshin-cli`. Run **[OpenCode](https://opencode.ai)**
 as the agent — it is an MCP client like Vibe, but it talks to your **local Ollama** instead of a
@@ -125,7 +134,7 @@ speaks the same Streamable HTTP MCP the CLI does:
 
 ```
 ┌──────────────────────────────┐         ┌───────────────────┐
-│ macOS Host                   │         │ Lima Guest        │
+│ macOS Host                   │         │ Docker Container  │
 │ - Ollama (local inference)   │ ◄─────► │ mshin-node        │
 │ - OpenCode (agent + MCP      │         │ - MCP Server      │
 │   client, runs Mistral Small)│         │ - 16 Kali tools   │
@@ -135,17 +144,16 @@ speaks the same Streamable HTTP MCP the CLI does:
 Set it up like this:
 
 ```bash
-# 1. Node: create the Lima guest exactly as in the Vibe mode above
-limactl create --name=mshin-node lima/mshin-node.yaml
-limactl start mshin-node
-
-# Read the guest's address on the shared network — it is <NODE_IP> below
-limactl shell mshin-node -- ip -4 -br addr show lima0
+# 1. Node: the same container as the Vibe mode above — skip this if it
+#    is already running
+printf 'MSHIN_NODE_TOKEN=%s\n' "$(openssl rand -hex 32)" > configs/mshin-node.env
+chmod 600 configs/mshin-node.env
+docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 ```
 
 ```bash
 # 2. Host: register the Node as a remote MCP server
-opencode mcp add mshin --global --url http://<NODE_IP>:3000/mcp
+opencode mcp add mshin --global --url http://localhost:3000/mcp
 ```
 
 The Node requires a bearer token, so add the auth header in
@@ -157,7 +165,7 @@ The Node requires a bearer token, so add the auth header in
     "servers": {
       "mshin": {
         "type": "remote",
-        "url": "http://<NODE_IP>:3000/mcp",
+        "url": "http://localhost:3000/mcp",
         "headers": {
           "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
         }
@@ -166,6 +174,11 @@ The Node requires a bearer token, so add the auth header in
   }
 }
 ```
+
+Provide `MSHIN_NODE_TOKEN` with the same value the Node got in step 1 — on
+macOS, `launchctl setenv MSHIN_NODE_TOKEN <value>` makes it visible to the
+background service (it does not survive a reboot; set it again per login
+session, or export it in the shell that launches `opencode`).
 
 OpenCode auto-discovers Ollama on `localhost:11434`, so any local model shows up as
 `ollama/<tag>`. Declaring the provider explicitly (as in
@@ -177,8 +190,9 @@ over which model variants are offered. Then run it, e.g.:
 opencode run -m ollama/<MODEL_TAG> "Run an Nmap scan on 127.0.0.1 and analyze the results."
 ```
 
-Caveats worth knowing — these come from a live run of this mode against a Lima guest
-(opencode v2.0.32, `ministral-3:8b-32k`, all 16 tools connected):
+Caveats worth knowing — these come from a live run of this mode (opencode
+v2.0.32, `ministral-3:8b-32k`, all 16 tools connected) and apply wherever the
+Node runs — container, Lima guest, or physical:
 
 - **Private and offline**, like the two-machine setup — but one host must fit both the
   model and the agent.
@@ -203,8 +217,9 @@ Caveats worth knowing — these come from a live run of this mode against a Lima
 - The Node's server-side guards (`assertSafe` in `servers/src/kali/tools.js`) still apply.
 - The `--auto` flag auto-approves tool calls; omit it to approve each Kali tool run by hand.
 
-See [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) for the guest's requirements
-(macOS, `socket_vmnet` shared networking) and cleanup.
+See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) for the Node container's
+requirements and troubleshooting, and [Lima Local Dev](docs/LIMA-LOCAL-DEV.md)
+for the production-shape (systemd, Debian, bridged LAN) alternative.
 
 ---
 
@@ -244,8 +259,8 @@ See [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) for the guest's requirements
 - [Architecture](docs/ARCHITECTURE.md) – System design and components
 - [Setup Guide](docs/SETUP.md) – Step-by-step installation
 - [Workflows](docs/WORKFLOWS.md) – Example cybersecurity tasks
-- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Single-machine development environment on macOS
-  - Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
+- [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) – Node in a Docker container; the default local path on macOS, with the Lima-vs-Docker measurements
+- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Production-shape emulation on macOS (systemd, Debian, bridged LAN) — Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
 - [Developer Onboarding](docs/DEVELOPER-ONBOARDING.md) – Learning path and architecture for new contributors
 - [Refactoring Ideas](docs/REFACTORING-IDEAS.md) – Cleanups worth doing, and the ones deliberately avoided
 - [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed
