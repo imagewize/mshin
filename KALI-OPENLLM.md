@@ -145,7 +145,7 @@ cd /opt/mshin/servers/src/kali
 npm install
 
 # Start the MCP server (Machin Shin Node)
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john &
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan &
 ```
 
 #### **1.5 Create a `systemd` Service for MCP Server**
@@ -159,7 +159,7 @@ After=network.target
 [Service]
 User=mshin
 WorkingDirectory=/opt/mshin/servers/src/kali
-ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
+ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan
 Restart=always
 RestartSec=5s
 Environment=NODE_ENV=production

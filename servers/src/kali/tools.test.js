@@ -37,7 +37,7 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the seventeen documented tools with complete metadata", () => {
+test("exposes exactly the eighteen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "arp-scan",
@@ -57,6 +57,7 @@ test("exposes exactly the seventeen documented tools with complete metadata", ()
     "sqlmap",
     "tshark",
     "whois",
+    "wpscan",
   ]);
   for (const t of tools) {
     assert.equal(typeof t.description, "string");
@@ -203,7 +204,7 @@ test("fabrication guard ignores small ranges and non-discovery scans", () => {
   assertDiscoveryNotFabricated(["-sV"], ["192.168.0.0/24"], ALL_UP_256);
 });
 
-test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf and john reject shell metacharacters", async () => {
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf, john and wpscan reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
@@ -219,11 +220,20 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     ["enum4linux", (p) => ({ target: p })],
     ["ffuf", (p) => ({ url: p, wordlist: "/usr/share/wordlists/dirb/common.txt" })],
     ["john", (p) => ({ hash_file: p })],
+    ["wpscan", (p) => ({ url: p })],
   ];
   for (const [name, build] of cases) {
     const tool = byName(name);
     await assert.rejects(tool.handler(build("evil; reboot")), /unsafe characters/, name);
   }
+});
+
+test("wpscan with well-formed input clears validation and reaches the binary check", async () => {
+  const wpscan = byName("wpscan");
+  await assert.rejects(
+    wpscan.handler({ url: "http://192.168.1.100", enumerate: "u,vp,vt" }),
+    /binary not found/
+  );
 });
 
 test("buildEnum4linuxArgs puts options before the target", () => {

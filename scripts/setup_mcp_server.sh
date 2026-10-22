@@ -36,7 +36,7 @@ fi
 
 MSHIN_DIR="/opt/mshin"
 MSHIN_USER="mshin"
-TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john"
+TOOLS_LIST="nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan"
 # Override to clone from somewhere else — an SSH URL, or a local path/bundle.
 # Pass it through sudo with -E: MSHIN_REPO=... sudo -E bash "$0"
 MSHIN_REPO="${MSHIN_REPO:-https://github.com/imagewize/mshin.git}"
@@ -67,6 +67,7 @@ apt-get install -y \
     enum4linux \
     ffuf \
     john \
+    wpscan \
     net-tools
 
 # --- Install Node.js 20+ ---
@@ -133,9 +134,12 @@ fi
 # --- Configure Sudoers for Machin Shin User ---
 
 echo "[+] Configuring sudoers for '${MSHIN_USER}'..."
-# tshark is intentionally omitted: reading user-owned PCAP files as root
-# triggers Wireshark's file-owner check, and tshark needs no privileges to
-# analyze existing captures.
+# tshark and wpscan are intentionally omitted: they run as the service user,
+# never through sudo. tshark: reading user-owned PCAP files as root triggers
+# Wireshark's file-owner check, and it needs no privileges to analyze existing
+# captures. wpscan: a plain network scanner that caches its database under
+# $HOME/.wpscan (unwritable under sudo's HOME=/root with ProtectHome) and
+# needs no privileges.
 cat > /etc/sudoers.d/mshin <<EOF
 ${MSHIN_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmap, /usr/bin/searchsploit, /usr/bin/msfconsole, /usr/bin/nikto, /usr/bin/whois, /usr/bin/hydra, /usr/bin/sqlmap, /usr/bin/gobuster, /usr/bin/masscan, /usr/bin/dirb, /usr/bin/arping, /usr/sbin/arp-scan, /usr/bin/dnsenum, /usr/bin/enum4linux, /usr/bin/ffuf, /usr/bin/john
 EOF
