@@ -97,10 +97,12 @@ docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 
 ```toml
 # 2. Host: register the Node as an MCP server in ~/.vibe/config.toml
+# On macOS Docker Desktop we use :3001 so a running Lima mshin-node guest
+# does not silently steal localhost:3000.
 [[mcp_servers]]
 name = "mshin"
 transport = "streamable-http"
-url = "http://localhost:3000/mcp"
+url = "http://localhost:3001/mcp"
 
 [mcp_servers.auth]
 type = "static"
@@ -152,7 +154,9 @@ docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 
 ```bash
 # 2. Host: register the Node as a remote MCP server
-opencode mcp add mshin --global --url http://localhost:3000/mcp
+# On macOS Docker Desktop we use :3001 so a running Lima mshin-node guest
+# does not silently steal localhost:3000.
+opencode mcp add mshin --global --url http://localhost:3001/mcp
 ```
 
 The Node requires a bearer token. OpenCode treats remote servers as OAuth by
@@ -165,7 +169,7 @@ default, so disable OAuth and add the static bearer header in
     "servers": {
       "mshin": {
         "type": "remote",
-        "url": "http://localhost:3000/mcp",
+        "url": "http://localhost:3001/mcp",
         "oauth": false,
         "headers": {
           "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
@@ -230,10 +234,12 @@ Node runs — container, Lima guest, or physical:
 A Docker Desktop container on macOS (or Windows) is behind a NAT and cannot
 do truthful host discovery: `nmap -sn` of your LAN returns every address as
 "up" because Docker's VM answers the probes. The Node refuses to return that
-fabricated list.
+fabricated list. This is not a Machin Shin bug — it is how Docker Desktop's
+virtualised networking works on macOS and Windows.
 
-Run the host-side discovery helper instead, then scan the listed hosts through
-the Node:
+The best vantage point for LAN discovery is the **host itself**. Use the
+cross-platform helper to find live hosts, then scan those specific hosts
+through the Node:
 
 ```bash
 # macOS, Windows or Linux — runs on the host, not inside the container
@@ -244,6 +250,13 @@ scripts/lan_inventory.py
 
 `--json` gives machine-readable output; `--targets` prints a ready-to-use JSON
 array. For the full explanation, see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md).
+
+> **Why not a full "macOS host Node"?** The MCP server is built around Linux
+> paths and the Kali toolset (`/usr/bin/nmap`, `/usr/sbin/arp-scan`, etc.), so
+> running it natively on macOS would require porting every tool path and
+> dependency. Discovery is the one task the Mac does better than the container,
+> which is why `lan_inventory.py` runs on the host and feeds targets to the
+> Node.
 
 See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) for the Node container's
 requirements and troubleshooting, and [Lima Local Dev](docs/LIMA-LOCAL-DEV.md)

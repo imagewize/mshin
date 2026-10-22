@@ -86,18 +86,18 @@ docker compose -f configs/compose.yaml build
 docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 
 # 4. Verify
-curl http://localhost:3000/health
+curl http://localhost:3001/health
 ```
 
 If you already have tokens scattered in different places, run
 `scripts/setup_mcp_auth.sh --check` to see where they differ, then re-run
 without `--check` to synchronize them.
 
-**The local override:** Docker Desktop does not publish `network_mode: host` services to the Mac — `host` there is the Docker VM's network, so nothing answers on the Mac's `localhost:3000`. `configs/compose.local.yaml` switches to bridge networking and publishes `3000:3000` for macOS; the base file keeps host networking for Linux Nodes and VPSes, where the tools must reach the LAN from the host's own IP.
+**The local override:** Docker Desktop does not publish `network_mode: host` services to the Mac — `host` there is the Docker VM's network, so nothing answers on the Mac's `localhost:3000`. `configs/compose.local.yaml` switches to bridge networking and publishes `3001:3000` for macOS; the base file keeps host networking for Linux Nodes and VPSes, where the tools must reach the LAN from the host's own IP. Port `3001` is chosen deliberately: Lima's automatic port forwarding silently claims `localhost:3000` when a `mshin-node` guest is running, and changing the Docker published port avoids that collision entirely.
 
 ## Usage
 
-The MCP surface is identical to any other Node: point the CLI (`--mcp-url http://localhost:3000/mcp --token <value>`), Vibe, or OpenCode at `localhost:3000`. Verified in this environment: `tools/list` exposes all seventeen tools, a `tools/call` round trip to `nmap` returns real scan output (11.3 s), and `POST /mcp` without the token answers 401.
+The MCP surface is identical to any other Node: point the CLI (`--mcp-url http://localhost:3001/mcp --token <value>`), Vibe, or OpenCode at `localhost:3001`. Verified in this environment: `tools/list` exposes all seventeen tools, a `tools/call` round trip to `nmap` returns real scan output (11.3 s), and `POST /mcp` without the token answers 401.
 
 Two client-specific gotchas that keep appearing in issues:
 
@@ -123,9 +123,9 @@ The eval harness (`clients/mshin-cli/eval-harness.js`) and its case sets work ag
 
 ## Troubleshooting
 
-**`localhost:3000` answers 401 with the right token — or connects to the wrong Node.** If a Lima `mshin-node` guest is running, **Lima automatically forwards the guest's listening ports to the Mac's localhost** and will silently claim `localhost:3000` before Docker does. The request then reaches the *guest's* systemd Node (with *its* token), not your container. Fix: `limactl stop mshin-node`, then `docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d --force-recreate`. This collision is measured behavior, not speculation — it cost an hour of confused 401s during this guide's own verification.
+**`localhost:3001` is the Docker Node; `localhost:3000` may be the Lima guest.** This guide's macOS override publishes the container on `3001` so a running Lima `mshin-node` guest cannot steal `localhost:3000` via its automatic port forwarding. If you changed the override back to `3000:3000` and a Lima guest is running, the request reaches the *guest's* systemd Node (with *its* token), not your container — fix: `limactl stop mshin-node`, then `docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d --force-recreate`. This collision is measured behavior, not speculation — it cost an hour of confused 401s during this guide's own verification.
 
-To see who is actually listening on port 3000: `lsof -i :3000` (macOS) or `ss -ltnp | grep 3000` (Linux). If a `limactl` process holds it, that is your Lima guest, not Docker.
+To see who is actually listening on port 3001: `lsof -i :3001` (macOS) or `ss -ltnp | grep 3001` (Linux). Port 3000 held by `limactl` is your Lima guest.
 
 To see whether your tokens are out of sync: `scripts/setup_mcp_auth.sh --check` compares the Docker env file, Vibe env file, OpenCode env file, and the current shell.
 
@@ -166,6 +166,21 @@ A container on Docker Desktop **cannot** sit on the physical LAN: the Docker VM'
 | Targeted scan of a **known-live** LAN host | Yes — byte-identical port states and banners to a native scan |
 | Host **discovery** across the LAN | **No — fabricated** (see Troubleshooting). The Node now *refuses* such results (`nmap -sn` against a CIDR where every address answers returns an error, not a fake list) |
 | ARP discovery (`arp-scan`, `nmap -sn -PR`) | **No** — the container has no Layer-2 presence on the LAN. Use the host (`scripts/lan_inventory.py`) or the [bridged-guest hybrid](#lan-discovery-on-macos--the-bridged-guest-hybrid) |
+
+### The macOS host as the LAN vantage
+
+For ordinary LAN work the simplest truthful position is the Mac itself, not a
+container or VM. Run `scripts/lan_inventory.py` on the host, copy the `targets`
+array it prints, and ask the Node to scan those hosts. The host finds the live
+IPs, MACs and best-effort names; the Docker Node runs the actual offensive
+tools against the targets you already know are real. This is the recommended
+path when the only hardware you have is the Mac and you want to stay in Docker.
+
+A full "macOS host Node" is not practical: the MCP server expects Linux/Kali
+binaries at fixed paths (`/usr/bin/nmap`, `/usr/sbin/arp-scan`, etc.) and runs
+them with assumptions that do not hold on macOS. Discovery is the one task the
+host does better than the container, so the helper is designed to bridge the
+two.
 
 When you need real ARP-based discovery — finding machines that drop all unicast probes (Windows defaults, sleeping phones) — run the *same container image* on a machine that is itself on the LAN:
 

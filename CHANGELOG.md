@@ -31,8 +31,9 @@ Authentication-and-discovery UX release. The recurring "MCP authentication keeps
 
 ### Changed
 
-- **`docs/DOCKER-LOCAL-DEV.md`** recommends `scripts/setup_mcp_auth.sh` in Setup, documents the OpenCode/Vibe gotchas in Usage, strengthens the `localhost:3000` port-collision troubleshooting (Lima's automatic port forwarding silently claims the port before Docker), and points at `scripts/lan_inventory.py` as the host-side discovery path. The capability matrix and Limitations now explicitly mention Docker Desktop on Windows alongside macOS.
-- **`README.md`** replaces the hand-rolled token generation in the Vibe and OpenCode mode sections with `scripts/setup_mcp_auth.sh`, adds the missing `oauth: false` to the OpenCode config, and adds a "Scanning your LAN from a Docker Node" subsection with the Python helper.
+- **`configs/compose.local.yaml`** now publishes the Docker Node on `localhost:3001` instead of `3000`. This avoids the silent port collision with a running Lima `mshin-node` guest, which automatically forwards its port 3000 to the Mac's `localhost:3000` and answers client requests with its own token.
+- **`docs/DOCKER-LOCAL-DEV.md`** recommends `scripts/setup_mcp_auth.sh` in Setup, documents the OpenCode/Vibe gotchas in Usage, updates every `localhost:3000` reference to `localhost:3001`, explains the new default port, adds a "The macOS host as the LAN vantage" subsection, and points at `scripts/lan_inventory.py` as the host-side discovery path. The capability matrix and Limitations now explicitly mention Docker Desktop on Windows alongside macOS.
+- **`README.md`** replaces the hand-rolled token generation in the Vibe and OpenCode mode sections with `scripts/setup_mcp_auth.sh`, updates both Docker-mode URLs to `http://localhost:3001/mcp`, adds the missing `oauth: false` to the OpenCode config, and expands the "Scanning your LAN from a Docker Node" subsection to explain why the Mac itself is the best discovery vantage point.
 
 ### Verified
 
@@ -41,6 +42,7 @@ Authentication-and-discovery UX release. The recurring "MCP authentication keeps
 - `npm test` in `servers/src/kali/` passes 67/67; `npm test` in `clients/mshin-cli/` passes 114/114 (no code changed under either package; pre-commit check).
 - `bash -n` passes on `scripts/setup_mcp_auth.sh`.
 - `python3 -m py_compile scripts/lan_inventory.py` passes.
+- `docker compose -f configs/compose.yaml -f configs/compose.local.yaml config` validates after changing the published port to `3001:3000`.
 
 ### Not verified
 
