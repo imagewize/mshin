@@ -9,11 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`scripts/setup_mcp_auth.sh --check` no longer prints full tokens.** The diagnostic reported token values verbatim, so a shared terminal or a pasted log leaked the credential. Tokens now render masked (`604b...4df4` — first four and last four characters; `****` for anything shorter), while the match/mismatch verdicts are unchanged. Verified live against the configured deployment: all four sources report the same masked token and `[OK]`.
+- **`scripts/setup_mcp_auth.sh` no longer hardcodes `http://localhost:3001/mcp` in the OpenCode patch.** A `--url` flag (or `MSHIN_NODE_URL`) now sets the Node URL written into `~/.config/opencode/opencode.jsonc` and the printed snippet, defaulting to the previous `localhost:3001` so local setups are unchanged. This makes the helper usable against a VPS Node: `setup_mcp_auth.sh --url http://<VPS_IP>:3000/mcp`. Verified against a realistic JSONC in an isolated `HOME`: the patch preserved an unrelated server entry and comments and wrote the custom URL. `docs/VPS-NODE.md`'s client-scan section documents the flag.
 - **`scripts/setup_bridged_node.sh` keeps the bridged Node's internet egress.** The bridged interface's DHCP lease installs its own default route (metric 100), which outranks Lima's NAT default (metric 200) — and a home router will not usually forward the guest's off-LAN traffic, so every internet-bound probe from the Node died and `nmap` reported `Host seems down` for targets that answered from the Mac. The script now deletes the `lima1` default route, guarded and idempotent: `lima1` keeps the on-link LAN route, the NAT interface carries the internet. Measured live on `mshin-node-bridged`: before the fix every guest-side scan of a public VPS failed; after it, `nmap -sV` through the Node's `tools/call` returned the real banners (OpenSSH, nginx) at the real ~0.37 s RTT.
 
 ### Documented
 
 - **Lima's user-mode NAT answers ICMP on behalf of any address.** From inside the bridged guest, `ping` against a public VPS ~400 ms away returned sub-millisecond replies; TCP forwards faithfully, so internet hosts must be judged by TCP or pinged from the Mac. Recorded in `docs/DOCKER-LOCAL-DEV.md` Troubleshooting, alongside the Docker Desktop fabrication truth it mirrors, with both measured caveats noted in the bridged-guest hybrid section.
+
+## [0.23.0] - 2026-10-22
+
+Authentication-and-discovery UX release. The recurring "MCP authentication keeps failing" reports for OpenCode and Vibe turned out to be two separate setup bugs: OpenCode needs `oauth: false` for a static bearer server, and every client (Docker, Vibe, OpenCode, shell) was getting a different token copied by hand. The LAN-discovery pain on Docker Desktop is not a bug in the Node — the container is behind a NAT and cannot do truthful Layer-2 discovery — so this release ships a cross-platform host-side helper and makes the workflow explicit: discover from the host, scan through the Node.
+
+### Added
+
+- **`scripts/setup_mcp_auth.sh`** — one-command token synchronization. Generates a 64-hex-char `MSHIN_NODE_TOKEN`, writes it to `configs/mshin-node.env` (Docker Node), `~/.vibe/.env` (Mistral Vibe), and `~/.config/opencode/.env` (OpenCode), patches `~/.config/opencode/opencode.jsonc` with the correct `mshin` server block, then prints the restart command. `setup_mcp_auth.sh --check` reads all visible token sources and reports mismatches without changing anything, so "why is auth failing again?" becomes a one-line diagnosis.
+- **`scripts/lan_inventory.py`** — cross-platform LAN inventory (macOS, Windows, Linux). Detects the physical LAN interface and subnet, ping-sweeps the /24, parses the ARP table, resolves best-effort hostnames, and outputs a human table (`--json` for machine-readable, `--targets` for a Node-ready JSON array). It deliberately skips VPN/tunnel interfaces on macOS and reports the real hosts the Node can then scan faithfully.
+
+### Fixed
+
+- **OpenCode documentation now includes `oauth: false` and a literal bearer token.** Without `oauth: false`, OpenCode treats the Node as an OAuth server and prompts for browser sign-in on every connection. OpenCode's documented `{env:...}` interpolation in remote MCP headers is currently broken (anomalyco/opencode#23664), so the `Authorization` header must contain the actual token rather than `{env:MSHIN_NODE_TOKEN}`. `README.md` and `docs/DOCKER-LOCAL-DEV.md` now show the working `opencode.jsonc` snippet, and `scripts/setup_mcp_auth.sh` patches the file automatically.
+- **Vibe documentation now stresses `~/.vibe/.env`.** Vibe's `api_key_env` only names the variable; the value must be in `~/.vibe/.env` (or exported in the shell that launches Vibe). The docs now pair the `config.toml` snippet with the helper that writes the env file.
+
+### Changed
+
+- **`configs/compose.local.yaml`** now publishes the Docker Node on `localhost:3001` instead of `3000`. This avoids the silent port collision with a running Lima `mshin-node` guest, which automatically forwards its port 3000 to the Mac's `localhost:3000` and answers client requests with its own token.
+- **`docs/DOCKER-LOCAL-DEV.md`** recommends `scripts/setup_mcp_auth.sh` in Setup, documents the OpenCode/Vibe gotchas in Usage, updates every `localhost:3000` reference to `localhost:3001`, explains the new default port, adds a "The macOS host as the LAN vantage" subsection, and points at `scripts/lan_inventory.py` as the host-side discovery path. The capability matrix and Limitations now explicitly mention Docker Desktop on Windows alongside macOS.
+- **`README.md`** replaces the hand-rolled token generation in the Vibe and OpenCode mode sections with `scripts/setup_mcp_auth.sh`, updates both Docker-mode URLs to `http://localhost:3001/mcp`, adds the missing `oauth: false` to the OpenCode config, and expands the "Scanning your LAN from a Docker Node" subsection to explain why the Mac itself is the best discovery vantage point.
+
+### Verified
+
+- `scripts/setup_mcp_auth.sh --check` correctly reported the user's existing Docker and Vibe tokens as matching, identified the missing OpenCode env file, and `--token <value>` wrote synchronized tokens to all three files and patched `~/.config/opencode/opencode.jsonc`.
+- `scripts/lan_inventory.py` on macOS with a VPN owning the default route correctly selected `en0` (Wi-Fi), found the live gateway and one additional host, and produced valid `--json` and `--targets` output.
+- `opencode mcp list` reports `✓ mshin connected` after `setup_mcp_auth.sh` patched `opencode.jsonc` with `oauth: false` and a literal bearer token pointing at `http://localhost:3001/mcp`.
+- `npm test` in `servers/src/kali/` passes 67/67; `npm test` in `clients/mshin-cli/` passes 114/114 (no code changed under either package; pre-commit check).
+- `bash -n` passes on `scripts/setup_mcp_auth.sh`.
+- `python3 -m py_compile scripts/lan_inventory.py` passes.
+- `docker compose -f configs/compose.yaml -f configs/compose.local.yaml config` validates after changing the published port to `3001:3000`.
+
+### Not verified
+
+- **Windows and Linux execution of `scripts/lan_inventory.py`** — the macOS path was run live; the Windows and Linux branches were written against documented `ipconfig`/`arp -a`/`ip neigh` output and are expected to work, but were not executed on those platforms.
+- **Vibe end-to-end after token synchronization** — the user's `~/.vibe/config.toml` URL was updated to `http://localhost:3001/mcp`, but Vibe itself was not restarted during this session.
 
 ## [0.22.0] - 2026-10-21
 
@@ -1853,7 +1890,9 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/imagewize/mshin/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/imagewize/mshin/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/imagewize/mshin/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/imagewize/mshin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/imagewize/mshin/compare/v0.18.1...v0.19.0

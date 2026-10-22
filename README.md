@@ -89,18 +89,20 @@ Set it up like this:
 ```bash
 # 1. Node: build and start the sandboxed container (see Docker Local Dev
 #    for the full guide). The token file is required — compose fails
-#    closed without it.
-printf 'MSHIN_NODE_TOKEN=%s\n' "$(openssl rand -hex 32)" > configs/mshin-node.env
-chmod 600 configs/mshin-node.env
+#    closed without it. Use the helper so the Node and clients share one
+#    token instead of copying hex by hand.
+scripts/setup_mcp_auth.sh
 docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 ```
 
 ```toml
 # 2. Host: register the Node as an MCP server in ~/.vibe/config.toml
+# On macOS Docker Desktop we use :3001 so a running Lima mshin-node guest
+# does not silently steal localhost:3000.
 [[mcp_servers]]
 name = "mshin"
 transport = "streamable-http"
-url = "http://localhost:3000/mcp"
+url = "http://localhost:3001/mcp"
 
 [mcp_servers.auth]
 type = "static"
@@ -109,8 +111,8 @@ api_key_header = "Authorization"
 api_key_format = "Bearer {token}"
 ```
 
-Vibe loads `MSHIN_NODE_TOKEN` from `~/.vibe/.env` — put the same value the Node
-got in step 1 there, then restart Vibe.
+Vibe loads `MSHIN_NODE_TOKEN` from `~/.vibe/.env`; `setup_mcp_auth.sh` writes
+it there for you. Restart Vibe so it re-reads the file.
 
 Then ask Vibe, e.g. *"Run an Nmap scan on 127.0.0.1 and analyze the results."*
 
@@ -145,19 +147,21 @@ Set it up like this:
 
 ```bash
 # 1. Node: the same container as the Vibe mode above — skip this if it
-#    is already running
-printf 'MSHIN_NODE_TOKEN=%s\n' "$(openssl rand -hex 32)" > configs/mshin-node.env
-chmod 600 configs/mshin-node.env
+#    is already running. Use the helper so the Node and clients share one token.
+scripts/setup_mcp_auth.sh
 docker compose -f configs/compose.yaml -f configs/compose.local.yaml up -d
 ```
 
 ```bash
 # 2. Host: register the Node as a remote MCP server
-opencode mcp add mshin --global --url http://localhost:3000/mcp
+# On macOS Docker Desktop we use :3001 so a running Lima mshin-node guest
+# does not silently steal localhost:3000.
+opencode mcp add mshin --global --url http://localhost:3001/mcp
 ```
 
-The Node requires a bearer token, so add the auth header in
-`~/.config/opencode/opencode.jsonc` (OpenCode interpolates `{env:...}`):
+The Node requires a bearer token. OpenCode treats remote servers as OAuth by
+default, so disable OAuth and add the static bearer header in
+`~/.config/opencode/opencode.jsonc`:
 
 ```jsonc
 {
@@ -165,9 +169,10 @@ The Node requires a bearer token, so add the auth header in
     "servers": {
       "mshin": {
         "type": "remote",
-        "url": "http://localhost:3000/mcp",
+        "url": "http://localhost:3001/mcp",
+        "oauth": false,
         "headers": {
-          "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
+          "Authorization": "Bearer <MSHIN_NODE_TOKEN>"
         }
       }
     }
@@ -175,10 +180,16 @@ The Node requires a bearer token, so add the auth header in
 }
 ```
 
-Provide `MSHIN_NODE_TOKEN` with the same value the Node got in step 1 — on
-macOS, `launchctl setenv MSHIN_NODE_TOKEN <value>` makes it visible to the
-background service (it does not survive a reboot; set it again per login
-session, or export it in the shell that launches `opencode`).
+Replace `<MSHIN_NODE_TOKEN>` with the value from `configs/mshin-node.env`.
+OpenCode's documented `{env:...}` interpolation in remote MCP headers is
+currently broken (anomalyco/opencode#23664), so the token must be literal in
+this file. `setup_mcp_auth.sh` patches the header automatically when it
+synchronizes tokens; it also keeps a copy in `~/.config/opencode/.env` for
+diagnosis. Restart OpenCode's background service after the config changes:
+
+```bash
+opencode service restart
+```
 
 OpenCode auto-discovers Ollama on `localhost:11434`, so any local model shows up as
 `ollama/<tag>`. Declaring the provider explicitly (as in
@@ -216,6 +227,35 @@ Node runs — container, Lima guest, or physical:
   reconnects it.
 - The Node's server-side guards (`assertSafe` in `servers/src/kali/tools.js`) still apply.
 - The `--auto` flag auto-approves tool calls; omit it to approve each Kali tool run by hand.
+
+#### Scanning your LAN from a Docker Node
+
+A Docker Desktop container on macOS (or Windows) is behind a NAT and cannot
+do truthful host discovery: `nmap -sn` of your LAN returns every address as
+"up" because Docker's VM answers the probes. The Node refuses to return that
+fabricated list. This is not a Machin Shin bug — it is how Docker Desktop's
+virtualised networking works on macOS and Windows.
+
+The best vantage point for LAN discovery is the **host itself**. Use the
+cross-platform helper to find live hosts, then scan those specific hosts
+through the Node:
+
+```bash
+# macOS, Windows or Linux — runs on the host, not inside the container
+scripts/lan_inventory.py
+
+# Then ask Vibe/OpenCode: "Run an nmap -sV scan on targets <IP1> <IP2> ..."
+```
+
+`--json` gives machine-readable output; `--targets` prints a ready-to-use JSON
+array. For the full explanation, see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md).
+
+> **Why not a full "macOS host Node"?** The MCP server is built around Linux
+> paths and the Kali toolset (`/usr/bin/nmap`, `/usr/sbin/arp-scan`, etc.), so
+> running it natively on macOS would require porting every tool path and
+> dependency. Discovery is the one task the Mac does better than the container,
+> which is why `lan_inventory.py` runs on the host and feeds targets to the
+> Node.
 
 See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) for the Node container's
 requirements and troubleshooting, and [Lima Local Dev](docs/LIMA-LOCAL-DEV.md)

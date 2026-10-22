@@ -194,7 +194,7 @@ The sandboxed Docker Node on Docker Desktop **cannot discover LAN hosts**: Docke
 
 When a task needs the machine's actual LAN (live hosts, IPs, MACs), work from the Mac — it is the only thing on the physical network:
 
-1. Run `scripts/lan_inventory.sh` — it derives the subnet itself (`ipconfig getifaddr en0`), ping-sweeps, and prints live IPs, MACs, best-effort names, and a ready `targets` array. Manual equivalent: `SUBNET=$(ipconfig getifaddr en0 | cut -d. -f1-3)`, ping sweep, `arp -a -i en0`.
+1. Run `scripts/lan_inventory.py` — it works on macOS, Windows and Linux, detects the physical LAN interface and subnet, ping-sweeps, and prints live IPs, MACs, best-effort names, and a ready `targets` array. On macOS the older `scripts/lan_inventory.sh` is still available. Manual equivalent: derive the subnet from the active interface, ping sweep, then read the ARP table.
 2. Use the Node only for **targeted** scans of hosts already known live — those results are faithful (measured; see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md)). The Node also refuses discovery scans whose result would be fabricated (`nmap -sn` on a CIDR where every address answered), so a fabricated host list can no longer reach a user.
 3. Do not expect hostnames: consumer routers rarely serve reverse DNS, and Bonjour/mDNS browsing can fail when a VPN interface owns the default route. Pull names from service banners instead, and say so when a host's name is unknown.
 4. For Node-side ARP discovery on a Mac (hosts that drop all unicast probes), use the bridged Lima Node: `scripts/setup_bridged_node.sh` — the Docker Node cannot do this at all. A VPS Node cannot see any LAN it is not physically on (see [VPS Node](docs/VPS-NODE.md)).
