@@ -444,7 +444,7 @@ const tools = [
         args.push("--data", data);
       }
       args.push("--batch");
-      const output = await runTool("sqlmap", args, 300_000);
+      const output = await runTool("sqlmap", args, DEFAULT_TIMEOUT_MS);
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -791,7 +791,7 @@ const tools = [
         assertSafe(options, "options");
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("john", args, 300_000);
+      const output = await runTool("john", args, DEFAULT_TIMEOUT_MS);
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -834,7 +834,7 @@ const tools = [
         assertSafe(options, "options");
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("wpscan", args, 300_000, { useSudo: false });
+      const output = await runTool("wpscan", args, DEFAULT_TIMEOUT_MS, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },

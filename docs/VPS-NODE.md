@@ -88,6 +88,16 @@ outside the engagement before a tool runs, and the VPS firewall should
 restrict `:3000` to your own IP. Never set `MSHIN_ALLOWED_TARGETS=0.0.0.0/0`
 for a client scan.
 
+Long scans have a server-side ceiling: the Node kills any single tool run
+after five minutes (`DEFAULT_TIMEOUT_MS`). Aggressive `wpscan` enumeration
+against a remote WordPress site can exceed that, so raise the ceiling when
+you need the full sweep:
+
+```bash
+echo 'MSHIN_TOOL_TIMEOUT_MS=900000' >> configs/mshin-node.env   # 15 minutes
+docker compose -f configs/compose.yaml up -d --force-recreate
+```
+
 ## Troubleshooting
 
 **`curl 127.0.0.1:3000/health` fails on the VPS.** `docker compose -f configs/compose.yaml ps` and `docker logs mshin-node`. The most common cause is a missing `configs/mshin-node.env` — compose fails closed by design.
