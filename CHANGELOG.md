@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-22
+
+Tool release, born from a live scan of a Bedrock/Sage WordPress site: two new network tools (`wpscan`, `writable-probe`) and the per-deployment tool-timeout knob that scan needed. The wpscan run also drove the timeout change — aggressive plugin enumeration against a remote site outgrew the hardcoded 300s ceiling, so `MSHIN_TOOL_TIMEOUT_MS` now raises it without a code change.
+
 ### Added
 
 - **`writable-probe` tool on the Node.** The filesystem question answered from the network side, without a login: what on a target can be *written to* from outside. Four checks — `http_put` (PUT a marker over HTTP(S), interpret the status code, attempt DELETE cleanup), `ftp_anon` (anonymous FTP upload, read-back verification, DELE cleanup), `nfs_exports` (`showmount -e`, flagging rw exports), `smb_write` (anonymous share listing; with `share`, a marker upload attempt and cleanup). Every check reports a verdict plus raw output, runs target-scoped behind the `assertSafe` guards, and one failing check never aborts the others. Markers are benign text files; every check attempts its own cleanup and the local marker is removed when the probe ends. Uses no sudo (curl/showmount/smbclient are ordinary network clients), so no sudoers entry. Docker: `nfs-common` and `smbclient` join `KALI_TOOLS`, the tool joins `CMD`. Debian/Lima can run it too, so the Lima unit's `--tools` flag gains it and `nfs-common` joins the Lima apt line.
 - **`wpscan` tool on the Node.** WordPress enumeration from the outside: WordPress version, themes, plugins, users and backups, plus known-vulnerability flagging. Same shape as the other network tools — `url` (target-scoped), optional `enumerate` (e.g. `u,vp,vt`) and `options`, all behind the `assertSafe` guards. Full vulnerability data needs `WPSCAN_API_TOKEN` in the Node's environment; without it the scan still enumerates and reports fewer vulnerabilities. On the bare-metal Node it runs as the service user (like `tshark`, `dirb`, `ffuf`): it is a plain network scanner, and sudo's `HOME=/root` would break its `$HOME/.wpscan` cache — so it has no sudoers entry. Docker: `wpscan` joined `KALI_TOOLS` and the `CMD` tool list. Debian (Lima) has no `wpscan` package, so the Lima unit's `--tools` flag deliberately leaves it out — the tool list invariant is otherwise updated in full (tools.js, setup script, systemd unit, Dockerfile, server README, and the example `--tools` lists in `docs/SETUP.md`/`KALI-OPENLLM.md`, which also regained the previously missing `arp-scan`).
 - **`MSHIN_TOOL_TIMEOUT_MS` on the Node.** The five-minute per-tool ceiling (`DEFAULT_TIMEOUT_MS`) is now overridable without a code change. Born from a live wpscan run: aggressive plugin enumeration against a remote Bedrock site outgrew the hardcoded 300s and the MCP call died at the ceiling. The default stays 300s; the knob (milliseconds) raises it per deployment — `echo 'MSHIN_TOOL_TIMEOUT_MS=900000' >> configs/mshin-node.env`. The three call sites that hardcoded `300_000` (sqlmap, john, wpscan) now use `DEFAULT_TIMEOUT_MS` so the knob applies uniformly; with the env unset their behavior is unchanged. Documented in `docs/VPS-NODE.md`, where internet-target scans make the ceiling bite.
+
+### Changed
+
+- **Package versions aligned** to `0.25.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
 
 ## [0.24.1] - 2026-10-22
 
@@ -1923,7 +1931,10 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/imagewize/mshin/compare/v0.24.1...v0.25.0
+[0.24.1]: https://github.com/imagewize/mshin/compare/v0.24.0...v0.24.1
+[0.24.0]: https://github.com/imagewize/mshin/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/imagewize/mshin/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/imagewize/mshin/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/imagewize/mshin/compare/v0.20.0...v0.21.0
