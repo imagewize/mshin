@@ -21,12 +21,12 @@ Authentication-and-discovery UX release. The recurring "MCP authentication keeps
 
 ### Added
 
-- **`scripts/setup_mcp_auth.sh`** — one-command token synchronization. Generates a 64-hex-char `MSHIN_NODE_TOKEN`, writes it to `configs/mshin-node.env` (Docker Node), `~/.vibe/.env` (Mistral Vibe), and `~/.config/opencode/.env` (OpenCode), then prints the remaining shell export and macOS `launchctl setenv` command OpenCode's background service needs. `setup_mcp_auth.sh --check` reads all visible token sources and reports mismatches without changing anything, so "why is auth failing again?" becomes a one-line diagnosis.
+- **`scripts/setup_mcp_auth.sh`** — one-command token synchronization. Generates a 64-hex-char `MSHIN_NODE_TOKEN`, writes it to `configs/mshin-node.env` (Docker Node), `~/.vibe/.env` (Mistral Vibe), and `~/.config/opencode/.env` (OpenCode), patches `~/.config/opencode/opencode.jsonc` with the correct `mshin` server block, then prints the restart command. `setup_mcp_auth.sh --check` reads all visible token sources and reports mismatches without changing anything, so "why is auth failing again?" becomes a one-line diagnosis.
 - **`scripts/lan_inventory.py`** — cross-platform LAN inventory (macOS, Windows, Linux). Detects the physical LAN interface and subnet, ping-sweeps the /24, parses the ARP table, resolves best-effort hostnames, and outputs a human table (`--json` for machine-readable, `--targets` for a Node-ready JSON array). It deliberately skips VPN/tunnel interfaces on macOS and reports the real hosts the Node can then scan faithfully.
 
 ### Fixed
 
-- **OpenCode documentation now includes `oauth: false`.** Without it, OpenCode treats the Node as an OAuth server and prompts for browser sign-in on every connection, even though the Node only accepts a static `Authorization: Bearer` header. `README.md` and `docs/DOCKER-LOCAL-DEV.md` now show the correct `opencode.jsonc` snippet and explain why the env var must reach OpenCode's background service via `launchctl setenv` on macOS.
+- **OpenCode documentation now includes `oauth: false` and a literal bearer token.** Without `oauth: false`, OpenCode treats the Node as an OAuth server and prompts for browser sign-in on every connection. OpenCode's documented `{env:...}` interpolation in remote MCP headers is currently broken (anomalyco/opencode#23664), so the `Authorization` header must contain the actual token rather than `{env:MSHIN_NODE_TOKEN}`. `README.md` and `docs/DOCKER-LOCAL-DEV.md` now show the working `opencode.jsonc` snippet, and `scripts/setup_mcp_auth.sh` patches the file automatically.
 - **Vibe documentation now stresses `~/.vibe/.env`.** Vibe's `api_key_env` only names the variable; the value must be in `~/.vibe/.env` (or exported in the shell that launches Vibe). The docs now pair the `config.toml` snippet with the helper that writes the env file.
 
 ### Changed
@@ -37,8 +37,9 @@ Authentication-and-discovery UX release. The recurring "MCP authentication keeps
 
 ### Verified
 
-- `scripts/setup_mcp_auth.sh --check` correctly reported the user's existing Docker and Vibe tokens as matching, identified the missing OpenCode env file, and `--token <value>` wrote synchronized tokens to all three files.
+- `scripts/setup_mcp_auth.sh --check` correctly reported the user's existing Docker and Vibe tokens as matching, identified the missing OpenCode env file, and `--token <value>` wrote synchronized tokens to all three files and patched `~/.config/opencode/opencode.jsonc`.
 - `scripts/lan_inventory.py` on macOS with a VPN owning the default route correctly selected `en0` (Wi-Fi), found the live gateway and one additional host, and produced valid `--json` and `--targets` output.
+- `opencode mcp list` reports `✓ mshin connected` after `setup_mcp_auth.sh` patched `opencode.jsonc` with `oauth: false` and a literal bearer token pointing at `http://localhost:3001/mcp`.
 - `npm test` in `servers/src/kali/` passes 67/67; `npm test` in `clients/mshin-cli/` passes 114/114 (no code changed under either package; pre-commit check).
 - `bash -n` passes on `scripts/setup_mcp_auth.sh`.
 - `python3 -m py_compile scripts/lan_inventory.py` passes.
@@ -47,7 +48,7 @@ Authentication-and-discovery UX release. The recurring "MCP authentication keeps
 ### Not verified
 
 - **Windows and Linux execution of `scripts/lan_inventory.py`** — the macOS path was run live; the Windows and Linux branches were written against documented `ipconfig`/`arp -a`/`ip neigh` output and are expected to work, but were not executed on those platforms.
-- **OpenCode and Vibe end-to-end after token synchronization** — the diagnostic showed the auth failures were caused by a missing `oauth` flag and mismatched tokens, but no new client session was started after the fix.
+- **Vibe end-to-end after token synchronization** — the user's `~/.vibe/config.toml` URL was updated to `http://localhost:3001/mcp`, but Vibe itself was not restarted during this session.
 
 ## [0.22.0] - 2026-10-21
 

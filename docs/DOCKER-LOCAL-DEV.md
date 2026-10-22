@@ -101,10 +101,13 @@ The MCP surface is identical to any other Node: point the CLI (`--mcp-url http:/
 
 Two client-specific gotchas that keep appearing in issues:
 
-- **OpenCode must have `oauth: false`** for this server. OpenCode treats every
-  remote MCP server as OAuth by default; without `oauth: false` it keeps asking
-  you to sign in even though the Node only wants a static bearer token. The
-  `setup_mcp_auth.sh` helper prints the correct `opencode.jsonc` snippet.
+- **OpenCode must have `oauth: false` and a literal bearer token.** OpenCode
+  treats every remote MCP server as OAuth by default; without `oauth: false` it
+  keeps asking you to sign in. Its documented `{env:...}` interpolation in
+  remote MCP headers is currently broken (anomalyco/opencode#23664), so the
+  `Authorization` header must contain the actual token, not `{env:...}`. The
+  `setup_mcp_auth.sh` helper patches `~/.config/opencode/opencode.jsonc`
+  automatically.
 - **Vibe reads the token from `~/.vibe/.env`.** Editing `config.toml` is not
   enough: `api_key_env = "MSHIN_NODE_TOKEN"` tells Vibe the variable name, but
   the value must be in `~/.vibe/.env` (or exported in the shell that starts

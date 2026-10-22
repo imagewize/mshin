@@ -172,7 +172,7 @@ default, so disable OAuth and add the static bearer header in
         "url": "http://localhost:3001/mcp",
         "oauth": false,
         "headers": {
-          "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
+          "Authorization": "Bearer <MSHIN_NODE_TOKEN>"
         }
       }
     }
@@ -180,17 +180,16 @@ default, so disable OAuth and add the static bearer header in
 }
 ```
 
-`setup_mcp_auth.sh` writes `MSHIN_NODE_TOKEN` to `~/.config/opencode/.env` and
-prints the shell export. On macOS, OpenCode's background service does not
-inherit shell environment, so run:
+Replace `<MSHIN_NODE_TOKEN>` with the value from `configs/mshin-node.env`.
+OpenCode's documented `{env:...}` interpolation in remote MCP headers is
+currently broken (anomalyco/opencode#23664), so the token must be literal in
+this file. `setup_mcp_auth.sh` patches the header automatically when it
+synchronizes tokens; it also keeps a copy in `~/.config/opencode/.env` for
+diagnosis. Restart OpenCode's background service after the config changes:
 
 ```bash
-launchctl setenv MSHIN_NODE_TOKEN $(grep '^MSHIN_NODE_TOKEN=' ~/.config/opencode/.env | cut -d= -f2-)
 opencode service restart
 ```
-
-(That does not survive a reboot; add it to your login items or shell profile if
-you want it automatic.)
 
 OpenCode auto-discovers Ollama on `localhost:11434`, so any local model shows up as
 `ollama/<tag>`. Declaring the provider explicitly (as in

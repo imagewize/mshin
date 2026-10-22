@@ -17,7 +17,8 @@
 #   - configs/mshin-node.env                (Docker Node)
 #   - ~/.vibe/.env                          (Mistral Vibe)
 #   - ~/.config/opencode/.env               (OpenCode, optional)
-# and prints the shell exports and macOS launchctl command OpenCode needs.
+#   - ~/.config/opencode/opencode.jsonc     (OpenCode MCP server config)
+# and prints the shell exports and restart command OpenCode needs.
 
 set -euo pipefail
 
@@ -60,6 +61,52 @@ update_env_file() {
     chmod 600 "$file"
 }
 
+patch_opencode_config() {
+    local token="$1"
+    local config_file="${HOME}/.config/opencode/opencode.jsonc"
+
+    mkdir -p "$(dirname "$config_file")"
+    chmod 700 "$(dirname "$config_file")" 2>/dev/null || true
+
+    python3 - "$config_file" "$token" <<'PYEOF'
+import json, os, re, sys
+
+config_file = sys.argv[1]
+token = sys.argv[2]
+
+data = {}
+if os.path.exists(config_file):
+    with open(config_file, 'r') as f:
+        text = f.read()
+    # Strip // and /* */ comments so JSONC becomes parseable JSON.
+    # The lookbehind keeps // inside URLs (e.g. https://...) intact.
+    text = re.sub(r'(?<!\S)//.*', '', text)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        print(f"[WARN] Could not parse {config_file}: {e}", file=sys.stderr)
+        print("[WARN] Leaving OpenCode config unchanged; update it manually.", file=sys.stderr)
+        sys.exit(0)
+
+mcp = data.setdefault('mcp', {})
+servers = mcp.setdefault('servers', {})
+servers['mshin'] = {
+    'type': 'remote',
+    'url': 'http://localhost:3001/mcp',
+    'oauth': False,
+    'headers': {
+        'Authorization': f'Bearer {token}'
+    }
+}
+
+with open(config_file, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+os.chmod(config_file, 0o600)
+PYEOF
+}
+
 print_config_snippets() {
     local token="$1"
 
@@ -80,22 +127,20 @@ print_config_snippets() {
     if [ -f "$OPENCODE_ENV" ]; then
         echo "Token written to: ${OPENCODE_ENV}"
     fi
-    echo "OpenCode interpolates {env:MSHIN_NODE_TOKEN} from the environment that"
-    echo "launches it. For this terminal:"
-    echo "  export MSHIN_NODE_TOKEN=${token}"
-    echo "For OpenCode's background service on macOS:"
-    echo "  launchctl setenv MSHIN_NODE_TOKEN ${token}"
-    echo "Then restart the service:"
+    echo "Patched: ${HOME}/.config/opencode/opencode.jsonc"
+    echo "OpenCode's documented {env:...} interpolation in remote MCP headers is"
+    echo "currently broken (anomalyco/opencode#23664), so the bearer token is written"
+    echo "literally into opencode.jsonc. Restart the service to pick it up:"
     echo "  opencode service restart"
     echo
     echo "Make sure your opencode.jsonc has:"
-    cat <<'EOF'
+    cat <<EOF
   "mshin": {
     "type": "remote",
-    "url": "http://localhost:3000/mcp",
+    "url": "http://localhost:3001/mcp",
     "oauth": false,
     "headers": {
-      "Authorization": "Bearer {env:MSHIN_NODE_TOKEN}"
+      "Authorization": "Bearer ${token}"
     }
   }
 EOF
@@ -200,6 +245,8 @@ update_env_file "$VIBE_ENV" MSHIN_NODE_TOKEN "$TOKEN" "Machin Shin Node bearer t
 if [ "$WRITE_OPENCODE_ENV" != "no" ]; then
     update_env_file "$OPENCODE_ENV" MSHIN_NODE_TOKEN "$TOKEN" "Machin Shin Node bearer token for OpenCode"
 fi
+
+patch_opencode_config "$TOKEN"
 
 echo "[OK] MSHIN_NODE_TOKEN synchronized."
 print_config_snippets "$TOKEN"
