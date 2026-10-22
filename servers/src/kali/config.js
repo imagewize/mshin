@@ -37,8 +37,15 @@ export const TOOL_PATHS = {
   smbclient: "/usr/bin/smbclient",
 };
 
-// Default timeout for any single tool invocation.
-export const DEFAULT_TIMEOUT_MS = 300_000;
+// Default timeout for any single tool invocation. Override with
+// MSHIN_TOOL_TIMEOUT_MS (milliseconds) when scans legitimately run longer
+// than five minutes — wpscan's aggressive plugin enumeration against a
+// remote WordPress site, for example, does.
+const envToolTimeoutMs = parseInt(process.env.MSHIN_TOOL_TIMEOUT_MS, 10);
+export const DEFAULT_TIMEOUT_MS =
+  Number.isFinite(envToolTimeoutMs) && envToolTimeoutMs > 0
+    ? envToolTimeoutMs
+    : 300_000;
 
 // Reject anything that looks like shell syntax.
 export const SHELL_META_RE = /[;|&$()`\\<>]/;
