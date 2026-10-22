@@ -16,6 +16,11 @@
 # still reach what the Node can reach. The MSHIN_NODE_TOKEN auth and the
 # MSHIN_ALLOWED_TARGETS scope allowlist remain the network-facing defenses.
 
+# Project name shown by `docker compose ls` and Docker Desktop's Containers
+# view. Without it compose falls back to the directory name of this file
+# ("configs"), which reads like a config dump rather than the Node.
+name: mshin
+
 services:
   mshin-node:
     build:
