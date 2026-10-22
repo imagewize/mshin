@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-10-22
+
+Compose-project naming patch, born from a live Docker Desktop session: the Containers view grouped the Node under the compose file's directory name ("configs"), which read like a config dump rather than the Node. One top-level line pins the project name; the running stack was moved over and re-verified end to end.
+
+### Fixed
+
+- **`configs/compose.yaml` names the compose project `mshin`.** Docker Desktop's Containers view and `docker compose ls` show the compose project name, which defaults to the directory containing the compose file — `configs` here. A top-level `name: mshin` pins it, so the project reads as the Node it is. The container name (`mshin-node`) and the published port (`3001:3000` on macOS) are unchanged, so Vibe and OpenCode configs are unaffected.
+
+### Changed
+
+- **Package versions aligned** to `0.24.1` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+
+### Verified
+
+- `docker compose -f configs/compose.yaml -f configs/compose.local.yaml config` shows `name: mshin`.
+- The running stack moved from the old `configs` project to `mshin`: `docker compose ls` shows `mshin  running(1)` and the old project is gone; the container is healthy on `0.0.0.0:3001->3000`; `GET /health` answers 200; an authenticated MCP `initialize` against `http://localhost:3001/mcp` succeeds.
+- `npm test` in `servers/src/kali/` and `clients/mshin-cli/` (pre-commit check; no code under either package changed).
+
 ## [0.24.0] - 2026-10-22
 
 Positions release, documentation-led. The convergence the repo has been driving at is now its organizing story: **three truthful scan positions** — the Mac host (Vibe or OpenCode driving `brew`-installed tools directly, no Node in the loop) for LAN discovery and light scans, the Docker Node (locally or on a VPS) for internet-facing targets, and a Linux box on the LAN for real ARP work. Host-direct tool use is documented for the first time, with its caveats stated plainly: none of the Node's server-side guards apply, macOS is not Kali, and the MCP server cannot run on the host. Lima moves to maintenance mode — Docker ties it on measured tool performance, and the bridged guest's one irreplaceable trick, ARP discovery when the Mac is the only machine, is now named the fallback of last resort behind a Raspberry Pi or any Linux box on the LAN. The script fixes pending in Unreleased ship in the same version.
