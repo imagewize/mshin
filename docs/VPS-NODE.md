@@ -68,6 +68,23 @@ What is faithful from a VPS position, and what is not:
 - **Its own cloud subnet** — truthful discovery (`arp-scan`, `nmap -sn`), usually only the gateway and the provider's neighbours.
 - **Your home/office LAN** — not reachable, period. Don't try; the discovery guard will at least refuse to lie if you point it at a CIDR whose every address "answers".
 
+### Scanning client sites from a VPS
+
+The main reason to run the Node on a VPS is to scan internet-facing systems
+you own or are explicitly authorised to test: client staging environments,
+your own servers, or CTF boxes. Keep the engagement scope in one place:
+
+```bash
+# On the VPS, scope the Node to only the authorised targets
+echo 'MSHIN_ALLOWED_TARGETS=client-staging.example.com,203.0.113.0/24' >> configs/mshin-node.env
+docker compose -f configs/compose.yaml up -d --force-recreate
+```
+
+From your machine, point Vibe or OpenCode at `http://<VPS_IP>:3000/mcp` with
+the same `MSHIN_NODE_TOKEN`. The scope allowlist rejects anything outside the
+engagement before a tool runs, and the VPS firewall should restrict `:3000` to
+your own IP. Never set `MSHIN_ALLOWED_TARGETS=0.0.0.0/0` for a client scan.
+
 ## Troubleshooting
 
 **`curl 127.0.0.1:3000/health` fails on the VPS.** `docker compose -f configs/compose.yaml ps` and `docker logs mshin-node`. The most common cause is a missing `configs/mshin-node.env` — compose fails closed by design.
@@ -87,6 +104,7 @@ What is faithful from a VPS position, and what is not:
 ## Changelog
 
 - **2026-10-21** — Guide created alongside the discovery-honesty work (0.22.0): the fabrication guard, the `arp-scan` tool, and the host-side `scripts/lan_inventory.sh`. The "VPS sees everything" assumption is called out as false where it is false.
+- **2026-10-22** — Added "Scanning client sites from a VPS" section: scope the Node with `MSHIN_ALLOWED_TARGETS`, keep the token and firewall tight, and point Vibe/OpenCode at the VPS.
 
 ## See Also
 
