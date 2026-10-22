@@ -65,8 +65,14 @@ update_env_file() {
 
     local tmp
     tmp="$(mktemp)"
+    # Drop the key's previous value and any stale copy of this comment, so
+    # repeated runs do not accumulate duplicate header lines.
+    local drop_re="^${key}="
+    if [ -n "$comment" ]; then
+        drop_re="${drop_re}|^# ${comment}$"
+    fi
     if [ -f "$file" ]; then
-        grep -vE "^${key}=" "$file" > "$tmp" || true
+        grep -vE "$drop_re" "$file" > "$tmp" || true
     fi
     if [ -n "$comment" ]; then
         printf '# %s\n' "$comment" >> "$tmp"
