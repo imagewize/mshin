@@ -15,6 +15,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Lima's user-mode NAT answers ICMP on behalf of any address.** From inside the bridged guest, `ping` against a public VPS ~400 ms away returned sub-millisecond replies; TCP forwards faithfully, so internet hosts must be judged by TCP or pinged from the Mac. Recorded in `docs/DOCKER-LOCAL-DEV.md` Troubleshooting, alongside the Docker Desktop fabrication truth it mirrors, with both measured caveats noted in the bridged-guest hybrid section.
 
+## [0.23.0] - 2026-10-22
+
+Authentication-and-discovery UX release. The recurring "MCP authentication keeps failing" reports for OpenCode and Vibe turned out to be two separate setup bugs: OpenCode needs `oauth: false` for a static bearer server, and every client (Docker, Vibe, OpenCode, shell) was getting a different token copied by hand. The LAN-discovery pain on Docker Desktop is not a bug in the Node — the container is behind a NAT and cannot do truthful Layer-2 discovery — so this release ships a cross-platform host-side helper and makes the workflow explicit: discover from the host, scan through the Node.
+
+### Added
+
+- **`scripts/setup_mcp_auth.sh`** — one-command token synchronization. Generates a 64-hex-char `MSHIN_NODE_TOKEN`, writes it to `configs/mshin-node.env` (Docker Node), `~/.vibe/.env` (Mistral Vibe), and `~/.config/opencode/.env` (OpenCode), then prints the remaining shell export and macOS `launchctl setenv` command OpenCode's background service needs. `setup_mcp_auth.sh --check` reads all visible token sources and reports mismatches without changing anything, so "why is auth failing again?" becomes a one-line diagnosis.
+- **`scripts/lan_inventory.py`** — cross-platform LAN inventory (macOS, Windows, Linux). Detects the physical LAN interface and subnet, ping-sweeps the /24, parses the ARP table, resolves best-effort hostnames, and outputs a human table (`--json` for machine-readable, `--targets` for a Node-ready JSON array). It deliberately skips VPN/tunnel interfaces on macOS and reports the real hosts the Node can then scan faithfully.
+
+### Fixed
+
+- **OpenCode documentation now includes `oauth: false`.** Without it, OpenCode treats the Node as an OAuth server and prompts for browser sign-in on every connection, even though the Node only accepts a static `Authorization: Bearer` header. `README.md` and `docs/DOCKER-LOCAL-DEV.md` now show the correct `opencode.jsonc` snippet and explain why the env var must reach OpenCode's background service via `launchctl setenv` on macOS.
+- **Vibe documentation now stresses `~/.vibe/.env`.** Vibe's `api_key_env` only names the variable; the value must be in `~/.vibe/.env` (or exported in the shell that launches Vibe). The docs now pair the `config.toml` snippet with the helper that writes the env file.
+
+### Changed
+
+- **`docs/DOCKER-LOCAL-DEV.md`** recommends `scripts/setup_mcp_auth.sh` in Setup, documents the OpenCode/Vibe gotchas in Usage, strengthens the `localhost:3000` port-collision troubleshooting (Lima's automatic port forwarding silently claims the port before Docker), and points at `scripts/lan_inventory.py` as the host-side discovery path. The capability matrix and Limitations now explicitly mention Docker Desktop on Windows alongside macOS.
+- **`README.md`** replaces the hand-rolled token generation in the Vibe and OpenCode mode sections with `scripts/setup_mcp_auth.sh`, adds the missing `oauth: false` to the OpenCode config, and adds a "Scanning your LAN from a Docker Node" subsection with the Python helper.
+
+### Verified
+
+- `scripts/setup_mcp_auth.sh --check` correctly reported the user's existing Docker and Vibe tokens as matching, identified the missing OpenCode env file, and `--token <value>` wrote synchronized tokens to all three files.
+- `scripts/lan_inventory.py` on macOS with a VPN owning the default route correctly selected `en0` (Wi-Fi), found the live gateway and one additional host, and produced valid `--json` and `--targets` output.
+- `npm test` in `servers/src/kali/` passes 67/67; `npm test` in `clients/mshin-cli/` passes 114/114 (no code changed under either package; pre-commit check).
+- `bash -n` passes on `scripts/setup_mcp_auth.sh`.
+- `python3 -m py_compile scripts/lan_inventory.py` passes.
+
+### Not verified
+
+- **Windows and Linux execution of `scripts/lan_inventory.py`** — the macOS path was run live; the Windows and Linux branches were written against documented `ipconfig`/`arp -a`/`ip neigh` output and are expected to work, but were not executed on those platforms.
+- **OpenCode and Vibe end-to-end after token synchronization** — the diagnostic showed the auth failures were caused by a missing `oauth` flag and mismatched tokens, but no new client session was started after the fix.
+
 ## [0.22.0] - 2026-10-21
 
 Honesty release, born from a live session that asked the Docker Node for the LAN's hosts and got 256/256 "up" when five were real. The Node now refuses to return fabricated discovery results, real ARP discovery is a first-class tool, the Mac-side workflow is one command, and the docs state plainly which network position can see what: Docker for evals and internet targets, Lima bridged for LAN discovery on a Mac, a VPS for internet-facing targets — and never anyone's home LAN from the wrong side of a NAT.
@@ -1853,7 +1885,9 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/imagewize/mshin/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/imagewize/mshin/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/imagewize/mshin/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/imagewize/mshin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/imagewize/mshin/compare/v0.18.1...v0.19.0
