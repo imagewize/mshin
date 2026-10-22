@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import {
   TOOL_PATHS,
@@ -73,7 +75,7 @@ function buildEnum4linuxArgs(target, options) {
   return args;
 }
 
-async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true } = {}) {
+async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true, cwd } = {}) {
   const bin = TOOL_PATHS[name];
   if (!bin) {
     throw new Error(`Unknown tool: ${name}`);
@@ -102,14 +104,31 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   const cmd = needsSudo ? "sudo" : bin;
   const cmdArgs = needsSudo ? ["-n", bin, ...args] : args;
 
-  const { stdout, stderr } = await execFileAsync(cmd, cmdArgs, {
-    timeout,
-    maxBuffer: 10 * 1024 * 1024, // 10 MiB
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-    },
-  });
+  let stdout;
+  let stderr;
+  try {
+    ({ stdout, stderr } = await execFileAsync(cmd, cmdArgs, {
+      timeout,
+      maxBuffer: 10 * 1024 * 1024, // 10 MiB
+      cwd,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+      },
+    }));
+  } catch (err) {
+    // execFile kills the child with SIGTERM when `timeout` elapses. Without
+    // this the caller sees a bare "Command failed" and cannot tell a wedged
+    // scan from a crashed one.
+    if (err.killed || err.signal === "SIGTERM") {
+      throw new Error(
+        `${name} timed out after ${Math.round(timeout / 1000)}s. Narrow the ` +
+          "scan (fewer ports, a smaller wordlist, nikto -Tuning) or raise " +
+          "MSHIN_TOOL_TIMEOUT_MS on the Node."
+      );
+    }
+    throw err;
+  }
 
   let output = stdout || "";
   if (stderr) {
@@ -117,6 +136,32 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   }
   return output.trim();
 }
+
+// Tool-specific timeout ceilings. DEFAULT_TIMEOUT_MS (300s, or the
+// MSHIN_TOOL_TIMEOUT_MS override) stays the floor for every tool; tools whose
+// legitimate runs are longer get a higher ceiling here. Raising
+// MSHIN_TOOL_TIMEOUT_MS raises the floor for all of them — the higher of the
+// two always applies.
+//
+// Measured 2026-10-22 against a remote VPS through the Docker Node:
+// nmap -p- on a firewalled host (most ports filtered, so each probe waits out
+// a retransmission timeout) does not fit 300s; nikto's full default test set
+// and wpscan --enumerate against a remote site do not either.
+const NMAP_TIMEOUT_MS = 600_000;
+const NIKTO_TIMEOUT_MS = 900_000;
+const WPSCAN_TIMEOUT_MS = 900_000;
+
+function toolTimeout(ceilingMs) {
+  return Math.max(DEFAULT_TIMEOUT_MS, ceilingMs);
+}
+
+// dnsenum's stock wordlist is ~1500 entries. Through a container's DNS
+// forwarder that brute force cannot finish inside any sane per-call timeout
+// (measured: 280s+ and still running on the Docker Node). The handler
+// defaults to this shipped small list instead.
+const DEFAULT_DNSENUM_WORDLIST = fileURLToPath(
+  new URL("./wordlists/subdomains.txt", import.meta.url)
+);
 
 // Host-discovery fabrication guard.
 //
@@ -220,7 +265,7 @@ const tools = [
       if (specs.length === 0) {
         throw new Error("Provide 'target' or 'targets' — nothing to scan.");
       }
-      const output = await runTool("nmap", [...flags, ...specs]);
+      const output = await runTool("nmap", [...flags, ...specs], toolTimeout(NMAP_TIMEOUT_MS));
       assertDiscoveryNotFabricated(flags, specs, output);
       return { content: [{ type: "text", text: output }] };
     },
@@ -255,13 +300,25 @@ const tools = [
           type: "string",
           description: "Target host or URL, e.g. 'http://192.168.1.100'.",
         },
+        options: {
+          type: "string",
+          description:
+            "Additional Nikto options, e.g. '-Tuning 1,2,3' or '-timeout 10'. " +
+            "The full default test set can outlast the per-call timeout on a " +
+            "remote site; -Tuning trims which tests run.",
+        },
       },
       required: ["host"],
     },
-    handler: async ({ host }) => {
+    handler: async ({ host, options }) => {
       assertSafe(host, "host");
       assertTargetInScope(host, "host");
-      const output = await runTool("nikto", ["-h", host]);
+      const args = ["-h", host];
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("nikto", args, toolTimeout(NIKTO_TIMEOUT_MS));
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -662,7 +719,9 @@ const tools = [
   {
     name: "dnsenum",
     description:
-      "Run DNSEnum for DNS enumeration and reconnaissance.",
+      "Run DNSEnum for DNS enumeration and reconnaissance. Defaults to the " +
+      "shipped small subdomain wordlist so a run finishes inside the " +
+      "per-call timeout; pass '-f <file>' in options for a deeper list.",
     inputSchema: {
       type: "object",
       properties: {
@@ -681,11 +740,26 @@ const tools = [
       assertSafe(domain, "domain");
       assertTargetInScope(domain, "domain");
       const args = [domain];
+      // Default to the shipped small wordlist unless the caller brings their
+      // own -f — the stock ~1500-entry list cannot finish inside the
+      // per-call timeout (see DEFAULT_DNSENUM_WORDLIST above).
+      const hasOwnWordlist = options
+        ?.split(/\s+/)
+        .some((a) => a === "-f" || a === "--file");
+      if (!hasOwnWordlist && existsSync(DEFAULT_DNSENUM_WORDLIST)) {
+        args.push("-f", DEFAULT_DNSENUM_WORDLIST);
+      }
       if (options) {
         assertSafe(options, "options");
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("dnsenum", args, 60_000);
+      // dnsenum writes `<domain>_ips.txt` to its working directory, which is
+      // read-only in the Docker Node's WORKDIR — it exits 30 when it cannot,
+      // and the non-zero exit fails the call even though the scan itself ran
+      // (measured 2026-10-22). Run it from the tmp dir instead.
+      const output = await runTool("dnsenum", args, DEFAULT_TIMEOUT_MS, {
+        cwd: tmpdir(),
+      });
       return { content: [{ type: "text", text: output }] };
     },
   },
@@ -834,7 +908,7 @@ const tools = [
         assertSafe(options, "options");
         args.push(...options.split(/\s+/));
       }
-      const output = await runTool("wpscan", args, DEFAULT_TIMEOUT_MS, { useSudo: false });
+      const output = await runTool("wpscan", args, toolTimeout(WPSCAN_TIMEOUT_MS), { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },

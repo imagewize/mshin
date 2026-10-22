@@ -38,9 +38,9 @@ export const TOOL_PATHS = {
 };
 
 // Default timeout for any single tool invocation. Override with
-// MSHIN_TOOL_TIMEOUT_MS (milliseconds) when scans legitimately run longer
-// than five minutes — wpscan's aggressive plugin enumeration against a
-// remote WordPress site, for example, does.
+// MSHIN_TOOL_TIMEOUT_MS (milliseconds) to raise it for every tool at once —
+// tools.js sets higher per-tool ceilings for the known long-runners (nmap,
+// nikto, wpscan), and whichever value is higher always applies.
 const envToolTimeoutMs = parseInt(process.env.MSHIN_TOOL_TIMEOUT_MS, 10);
 export const DEFAULT_TIMEOUT_MS =
   Number.isFinite(envToolTimeoutMs) && envToolTimeoutMs > 0

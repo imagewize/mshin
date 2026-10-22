@@ -230,6 +230,14 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
   }
 });
 
+test("nikto rejects shell metacharacters in options", async () => {
+  const nikto = byName("nikto");
+  await assert.rejects(
+    nikto.handler({ host: "http://192.168.1.100", options: "-Tuning 1,2; reboot" }),
+    /unsafe characters/
+  );
+});
+
 test("wpscan with well-formed input clears validation and reaches the binary check", async () => {
   const wpscan = byName("wpscan");
   await assert.rejects(
