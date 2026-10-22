@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 
 import {
   TOOL_PATHS,
@@ -95,6 +95,9 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   // wpscan is excluded for the same reason: it caches its database under
   // $HOME/.wpscan, and it is a plain network scanner that needs no
   // privileges.
+  // writable-probe's binaries (curl, showmount, smbclient) are excluded too:
+  // all three are ordinary network clients that need no privileges, and its
+  // curl calls write markers to /tmp, which sudo's env_reset is not needed for.
   const needsSudo = useSudo && process.getuid && process.getuid() !== 0;
   const cmd = needsSudo ? "sudo" : bin;
   const cmdArgs = needsSudo ? ["-n", bin, ...args] : args;
@@ -833,6 +836,203 @@ const tools = [
       }
       const output = await runTool("wpscan", args, 300_000, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "writable-probe",
+    description:
+      "Audit what can be written to on a target from the network, without a " +
+      "login. Four checks, each answering one write path: 'http_put' (PUT a " +
+      "marker over HTTP(S) and try to clean it up), 'ftp_anon' (upload as " +
+      "anonymous FTP), 'nfs_exports' (list NFS exports and flag rw ones), " +
+      "'smb_write' (list SMB shares anonymously; with 'share', try a marker " +
+      "upload there). Markers are benign text files and every check attempts " +
+      "its own cleanup. Use only against systems you own or are authorized " +
+      "to test.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          description: "Target host or IP, e.g. '192.168.1.100'.",
+        },
+        checks: {
+          type: "string",
+          description:
+            "Comma-separated checks to run: 'http_put', 'ftp_anon', 'nfs_exports', 'smb_write'. Default runs all four.",
+        },
+        url: {
+          type: "string",
+          description:
+            "Base URL for the http_put check, e.g. 'http://192.168.1.100/uploads'. Defaults to 'http://<target>/'.",
+        },
+        share: {
+          type: "string",
+          description:
+            "SMB share name for the smb_write upload attempt, e.g. 'public'. Without it the check only lists shares.",
+        },
+      },
+      required: ["target"],
+    },
+    handler: async ({ target, checks, url, share }) => {
+      assertSafe(target, "target");
+      assertTargetInScope(target, "target");
+
+      const KNOWN_CHECKS = ["http_put", "ftp_anon", "nfs_exports", "smb_write"];
+      const selected = checks
+        ? checks.split(",").map((s) => s.trim()).filter(Boolean)
+        : KNOWN_CHECKS;
+      if (selected.length === 0) {
+        throw new Error("Provide at least one check: 'http_put', 'ftp_anon', 'nfs_exports', 'smb_write'.");
+      }
+      for (const check of selected) {
+        if (!KNOWN_CHECKS.includes(check)) {
+          throw new Error(`Unknown check '${check}'. Valid: ${KNOWN_CHECKS.join(", ")}.`);
+        }
+      }
+      if (url !== undefined) {
+        assertSafe(url, "url");
+        assertTargetInScope(url, "url");
+      }
+      if (share !== undefined) {
+        assertSafe(share, "share");
+        if (!/^[A-Za-z0-9_.-]+$/.test(share)) {
+          throw new Error("share contains invalid characters");
+        }
+      }
+
+      // The marker is one benign text file, shared by every check; written to
+      // /tmp (HOME for the containerized Node) and removed when the probe ends.
+      const markerPath = "/tmp/mshin-writable-probe.txt";
+      const markerName = "mshin-writable-probe.txt";
+      writeFileSync(markerPath, `mshin writable-probe marker ${new Date().toISOString()}\n`);
+
+      const httpBase = (url || `http://${target}/`).replace(/\/+$/, "");
+
+      async function probeHttpPut() {
+        const markerUrl = `${httpBase}/${markerName}`;
+        const code = (await runTool(
+          "curl",
+          ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "-X", "PUT", "--data-binary", `@${markerPath}`, markerUrl],
+          30_000,
+          { useSudo: false }
+        )).trim();
+        if (/^[23]\d\d$/.test(code)) {
+          let cleanup = `cleanup DELETE returned ${(await runTool(
+            "curl",
+            ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "-X", "DELETE", markerUrl],
+            30_000,
+            { useSudo: false }
+          )).trim()}`;
+          return `WRITABLE: HTTP ${code} on PUT ${markerUrl}\n${cleanup}\nRemove the marker file if DELETE was refused.`;
+        }
+        const verdict =
+          code === "405" ? "server refuses PUT (405) — not writable" :
+          code === "401" || code === "403" ? `write refused (${code}) — authentication or authorization required` :
+          code === "404" ? "no such path (404)" :
+          `HTTP ${code}`;
+        return `Not writable: ${verdict} on PUT ${markerUrl}`;
+      }
+
+      async function probeFtpAnon() {
+        const upload = await runTool(
+          "curl",
+          ["-sS", "--user", "anonymous:mshin-writable-probe", "-T", markerPath, `ftp://${target}/`],
+          30_000,
+          { useSudo: false }
+        );
+        const verify = await runTool(
+          "curl",
+          ["-sS", `ftp://${target}/${markerName}`],
+          30_000,
+          { useSudo: false }
+        );
+        let cleanup = "cleanup failed";
+        try {
+          await runTool(
+            "curl",
+            ["-sS", "-Q", `-DELE ${markerName}`, `ftp://${target}/`],
+            30_000,
+            { useSudo: false }
+          );
+          cleanup = "marker deleted";
+        } catch {
+          // The DELE failing is itself a finding; report it as such below.
+        }
+        const verified = verify.includes("mshin writable-probe marker");
+        return `WRITABLE: anonymous upload to ftp://${target}/ succeeded (${upload.trim() || "no errors"}; verification ${verified ? "read the marker back" : "could not read it back"}; ${cleanup}).` +
+          (cleanup === "marker deleted" ? "" : " Remove the marker file manually.");
+      }
+
+      async function probeNfsExports() {
+        const output = await runTool("showmount", ["-e", target], 30_000, { useSudo: false });
+        const lines = output.split("\n").filter(Boolean);
+        const rw = lines.filter((l) => /\(rw[,)]/.test(l) || /,rw[,)]/.test(l));
+        const summary = lines.length <= 1
+          ? "No NFS exports (or the mount service did not answer)."
+          : rw.length > 0
+            ? `FOUND ${rw.length} writable (rw) export(s): ${rw.join("; ")}`
+            : "Exports found, none marked rw.";
+        return `${summary}\n${output}`;
+      }
+
+      async function probeSmbWrite() {
+        const listing = await runTool(
+          "smbclient",
+          ["-L", `//${target}`, "-N"],
+          30_000,
+          { useSudo: false }
+        );
+        if (!share) {
+          return `Share listing for ${target} (no upload attempted; pass 'share' to try one):\n${listing}`;
+        }
+        const upload = await runTool(
+          "smbclient",
+          [`//${target}/${share}`, "-N", "-c", `put ${markerPath} ${markerName}`],
+          30_000,
+          { useSudo: false }
+        );
+        let cleanup = "cleanup failed";
+        try {
+          await runTool(
+            "smbclient",
+            [`//${target}/${share}`, "-N", "-c", `rm ${markerName}`],
+            30_000,
+            { useSudo: false }
+          );
+          cleanup = "marker deleted";
+        } catch {
+          // A failed rm is itself part of the finding.
+        }
+        return `WRITABLE: anonymous upload to \\\\${target}\\${share} succeeded (${upload.trim() || "no errors"}; ${cleanup}).` +
+          (cleanup === "marker deleted" ? "" : " Remove the marker file manually.");
+      }
+
+      const CHECK_FNS = {
+        http_put: probeHttpPut,
+        ftp_anon: probeFtpAnon,
+        nfs_exports: probeNfsExports,
+        smb_write: probeSmbWrite,
+      };
+
+      const sections = [];
+      for (const check of selected) {
+        try {
+          sections.push(`[${check}]\n${await CHECK_FNS[check]()}`);
+        } catch (err) {
+          sections.push(`[${check}]\nNot writable or unreachable: ${err.message}`);
+        }
+      }
+
+      if (existsSync(markerPath)) {
+        try { unlinkSync(markerPath); } catch { /* best effort */ }
+      }
+
+      return {
+        content: [
+          { type: "text", text: `== writable-probe of ${target} ==\n\n${sections.join("\n\n")}` },
+        ],
+      };
     },
   },
 ];

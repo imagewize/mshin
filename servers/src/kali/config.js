@@ -28,6 +28,13 @@ export const TOOL_PATHS = {
   ffuf: "/usr/bin/ffuf",
   john: "/usr/bin/john",
   wpscan: "/usr/bin/wpscan",
+  // writable-probe is one tool over three binaries: curl (its primary, which
+  // its own entry points at), showmount for the nfs_exports check and
+  // smbclient for the smb_write check.
+  "writable-probe": "/usr/bin/curl",
+  curl: "/usr/bin/curl",
+  showmount: "/usr/sbin/showmount",
+  smbclient: "/usr/bin/smbclient",
 };
 
 // Default timeout for any single tool invocation.

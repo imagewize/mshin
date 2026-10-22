@@ -192,7 +192,7 @@ Machin Shin ships its own Kali MCP server at `servers/src/kali`.
   ```
 3. Test the MCP server manually:
   ```bash
-   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan &
+   node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan,writable-probe &
   ```
    This starts the server on `http://localhost:3000`.
 4. Verify the server is running:
@@ -244,7 +244,7 @@ To ensure the MCP server starts automatically on boot:
    [Service]
    User=mshin
    WorkingDirectory=/opt/mshin/servers/src/kali
-    ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan
+    ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan,writable-probe
    Restart=always
    RestartSec=5s
    Environment=NODE_ENV=production
@@ -530,7 +530,7 @@ If everything is set up correctly, Machin Shin should:
 - **Manual start:**
   ```bash
   cd /opt/mshin/servers/src/kali
-  node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan
+  node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan,writable-probe
   ```
 
 ### **Connection Refused to MCP Server**

@@ -80,9 +80,11 @@ provision:
   # Debian (that part is still unsupported). wpscan is the one true Kali-only
   # tool: it has no Debian package (and is not worth a Ruby gem install in a
   # guest), so the unit's --tools flag below deliberately leaves it out -- a
-  # Debian guest runs every tool except wpscan. Keep this list, the sudoers
-  # allowlist and the unit's --tools flag below in sync; see the tool-list
-  # invariant in AGENTS.md.
+  # Debian guest runs every tool except wpscan. writable-probe runs fine on
+  # Debian: curl is in main, and nfs-common (showmount) joins the install line
+  # below; smbclient is already there for enum4linux. Keep this list, the
+  # sudoers allowlist and the unit's --tools flag below in sync; see the
+  # tool-list invariant in AGENTS.md.
   - mode: system
     script: |
       #!/bin/bash
@@ -101,7 +103,7 @@ provision:
       apt-get update
       # samba-common-bin and smbclient are enum4linux's wrappers (net, nmblookup,
       # rpcclient, smbclient); perl is enum4linux itself.
-      apt-get install -y curl git perl samba-common-bin smbclient nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping arp-scan dnsenum ffuf john
+      apt-get install -y curl git perl samba-common-bin smbclient nfs-common nmap nikto whois tshark hydra sqlmap gobuster masscan dirb arping arp-scan dnsenum ffuf john
       curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
       apt-get install -y nodejs
 
@@ -204,7 +206,7 @@ provision:
       # and enum4linux.
       sed -i "s|^User=.*|User={{.User}}|" "${UNIT}"
       sed -i "s|^ReadWritePaths=.*|ReadWritePaths=/opt/mshin {{.Home}}|" "${UNIT}"
-      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john|" "${UNIT}"
+      sed -i "s|^ExecStart=.*|ExecStart=/usr/bin/node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,writable-probe|" "${UNIT}"
       systemctl daemon-reload
       systemctl enable mshin-node
       systemctl restart mshin-node

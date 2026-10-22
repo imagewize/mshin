@@ -37,7 +37,7 @@ const SHELL_PAYLOADS = [
 // Contract
 // -----------------------------------------------------------------------------
 
-test("exposes exactly the eighteen documented tools with complete metadata", () => {
+test("exposes exactly the nineteen documented tools with complete metadata", () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "arp-scan",
@@ -58,6 +58,7 @@ test("exposes exactly the eighteen documented tools with complete metadata", () 
     "tshark",
     "whois",
     "wpscan",
+    "writable-probe",
   ]);
   for (const t of tools) {
     assert.equal(typeof t.description, "string");
@@ -204,7 +205,7 @@ test("fabrication guard ignores small ranges and non-discovery scans", () => {
   assertDiscoveryNotFabricated(["-sV"], ["192.168.0.0/24"], ALL_UP_256);
 });
 
-test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf, john and wpscan reject shell metacharacters", async () => {
+test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf, john, wpscan and writable-probe reject shell metacharacters", async () => {
   const cases = [
     ["searchsploit", (p) => ({ query: p })],
     ["nikto", (p) => ({ host: p })],
@@ -221,6 +222,7 @@ test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping
     ["ffuf", (p) => ({ url: p, wordlist: "/usr/share/wordlists/dirb/common.txt" })],
     ["john", (p) => ({ hash_file: p })],
     ["wpscan", (p) => ({ url: p })],
+    ["writable-probe", (p) => ({ target: p })],
   ];
   for (const [name, build] of cases) {
     const tool = byName(name);
@@ -235,6 +237,39 @@ test("wpscan with well-formed input clears validation and reaches the binary che
     /binary not found/
   );
 });
+
+test("writable-probe rejects shell metacharacters in the share name", async () => {
+  const probe = byName("writable-probe");
+  await assert.rejects(
+    probe.handler({ target: "192.168.1.100", share: "public; rm -rf /" }),
+    /unsafe characters/
+  );
+  // Passes assertSafe (no shell metachars) but fails the share charset regex.
+  await assert.rejects(
+    probe.handler({ target: "192.168.1.100", share: "public share" }),
+    /invalid characters/
+  );
+});
+
+test("writable-probe rejects an unknown check name", async () => {
+  const probe = byName("writable-probe");
+  await assert.rejects(
+    probe.handler({ target: "192.168.1.100", checks: "http_put,reboot" }),
+    /Unknown check 'reboot'/
+  );
+});
+
+test("writable-probe rejects an empty checks list", async () => {
+  const probe = byName("writable-probe");
+  await assert.rejects(
+    probe.handler({ target: "192.168.1.100", checks: " , " }),
+    /at least one check/
+  );
+});
+
+// No well-formed dispatch test for writable-probe: unlike the other tools,
+// its primary binary is curl, which exists on the macOS authoring box, so a
+// dispatch here would perform a real network probe from the test suite.
 
 test("buildEnum4linuxArgs puts options before the target", () => {
   // enum4linux's Getopt::Std-style parser stops looking for flags at the
