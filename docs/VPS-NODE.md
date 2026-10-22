@@ -16,7 +16,7 @@ Run the Machin Shin Node on a cloud VPS: the same `configs/Dockerfile` and `conf
 | Scanning internet-facing targets you own | Yes — the main use case | Yes | Yes |
 | Port `:3000` exposure | Public by default — token and firewall mandatory | LAN only | LAN only |
 
-**The one thing a VPS Node cannot do is see your home LAN.** ARP discovery works only on the network segment the scanner is physically attached to. A VPS is not on your Wi-Fi; it can enumerate its *own* cloud subnet, but the hosts on `192.168.x.x` behind your router are unreachable except through NAT-assisted services you deliberately expose. If your workload is discovering or attacking your own LAN, the Node must be on that LAN: the Raspberry Pi Node ([RASPBERRY-PI-NODE.md](RASPBERRY-PI-NODE.md)), a Linux box, or the bridged Lima guest (`scripts/setup_bridged_node.sh`).
+**The one thing a VPS Node cannot do is see your home LAN.** ARP discovery works only on the network segment the scanner is physically attached to. A VPS is not on your Wi-Fi; it can enumerate its *own* cloud subnet, but the hosts on `192.168.x.x` behind your router are unreachable except through NAT-assisted services you deliberately expose. If your workload is discovering or attacking your own LAN, the Node must be on that LAN: the Raspberry Pi Node ([RASPBERRY-PI-NODE.md](RASPBERRY-PI-NODE.md)), a Linux box, or the bridged Lima guest (`scripts/setup_bridged_node.sh`). For **discovery only**, you can also skip the Node entirely and work from the Mac itself — `scripts/lan_inventory.py`, or Vibe/OpenCode driving `brew`-installed tools host-direct (see [Docker Local Dev](DOCKER-LOCAL-DEV.md)); the VPS Node stays for what it is good at, internet-facing targets.
 
 **When to use a VPS Node:** scanning internet-facing systems you own or are authorised to test (your servers, staging environments, CTF boxes), running long scans without occupying your laptop, and having the Node available from any machine.
 
@@ -107,7 +107,7 @@ for a client scan.
 ## Changelog
 
 - **2026-10-21** — Guide created alongside the discovery-honesty work (0.22.0): the fabrication guard, the `arp-scan` tool, and the host-side `scripts/lan_inventory.sh`. The "VPS sees everything" assumption is called out as false where it is false.
-- **2026-10-22** — Added "Scanning client sites from a VPS" section: scope the Node with `MSHIN_ALLOWED_TARGETS`, keep the token and firewall tight, and point Vibe/OpenCode at the VPS. `setup_mcp_auth.sh --url` now handles the VPS URL in the OpenCode config.
+- **2026-10-22** — Added "Scanning client sites from a VPS" section: scope the Node with `MSHIN_ALLOWED_TARGETS`, keep the token and firewall tight, and point Vibe/OpenCode at the VPS. `setup_mcp_auth.sh --url` now handles the VPS URL in the OpenCode config. Same day: the "cannot see your LAN" paragraph now points at host-direct discovery on the Mac as the no-Node option for discovery-only work.
 
 ## See Also
 

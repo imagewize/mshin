@@ -23,8 +23,8 @@ Documentation map:
 | `docs/ARCHITECTURE.md` | System design and hardware sizing |
 | `docs/SETUP.md` | Step-by-step installation |
 | `docs/WORKFLOWS.md` | Example cybersecurity tasks |
-| `docs/LIMA-LOCAL-DEV.md` | Single-machine Lima setup on macOS |
-| `docs/DOCKER-LOCAL-DEV.md` | Docker local dev: the default local path, the sandboxed Node, and the Lima-vs-Docker measurements |
+| `docs/LIMA-LOCAL-DEV.md` | Maintenance-mode Lima setup on macOS; its one live use is the bridged guest for ARP LAN discovery |
+| `docs/DOCKER-LOCAL-DEV.md` | Docker local dev: the default local path, the sandboxed Node, the Lima-vs-Docker measurements, and host-direct tool use from Vibe/OpenCode |
 | `configs/Dockerfile`, `configs/compose*.yaml` | The containerized Node and its compose files |
 | `lima/*.yaml` | Lima templates backing that guide |
 | `docs/CYBERSECURITY-AGENT-ROADMAP.md` | Where the agent loop is headed |
@@ -197,7 +197,8 @@ When a task needs the machine's actual LAN (live hosts, IPs, MACs), work from th
 1. Run `scripts/lan_inventory.py` — it works on macOS, Windows and Linux, detects the physical LAN interface and subnet, ping-sweeps, and prints live IPs, MACs, best-effort names, and a ready `targets` array. On macOS the older `scripts/lan_inventory.sh` is still available. Manual equivalent: derive the subnet from the active interface, ping sweep, then read the ARP table.
 2. Use the Node only for **targeted** scans of hosts already known live — those results are faithful (measured; see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md)). The Node also refuses discovery scans whose result would be fabricated (`nmap -sn` on a CIDR where every address answered), so a fabricated host list can no longer reach a user.
 3. Do not expect hostnames: consumer routers rarely serve reverse DNS, and Bonjour/mDNS browsing can fail when a VPN interface owns the default route. Pull names from service banners instead, and say so when a host's name is unknown.
-4. For Node-side ARP discovery on a Mac (hosts that drop all unicast probes), use the bridged Lima Node: `scripts/setup_bridged_node.sh` — the Docker Node cannot do this at all. A VPS Node cannot see any LAN it is not physically on (see [VPS Node](docs/VPS-NODE.md)).
+4. For Node-side ARP discovery on a Mac (hosts that drop all unicast probes), use the bridged Lima Node: `scripts/setup_bridged_node.sh` — the Docker Node cannot do this at all. A VPS Node cannot see any LAN it is not physically on (see [VPS Node](docs/VPS-NODE.md)). This is the fallback of last resort: a Raspberry Pi or any Linux box on the LAN does the same job without Lima's fragility.
+5. Vibe/OpenCode can also drive `brew`-installed tools (`nmap`, `arp-scan`) directly on the Mac — no Node in the loop. That path has **none** of the Node's server-side guards (`assertSafe`, `MSHIN_ALLOWED_TARGETS`, the fabricated-discovery refusal), so the authorisation discipline is entirely on the operator. See [Host-direct tool use](docs/DOCKER-LOCAL-DEV.md#host-direct-tool-use-vibe-or-opencode-with-tools-on-the-mac).
 
 Real ARP-based discovery from the tool side needs the [bridged-guest hybrid](docs/DOCKER-LOCAL-DEV.md#lan-discovery-on-macos--the-bridged-guest-hybrid) or a real Linux Node on the LAN.
 

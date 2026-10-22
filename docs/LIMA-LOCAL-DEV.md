@@ -4,7 +4,9 @@
 
 This guide describes how to run a **local, single-machine Machin Shin development environment** on macOS using **Lima VMs**, **Ollama with a small local model**, and **Kali Linux tools** — a lightweight alternative to the recommended two-machine setup for learning, testing, and small-scale experimentation.
 
-> **Prefer Docker for local development.** The [Docker Local Dev](DOCKER-LOCAL-DEV.md) guide is now the default local path: the Node runs in a container with the same compose files a real Linux box or VPS would use, and the measured performance is identical to Lima (a full `nmap` MCP round trip ties at 11.2–11.3 s across native Lima, Docker-in-Lima, and Docker Desktop). Lima keeps two genuine advantages this guide serves: emulating the **production shape** (systemd unit, Debian host, the two-machine split) and **bridged LAN access** for ARP-discovery workloads Docker Desktop cannot do. Choose Lima when you want those, Docker when you want the artifact you will actually deploy.
+> **This guide is in maintenance mode (2026-10-22).** [Docker Local Dev](DOCKER-LOCAL-DEV.md) is the local path, full stop: the Node runs in a container with the same compose files a real Linux box or VPS would use, and the measured performance is identical (a full `nmap` MCP round trip ties at 11.2–11.3 s across native Lima, Docker-in-Lima, and Docker Desktop). The two-VM development environment below is kept for reference, not recommended — the Core VM in particular is obsolete, since [Ollama on the macOS host](#resource-allocation) is faster than CPU-only inference inside a guest.
+>
+> **The one live use left is the bridged guest.** A bridged Lima Node is the only Mac-local position that can do real ARP discovery (`nmap -sn -PR`) on your physical LAN — see [Bridged networking](#bridged-networking-optional-the-node-on-your-lan) and `scripts/setup_bridged_node.sh`. It is the *fallback of last resort*: a Raspberry Pi or any Linux box on the LAN ([Raspberry Pi Node](RASPBERRY-PI-NODE.md)) does the same job with none of Lima's fragility — no `socket_vmnet` daemon to die silently, no DHCP address churn, no guest ICMP lies. Choose Lima for ARP discovery only when the Mac is genuinely the only machine you have.
 
 ---
 
@@ -935,6 +937,7 @@ What is worth changing:
 | 2026-10-20 | Document optional bridged networking: L2 vantage for ARP discovery, wired-only caveat, mandatory `MSHIN_NODE_TOKEN` | Jasper Frumau |
 | 2026-10-20 | Troubleshooting: dedicated section for the silent `socket_vmnet` daemon death — host-side diagnosis (`netstat`, `pgrep`, hostagent log) and recovery, verified against a live incident | Jasper Frumau |
 | 2026-10-20 | `scripts/probe_mcp_server.sh`: scripted host-side Node verification (health, transport, optional tool call) wired into the recovery steps | Jasper Frumau |
+| 2026-10-22 | Guide placed in maintenance mode: Docker Local Dev is the local path, the two-VM dev environment is reference-only, and the bridged guest is reframed as the fallback of last resort for ARP discovery — superseded by any Linux box on the LAN | Jasper Frumau |
 
 ---
 

@@ -82,7 +82,7 @@ mshin/
 │   ├── ARCHITECTURE.md        # System architecture
 │   ├── SETUP.md               # Setup instructions
 │   ├── WORKFLOWS.md           # Example workflows
-│   ├── LIMA-LOCAL-DEV.md      # Lima VM local development on macOS
+│   ├── LIMA-LOCAL-DEV.md      # Lima VM setup on macOS (maintenance mode; bridged LAN guest)
 │   ├── DOCKER-LOCAL-DEV.md    # Docker local development (default local path)
 │   ├── DEVELOPER-ONBOARDING.md # Learning path and architecture
 │   ├── REFACTORING-IDEAS.md    # Cleanups worth doing (and ones avoided)

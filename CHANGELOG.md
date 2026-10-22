@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-22
+
+Positions release, documentation-led. The convergence the repo has been driving at is now its organizing story: **three truthful scan positions** — the Mac host (Vibe or OpenCode driving `brew`-installed tools directly, no Node in the loop) for LAN discovery and light scans, the Docker Node (locally or on a VPS) for internet-facing targets, and a Linux box on the LAN for real ARP work. Host-direct tool use is documented for the first time, with its caveats stated plainly: none of the Node's server-side guards apply, macOS is not Kali, and the MCP server cannot run on the host. Lima moves to maintenance mode — Docker ties it on measured tool performance, and the bridged guest's one irreplaceable trick, ARP discovery when the Mac is the only machine, is now named the fallback of last resort behind a Raspberry Pi or any Linux box on the LAN. The script fixes pending in Unreleased ship in the same version.
+
+### Changed
+
+- **Package versions aligned** to `0.24.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+
 ### Fixed
 
 - **`scripts/setup_mcp_auth.sh --check` no longer prints full tokens.** The diagnostic reported token values verbatim, so a shared terminal or a pasted log leaked the credential. Tokens now render masked (`604b...4df4` — first four and last four characters; `****` for anything shorter), while the match/mismatch verdicts are unchanged. Verified live against the configured deployment: all four sources report the same masked token and `[OK]`.
@@ -15,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documented
 
+- **The three truthful scan positions, and host-direct tool use.** `docs/DOCKER-LOCAL-DEV.md` now opens with a table comparing the Mac host (agent drives `brew`-installed tools directly, no Node), the Docker Node (local or VPS), and a Linux box on the LAN — and documents the host-direct workflow for Vibe/OpenCode: `lan_inventory.py` for discovery, `nmap`/`arp-scan` for light targeted scans, Docker Node for internet-facing targets. The caveats are explicit: host-direct bypasses every server-side guard (`assertSafe`, `MSHIN_ALLOWED_TARGETS`, the fabricated-discovery refusal), macOS is not Kali, and the MCP server cannot run on the host. Lima is repositioned as maintenance mode in `docs/LIMA-LOCAL-DEV.md` — the two-VM dev environment is reference-only, and the bridged guest is the fallback of last resort for ARP discovery, superseded by any Linux box on the LAN. Cross-references updated in `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/VPS-NODE.md`.
 - **Lima's user-mode NAT answers ICMP on behalf of any address.** From inside the bridged guest, `ping` against a public VPS ~400 ms away returned sub-millisecond replies; TCP forwards faithfully, so internet hosts must be judged by TCP or pinged from the Mac. Recorded in `docs/DOCKER-LOCAL-DEV.md` Troubleshooting, alongside the Docker Desktop fabrication truth it mirrors, with both measured caveats noted in the bridged-guest hybrid section.
 
 ## [0.23.0] - 2026-10-22
