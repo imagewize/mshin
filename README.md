@@ -125,7 +125,9 @@ Caveats worth knowing:
   Vibe does not load the Ollama persona from `configs/ollama-modelfile`.
 - If you want the production shape instead (systemd, Debian host, bridged LAN
   access), the Node can still run in a [Lima guest](docs/LIMA-LOCAL-DEV.md) —
-  point the URL at the guest's IP instead of `localhost`.
+  point the URL at the guest's IP instead of `localhost`. That path is now in
+  maintenance mode and kept for one purpose: bridged LAN access, as the
+  fallback of last resort when no Linux box is on your LAN.
 
 ### OpenCode CLI + local Ollama + Docker Node
 
@@ -255,11 +257,14 @@ array. For the full explanation, see [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md
 > running it natively on macOS would require porting every tool path and
 > dependency. Discovery is the one task the Mac does better than the container,
 > which is why `lan_inventory.py` runs on the host and feeds targets to the
-> Node.
+> Node. Vibe and OpenCode can also run `brew`-installed tools directly on the
+> Mac — no Node in the loop — for discovery and light LAN scans; see
+> [Host-direct tool use](docs/DOCKER-LOCAL-DEV.md#host-direct-tool-use-vibe-or-opencode-with-tools-on-the-mac).
 
 See [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) for the Node container's
 requirements and troubleshooting, and [Lima Local Dev](docs/LIMA-LOCAL-DEV.md)
-for the production-shape (systemd, Debian, bridged LAN) alternative.
+for the maintenance-mode Lima path and its one remaining live use, the
+bridged LAN guest.
 
 ---
 
@@ -299,8 +304,8 @@ for the production-shape (systemd, Debian, bridged LAN) alternative.
 - [Architecture](docs/ARCHITECTURE.md) – System design and components
 - [Setup Guide](docs/SETUP.md) – Step-by-step installation
 - [Workflows](docs/WORKFLOWS.md) – Example cybersecurity tasks
-- [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) – Node in a Docker container; the default local path on macOS, with the Lima-vs-Docker measurements
-- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Production-shape emulation on macOS (systemd, Debian, bridged LAN) — Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
+- [Docker Local Dev](docs/DOCKER-LOCAL-DEV.md) – Node in a Docker container; the default local path on macOS, with the Lima-vs-Docker measurements, the three-positions table, and host-direct tool use from Vibe/OpenCode
+- [Lima Local Dev](docs/LIMA-LOCAL-DEV.md) – Maintenance-mode Lima setup on macOS; its one live use is the bridged guest for ARP LAN discovery — Lima templates: [`lima/mshin-node.yaml`](lima/mshin-node.yaml), [`lima/mshin-core.yaml`](lima/mshin-core.yaml)
 - [Developer Onboarding](docs/DEVELOPER-ONBOARDING.md) – Learning path and architecture for new contributors
 - [Refactoring Ideas](docs/REFACTORING-IDEAS.md) – Cleanups worth doing, and the ones deliberately avoided
 - [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed

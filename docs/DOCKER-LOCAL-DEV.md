@@ -4,9 +4,21 @@
 
 This guide describes how to run a **local, single-machine Machin Shin development environment** with the Node in a **Docker container** and **Ollama native on the macOS host**. It is the default local path — the same `configs/Dockerfile` and `configs/compose.yaml` that run here also run the Node on a real Linux box or a VPS, unchanged.
 
-For the Lima-VM alternative, see [Lima Local Dev](LIMA-LOCAL-DEV.md) — it is no longer the default local path, but it remains the way to emulate the **production shape** (systemd unit, Debian host, bridged LAN access).
+For the Lima-VM alternative, see [Lima Local Dev](LIMA-LOCAL-DEV.md) — it is no longer the default local path and is now in maintenance mode. Its one remaining live use is the **bridged guest**: real ARP discovery on your LAN when the Mac is your only machine and no Linux box is on the network. A Raspberry Pi or any Linux Node on the LAN does that job better.
 
-> **Plain rule for LAN work on a Mac:** the Docker Node cannot see your physical LAN and will not pretend to (it refuses fabricated discovery results — see Troubleshooting). For **discovery on your own network**, use the Mac itself (`scripts/lan_inventory.sh`) or the bridged Lima Node (`scripts/setup_bridged_node.sh`); keep this Docker Node for **evals, internet-facing targets, and targeted scans of hosts already known live**. Docker is the deployment artifact; Lima is the LAN vantage point.
+> **Plain rule for LAN work on a Mac:** the Docker Node cannot see your physical LAN and will not pretend to (it refuses fabricated discovery results — see Troubleshooting). The Mac itself is the truthful LAN position: run `scripts/lan_inventory.py` on it, or let Vibe/OpenCode drive tools installed on the host directly — see [Host-direct tool use](#host-direct-tool-use-vibe-or-opencode-with-tools-on-the-mac). Keep this Docker Node for **evals, internet-facing targets, and targeted scans of hosts already known live**. Docker is the deployment artifact; the LAN is reached from the Mac, from a Linux box on it ([Raspberry Pi](RASPBERRY-PI-NODE.md)), or — as the fallback of last resort — the bridged Lima guest.
+
+## Where to scan from: three truthful positions
+
+Every position in this repo can be judged on one axis: what its packets look like to the target. Three positions cover everything, and no fourth is needed:
+
+| Position | LAN discovery | Targeted LAN scans | Internet-facing targets (yours) | Full 17-tool set | Server-side guardrails |
+| -------- | ------------- | ------------------ | ------------------------------- | ---------------- | ---------------------- |
+| **Mac host, agent runs tools directly** (no Node) | Yes — the only truthful position a Mac has | Yes, with `brew`-installed tools | Possible, but the toolset is thin | No — macOS lacks most of it | **None** — `assertSafe`, `MSHIN_ALLOWED_TARGETS` and the fabrication guard do not exist |
+| **Docker Node** (this guide; locally or on a [VPS](VPS-NODE.md)) | No — fabricated, and refused | Yes, of known-live hosts | Yes — the main use case | Yes | All |
+| **Linux machine on the LAN** ([Raspberry Pi](RASPBERRY-PI-NODE.md), any Linux box, or the [bridged Lima guest](#lan-discovery-on-macos--the-bridged-guest-hybrid)) | Yes — real ARP (`nmap -sn -PR`) | Yes | Yes | Yes (the Pi is slow on heavy tools) | All |
+
+The recommended split when the Mac is your only machine: **discover and light-scan on the host, run the full toolset from the Docker Node against internet-facing targets you own**. When a Linux box lives on the LAN permanently, it takes over the LAN Node role entirely and the bridged Lima guest becomes unnecessary — see [Lima Local Dev](LIMA-LOCAL-DEV.md) for what remains of that path.
 
 ---
 
@@ -185,6 +197,57 @@ them with assumptions that do not hold on macOS. Discovery is the one task the
 host does better than the container, so the helper is designed to bridge the
 two.
 
+### Host-direct tool use: Vibe or OpenCode with tools on the Mac
+
+The Node is not the only way an agent can run a tool. Vibe and OpenCode
+execute shell commands on the machine they run on — and on the Mac, that
+machine has the one thing no container on it can have: a real position on the
+physical LAN. With the tools installed on the host, the agent discovers and
+scans with no MCP server in the loop at all:
+
+```bash
+# What is practical on macOS (Homebrew)
+brew install nmap        # connect scans unprivileged; SYN/raw scans need sudo
+brew install arp-scan    # Layer-2 discovery, needs sudo
+
+# Discovery without installing anything — the repo's own inventory helper
+scripts/lan_inventory.py              # live IPs, MACs, best-effort names
+scripts/lan_inventory.py --targets    # ready-made targets array
+```
+
+Then ask the agent in plain language — *"Discover the hosts on my LAN, then
+run nmap -sV against the router"* — and it shells out to the same binaries
+the Node would, from the Mac's own network position. This is the recommended
+shape for LAN work when the Mac is your only machine:
+
+- **LAN work — host-direct.** Discovery (`lan_inventory.py`, `arp-scan`) and
+  light targeted scans (`nmap -sV` of hosts you own) run on the Mac, driven
+  by Vibe or OpenCode directly.
+- **Internet-facing targets you own — the Docker Node.** The full 17-tool Kali
+  set, the container sandbox, and `MSHIN_ALLOWED_TARGETS` scoping live on
+  the Node, locally or on a [VPS](VPS-NODE.md).
+
+Three caveats, none of which the Node path has:
+
+> **You are the guardrail here.** Every defense the Node carries is
+> server-side — `assertSafe` in `servers/src/kali/tools.js`, the
+> `MSHIN_ALLOWED_TARGETS` allowlist, the fabricated-discovery refusal. None
+> of it exists when the agent runs a tool directly on the host. Point
+> host-direct scanning only at machines you own or are explicitly authorised
+> to test, and read the commands the client asks you to approve before
+> approving them.
+
+> **macOS is not Kali.** The Homebrew `nmap` build lags Kali's, SYN and
+> raw-scan modes need `sudo`, and `metasploit`, `enum4linux`, `sqlmap` and
+> the rest of the deep toolset are not practical on macOS. Host-direct is
+> for discovery and light scans; hand the full toolset to the Node.
+
+> **The MCP server cannot be the host-direct path.** It expects the
+> Linux/Kali tool paths and `sudo -n` semantics — that is why the host runs
+> the *tools* and the Node runs the *server*. The two halves meet at
+> `lan_inventory.py --targets`: the host finds the live hosts, the Node runs
+> the offensive tools against them.
+
 When you need real ARP-based discovery — finding machines that drop all unicast probes (Windows defaults, sleeping phones) — run the *same container image* on a machine that is itself on the LAN:
 
 1. **Create the Lima guest with bridged networking** — follow [Lima Local Dev](LIMA-LOCAL-DEV.md)'s bridged mode (a `bridged` network in `~/.lima/_config/networks.yaml` bound to the wired interface, plus the `- lima: bridged` entry in the template). Bridged was verified working over Wi-Fi on this project's own TOTOLINK router; test your AP first.
@@ -204,12 +267,13 @@ The production equivalent is simpler: a real Linux Node or VPS runs `configs/com
 
 ## Changelog
 
+- **2026-10-22** — Added the "three truthful positions" table and the **Host-direct tool use** section: Vibe/OpenCode can drive `brew`-installed tools and `lan_inventory.py` directly on the Mac for LAN discovery and light scans, with the guardrail, toolset and MCP-server caveats spelled out. Lima repositioned as the fallback of last resort for ARP discovery, superseded by any Linux box on the LAN.
 - **2026-10-21 (second session)** — Two more measured truths documented: the bridged Lima guest's DHCP default route silently killed all internet egress (fixed in `scripts/setup_bridged_node.sh`), and Lima's user-mode NAT answers ICMP on behalf of any address, so ping-based verdicts for internet hosts from inside the guest are meaningless while TCP remains faithful.
 - **2026-10-21** — Guide created with the sandboxed Docker Node. The Lima-vs-Docker comparison was measured, not estimated: identical full-stack `nmap` round trips (11.2–11.3 s) across native Lima, Docker-in-Lima, and Docker Desktop.
 
 ## See Also
 
 - [Architecture](ARCHITECTURE.md) — the two-machine design this runs a single-machine version of
-- [Lima Local Dev](LIMA-LOCAL-DEV.md) — the production-shape emulation alternative
+- [Lima Local Dev](LIMA-LOCAL-DEV.md) — the maintenance-mode Lima path; its one live use is the bridged guest for ARP LAN discovery
 - [Eval Run 2026-10-20](EVAL-RUN-2026-10-20.md) — the model-comparison measurements this Node serves
 - `configs/Dockerfile`, `configs/compose.yaml`, `configs/compose.local.yaml` — the artifacts themselves
