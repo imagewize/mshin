@@ -120,9 +120,10 @@ mshin/
 │       └── wordlists/
 │           └── sensitive-paths.txt  # High-signal upload/WordPress/dotfile probe list
 ├── clients/
-│   └── mshin-cli/             # Ollama + MCP client harness
+│   └── mshin-cli/             # MCP client harness: interactive agent loop + single-tool caller
 │       ├── package.json
-│       ├── index.js
+│       ├── index.js           # interactive Ollama-driven agent (mshin)
+│       ├── call.js            # single-tool MCP caller (mshin-call)
 │       ├── agent.js
 │       ├── agent.test.js
 │       ├── findings-memory.js

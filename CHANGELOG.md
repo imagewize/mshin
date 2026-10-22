@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-22
+
+Single-tool MCP caller release. The existing `mshin` CLI is an interactive Ollama-driven agent loop; this release adds `mshin-call`, a lightweight companion that calls one Node tool from the command line with no model and no prompt.
+
+### Added
+
+- **`mshin-call` single-tool MCP caller** (`clients/mshin-cli/call.js`). Speaks the same Streamable HTTP MCP transport as `mshin`, but takes the tool name and JSON arguments directly from the command line, calls the tool once, prints the result, and exits. Supports `--node`, `--token`, `--list`, and `--help`; `MSHIN_NODE_URL` and `MSHIN_NODE_TOKEN` provide defaults. No Ollama, no model, no interactive prompt.
+- **`call.test.js`** — argument-parsing tests for `mshin-call`.
+
+### Changed
+
+- **`clients/mshin-cli/package.json`** gains a `mshin-call` bin entry, includes `call.js` in `check`/`test`, and updates its description to cover both clients.
+- **`clients/mshin-cli/README.md`** documents `mshin-call` usage and requirements separately from the interactive `mshin` agent loop.
+- **`CONTRIBUTING.md`** project structure notes `call.js` under `clients/mshin-cli/`.
+- **Package versions aligned** to `0.26.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 117/117 cases (114 existing + 3 new `mshin-call` argument-parsing cases); `servers/src/kali/` passes 67/67 (unchanged; pre-commit check).
+- Live against the local Docker Node (`http://127.0.0.1:3001`, bearer token from `configs/mshin-node.env`): `mshin-call --list` lists all 19 tools, and `mshin-call whois '{"target":"imagewize.com"}'` returns the real WHOIS record.
+
 ## [0.25.0] - 2026-10-22
 
 Tool release, born from a live scan of a Bedrock/Sage WordPress site: two new network tools (`wpscan`, `writable-probe`) and the per-deployment tool-timeout knob that scan needed. The wpscan run also drove the timeout change — aggressive plugin enumeration against a remote site outgrew the hardcoded 300s ceiling, so `MSHIN_TOOL_TIMEOUT_MS` now raises it without a code change.
@@ -1931,7 +1952,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/imagewize/mshin/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/imagewize/mshin/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/imagewize/mshin/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/imagewize/mshin/compare/v0.23.0...v0.24.0
