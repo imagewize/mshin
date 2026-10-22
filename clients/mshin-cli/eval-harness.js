@@ -4,8 +4,12 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Agent, AgentMemory } from "./agent.js";
+import { createLlmClient } from "./llm-client.js";
+import {
+  DEFAULT_LLM_BACKEND,
+  DEFAULT_OLLAMA_URL,
+} from "./config.js";
 
-const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 const DEFAULT_OUTPUT_DIR = "./eval-results";
 const FORMATS = new Map([
@@ -118,8 +122,23 @@ function loadConfig(configPath) {
       ? [config.model]
       : ["mshin"];
 
+  const backend = config.backend || DEFAULT_LLM_BACKEND;
+  // Keep ollamaUrl as a deprecated alias for apiBase when backend is ollama.
+  const apiBase = config.apiBase || config.ollamaUrl || DEFAULT_OLLAMA_URL;
+  const apiKey =
+    config.apiKey ||
+    process.env.MSHIN_LLM_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.MISTRAL_API_KEY ||
+    process.env.MOONSHOT_API_KEY ||
+    "";
+
   return {
-    ollamaUrl: config.ollamaUrl || DEFAULT_OLLAMA_URL,
+    backend,
+    apiBase,
+    apiKey,
+    // Backwards-compatible field names retained for existing configs.
+    ollamaUrl: apiBase,
     nodeUrl: config.nodeUrl !== undefined ? config.nodeUrl : DEFAULT_NODE_URL,
     // The config file wins over the environment; both are optional. When the
     // Node has MSHIN_NODE_TOKEN set, MCP requests must carry it as a bearer
@@ -130,7 +149,7 @@ function loadConfig(configPath) {
   };
 }
 
-function mcpToolsToOllama(tools) {
+function mcpToolsToFunctionSchema(tools) {
   return tools.map((t) => ({
     type: "function",
     function: {
@@ -487,7 +506,8 @@ async function main() {
 
   console.log("Machin Shin Model Evaluation Harness");
   console.log(`  Config:  ${configPath}`);
-  console.log(`  Ollama:  ${config.ollamaUrl}`);
+  console.log(`  Backend: ${config.backend}`);
+  console.log(`  API:     ${config.apiBase}`);
   console.log(`  Node:    ${config.nodeUrl}`);
   console.log(`  Token:   ${config.nodeToken ? "provided" : "none"}`);
   console.log(`  Models:  ${config.models.join(", ")}`);
@@ -495,24 +515,30 @@ async function main() {
   console.log("");
 
   let client = null;
-  let ollamaTools = [];
+  let functionTools = [];
 
   if (config.nodeUrl) {
     client = await createMcpClient(config.nodeUrl, config.nodeToken);
     const mcpTools = await client.listTools();
-    ollamaTools = mcpToolsToOllama(mcpTools.tools);
-    console.log(`Connected. Node exposes ${ollamaTools.length} tool(s).\n`);
+    functionTools = mcpToolsToFunctionSchema(mcpTools.tools);
+    console.log(`Connected. Node exposes ${functionTools.length} tool(s).\n`);
   }
 
   const memoryDir = join(outputDir, ".mshin-eval");
   const createAgent = (model, testCase) => {
     const memory = new AgentMemory(memoryDir);
     const sessionId = `eval-${model}-${testCase.name}-${Date.now()}`;
+    const llmClient = createLlmClient(config.backend, {
+      model,
+      apiBase: config.apiBase,
+      apiKey: config.apiKey,
+      timeoutMs: parseInt(process.env.MSHIN_LLM_TIMEOUT_MS, 10) || undefined,
+    });
     const agent = new Agent({
       mcpClient: client,
-      ollamaUrl: config.ollamaUrl,
+      llmClient,
       model,
-      tools: ollamaTools,
+      tools: functionTools,
       memory,
       maxSteps: testCase.maxSteps || 25,
     });
@@ -577,4 +603,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { EvalHarness, loadConfig, writeReport, mcpToolsToOllama, normalizeFormat };
+export { EvalHarness, loadConfig, writeReport, mcpToolsToFunctionSchema, normalizeFormat };

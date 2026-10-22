@@ -1,6 +1,6 @@
 {
   "name": "mshin-cli",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "CLI clients for the Machin Shin Node: an interactive Ollama agent loop and a single-tool MCP caller.",
   "type": "module",
   "main": "index.js",
@@ -10,8 +10,8 @@
   },
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check call.js && node --check agent.js && node --check eval-harness.js && node --check session-logger.js && node --check findings-memory.js && node --check findings-memory.test.js",
-    "test": "node --check index.js && node --check call.js && node --check agent.js && node --check eval-harness.js && node --check session-logger.js && node --check findings-memory.js && node --check findings-memory.test.js && node --test --test-timeout=15000"
+    "check": "node --check index.js && node --check call.js && node --check agent.js && node --check llm-client.js && node --check eval-harness.js && node --check session-logger.js && node --check findings-memory.js && node --check findings-memory.test.js",
+    "test": "node --check index.js && node --check call.js && node --check agent.js && node --check llm-client.js && node --check eval-harness.js && node --check session-logger.js && node --check findings-memory.js && node --check findings-memory.test.js && node --test --test-timeout=15000"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"

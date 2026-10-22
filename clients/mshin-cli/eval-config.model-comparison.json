@@ -1,6 +1,7 @@
 {
   "models": ["mshin", "qwen3:8b", "qwen3:4b"],
-  "ollamaUrl": "http://localhost:11434",
+  "backend": "ollama",
+  "apiBase": "http://localhost:11434",
   "nodeUrl": "http://localhost:3000",
   "cases": [
     {

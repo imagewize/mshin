@@ -146,12 +146,15 @@ test("loadConfig normalizes a single model string into an array", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("loadConfig defaults ollamaUrl and nodeUrl", () => {
+test("loadConfig defaults backend, apiBase and nodeUrl", () => {
   const dir = makeTempDir();
   const path = configFile(dir, {
     cases: [{ name: "ping", prompt: "hello" }],
   });
   const config = loadConfig(path);
+  assert.equal(config.backend, "ollama");
+  assert.equal(config.apiBase, "http://localhost:11434");
+  // Backwards-compatible alias retained for existing configs.
   assert.equal(config.ollamaUrl, "http://localhost:11434");
   assert.equal(config.nodeUrl, "http://192.168.1.100:3000");
   rmSync(dir, { recursive: true, force: true });
@@ -306,7 +309,7 @@ test("harness marks failures and records error messages", async () => {
           steps: 0,
           errors: 1,
         },
-        run: () => Promise.reject(new Error("Ollama unreachable")),
+        run: () => Promise.reject(new Error("LLM unreachable")),
       },
       sessionId: "s1",
     }),
@@ -318,7 +321,7 @@ test("harness marks failures and records error messages", async () => {
   });
 
   assert.equal(results[0].success, false);
-  assert.equal(results[0].error, "Ollama unreachable");
+  assert.equal(results[0].error, "LLM unreachable");
   assert.equal(results[0].errors, 1);
   rmSync(dir, { recursive: true, force: true });
 });

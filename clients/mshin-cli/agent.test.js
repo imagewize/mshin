@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import http from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,19 +12,14 @@ import { SessionLogger } from "./session-logger.js";
 // -----------------------------------------------------------------------------
 
 /**
- * A stand-in Ollama server. It answers POST /api/chat from a queue of canned
- * responses shaped exactly like the real Ollama chat API, and records every
- * request body it received so tests can assert on the wire format the agent
- * emits. Because the agent talks to it over real HTTP, the fetch/serialise/
- * parse path — the tool-call formatting the CHANGELOG flagged as untested — is
- * exercised for real, only the model's judgement is faked.
+ * A stand-in LLM client. It answers chat() from a queue of canned responses in
+ * the provider-agnostic format the agent expects, and records every (messages,
+ * tools) call it receives so tests can assert on what the agent asks for.
  */
-class MockOllama {
+class MockLlmClient {
   constructor() {
     this.responses = [];
     this.requests = [];
-    this.server = null;
-    this.url = null;
   }
 
   /** Queue an assistant turn that asks for a tool call. */
@@ -34,9 +28,8 @@ class MockOllama {
       message: {
         role: "assistant",
         content,
-        tool_calls: [{ function: { name, arguments: args } }],
+        tool_calls: [{ id: `${name}-1`, function: { name, arguments: args } }],
       },
-      done: true,
     });
   }
 
@@ -46,11 +39,11 @@ class MockOllama {
       message: {
         role: "assistant",
         content: "",
-        tool_calls: calls.map((c) => ({
+        tool_calls: calls.map((c, idx) => ({
+          id: `${c.name}-${idx}`,
           function: { name: c.name, arguments: c.args },
         })),
       },
-      done: true,
     });
   }
 
@@ -58,37 +51,17 @@ class MockOllama {
   queueFinal(content) {
     this.responses.push({
       message: { role: "assistant", content },
-      done: true,
     });
   }
 
-  async start() {
-    this.server = http.createServer((req, res) => {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        this.requests.push({ url: req.url, body: JSON.parse(body || "{}") });
-        const next = this.responses.shift();
-        if (!next) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "no queued response" }));
-          return;
-        }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(next));
-      });
-    });
-    await new Promise((resolve) => this.server.listen(0, "127.0.0.1", resolve));
-    const { port } = this.server.address();
-    this.url = `http://127.0.0.1:${port}`;
-  }
-
-  async stop() {
-    if (!this.server) return;
-    // undici's fetch keeps connections alive, so close() alone would hang until
-    // they idle out; drop them so teardown is immediate.
-    this.server.closeAllConnections?.();
-    await new Promise((r) => this.server.close(r));
+  async chat(messages, tools) {
+    // Snapshot a copy; the agent mutates the messages array after the call.
+    this.requests.push({ messages: messages.map((m) => ({ ...m })), tools });
+    const next = this.responses.shift();
+    if (!next) {
+      throw new Error("no queued response");
+    }
+    return next;
   }
 }
 
@@ -110,7 +83,7 @@ function textContent(text) {
   return { content: [{ type: "text", text }] };
 }
 
-const OLLAMA_TOOLS = [
+const TEST_TOOLS = [
   {
     type: "function",
     function: {
@@ -130,50 +103,44 @@ const OLLAMA_TOOLS = [
 ];
 
 /**
- * Stand up a mock Ollama, a mock MCP client and an agent over a temp memory
+ * Stand up a mock LLM client, a mock MCP client and an agent over a temp memory
  * dir, registering teardown on the test context so a failed assertion can never
- * leave the HTTP server open and hang the run.
+ * leave state behind.
  */
 async function setup(t, { mcpHandler = () => textContent("ok"), agentOptions = {} } = {}) {
-  const ollama = new MockOllama();
-  await ollama.start();
+  const llm = new MockLlmClient();
   const mcp = new MockMcpClient(mcpHandler);
   const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
   const memory = new AgentMemory(dir);
   const agent = new Agent({
     mcpClient: mcp,
-    ollamaUrl: ollama.url,
+    llmClient: llm,
     model: "mshin",
-    tools: OLLAMA_TOOLS,
+    tools: TEST_TOOLS,
     memory,
     sessionLogger: null,
     ...agentOptions,
   });
-  t.after(async () => {
-    await ollama.stop();
+  t.after(() => {
     rmSync(dir, { recursive: true, force: true });
   });
-  return { ollama, mcp, agent, memory, dir };
+  return { llm, mcp, agent, memory, dir };
 }
 
 // -----------------------------------------------------------------------------
-// The request the agent sends to Ollama
+// The request the agent sends to the LLM
 // -----------------------------------------------------------------------------
 
-test("sends model, tools and stream:false in the /api/chat body", async (t) => {
-  const { ollama, agent } = await setup(t);
-  ollama.queueFinal("done");
+test("sends model, tools and messages to the LLM client", async (t) => {
+  const { llm, agent } = await setup(t);
+  llm.queueFinal("done");
   await agent.run({ sessionId: "s1", userGoal: "hello" });
 
-  const req = ollama.requests[0];
-  assert.equal(req.url, "/api/chat");
-  assert.equal(req.body.model, "mshin");
-  assert.equal(req.body.stream, false);
-  assert.equal(req.body.options?.temperature, 0);
-  assert.deepEqual(req.body.tools, OLLAMA_TOOLS);
-  assert.equal(req.body.messages[0].role, "system");
-  assert.equal(req.body.messages.at(-1).role, "user");
-  assert.equal(req.body.messages.at(-1).content, "hello");
+  const req = llm.requests[0];
+  assert.equal(req.messages[0].role, "system");
+  assert.equal(req.messages.at(-1).role, "user");
+  assert.equal(req.messages.at(-1).content, "hello");
+  assert.deepEqual(req.tools, TEST_TOOLS);
 });
 
 // -----------------------------------------------------------------------------
@@ -181,7 +148,7 @@ test("sends model, tools and stream:false in the /api/chat body", async (t) => {
 // -----------------------------------------------------------------------------
 
 test("parses a tool_call, invokes MCP, feeds the result back, then finishes", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: (name, args) => {
       assert.equal(name, "nmap");
       assert.deepEqual(args, { target: "192.168.1.100" });
@@ -189,8 +156,8 @@ test("parses a tool_call, invokes MCP, feeds the result back, then finishes", as
     },
   });
 
-  ollama.queueToolCall("nmap", { target: "192.168.1.100" });
-  ollama.queueFinal("Host has SSH open on 22.");
+  llm.queueToolCall("nmap", { target: "192.168.1.100" });
+  llm.queueFinal("Host has SSH open on 22.");
 
   const seen = { call: null, result: null, complete: null };
   const answer = await agent.run({
@@ -207,14 +174,14 @@ test("parses a tool_call, invokes MCP, feeds the result back, then finishes", as
   assert.equal(answer, "Host has SSH open on 22.");
   assert.equal(seen.complete, "Host has SSH open on 22.");
 
-  const secondTurn = ollama.requests[1].body.messages;
+  const secondTurn = llm.requests[1].messages;
   const toolMsg = secondTurn.find((m) => m.role === "tool");
   assert.equal(toolMsg.name, "nmap");
   assert.equal(toolMsg.content, "PORT 22/tcp open ssh");
 });
 
 test("joins MCP content blocks with newlines, blanking non-text parts", async (t) => {
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => ({
       content: [
         { type: "text", text: "line one" },
@@ -224,8 +191,8 @@ test("joins MCP content blocks with newlines, blanking non-text parts", async (t
     }),
   });
 
-  ollama.queueToolCall("nmap", { target: "x" });
-  ollama.queueFinal("ok");
+  llm.queueToolCall("nmap", { target: "x" });
+  llm.queueFinal("ok");
 
   let resultText = null;
   await agent.run({
@@ -238,10 +205,10 @@ test("joins MCP content blocks with newlines, blanking non-text parts", async (t
 });
 
 test("substitutes a placeholder when MCP returns no text content", async (t) => {
-  const { ollama, agent } = await setup(t, { mcpHandler: () => ({ content: [] }) });
+  const { llm, agent } = await setup(t, { mcpHandler: () => ({ content: [] }) });
 
-  ollama.queueToolCall("nmap", { target: "x" });
-  ollama.queueFinal("ok");
+  llm.queueToolCall("nmap", { target: "x" });
+  llm.queueFinal("ok");
 
   let resultText = null;
   await agent.run({
@@ -253,14 +220,14 @@ test("substitutes a placeholder when MCP returns no text content", async (t) => 
 });
 
 test("defaults missing tool arguments to an empty object", async (t) => {
-  const { ollama, mcp, agent } = await setup(t);
+  const { llm, mcp, agent } = await setup(t);
 
   // A tool call whose function has no `arguments` field at all.
-  ollama.responses.push({
+  llm.responses.push({
     message: { role: "assistant", content: "", tool_calls: [{ function: { name: "nmap" } }] },
     done: true,
   });
-  ollama.queueFinal("ok");
+  llm.queueFinal("ok");
 
   await agent.run({ sessionId: "s1", userGoal: "go" });
   assert.deepEqual(mcp.calls[0].args, {});
@@ -271,15 +238,15 @@ test("defaults missing tool arguments to an empty object", async (t) => {
 // -----------------------------------------------------------------------------
 
 test("runs every tool_call in one turn, in the order asked", async (t) => {
-  const { ollama, mcp, agent } = await setup(t);
+  const { llm, mcp, agent } = await setup(t);
 
   // The model asks for two calls at once. Both must run -- dropping the second
   // is the recon-chain bug. They execute in order, before the next model turn.
-  ollama.queueMultiToolCall([
+  llm.queueMultiToolCall([
     { name: "nmap", args: { target: "a" } },
     { name: "nmap", args: { target: "b" } },
   ]);
-  ollama.queueFinal("done");
+  llm.queueFinal("done");
 
   await agent.run({ sessionId: "s1", userGoal: "go" });
   assert.equal(mcp.calls.length, 2);
@@ -292,17 +259,17 @@ test("runs every tool_call in one turn, in the order asked", async (t) => {
 // -----------------------------------------------------------------------------
 
 test("rejects a tool the Node does not expose without calling MCP", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("should not run"),
   });
 
-  ollama.queueToolCall("rm_rf", { path: "/" });
-  ollama.queueFinal("understood, that tool is unavailable");
+  llm.queueToolCall("rm_rf", { path: "/" });
+  llm.queueFinal("understood, that tool is unavailable");
 
   await agent.run({ sessionId: "s1", userGoal: "go" });
   assert.equal(mcp.calls.length, 0);
 
-  const secondTurn = ollama.requests[1].body.messages;
+  const secondTurn = llm.requests[1].messages;
   const toolMsg = secondTurn.find((m) => m.role === "tool");
   assert.match(toolMsg.content, /not available on this Node/);
 });
@@ -319,12 +286,12 @@ test("hydra, sqlmap and john are gated behind approval like metasploit", () => {
 
 test("metasploit is gated behind approval and runs when approved", async (t) => {
   assert.ok(ACTIVE_TOOLS.has("metasploit"));
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("session opened"),
   });
 
-  ollama.queueToolCall("metasploit", { module: "exploit/x" });
-  ollama.queueFinal("done");
+  llm.queueToolCall("metasploit", { module: "exploit/x" });
+  llm.queueFinal("done");
 
   let asked = false;
   await agent.run({
@@ -340,12 +307,12 @@ test("metasploit is gated behind approval and runs when approved", async (t) => 
 });
 
 test("a declined active tool is not executed and the model is told", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("should not run"),
   });
 
-  ollama.queueToolCall("metasploit", { module: "exploit/x" });
-  ollama.queueFinal("ok, standing down");
+  llm.queueToolCall("metasploit", { module: "exploit/x" });
+  llm.queueFinal("ok, standing down");
 
   await agent.run({
     sessionId: "s1",
@@ -354,16 +321,16 @@ test("a declined active tool is not executed and the model is told", async (t) =
   });
   assert.equal(mcp.calls.length, 0);
 
-  const secondTurn = ollama.requests[1].body.messages;
+  const secondTurn = llm.requests[1].messages;
   const toolMsg = secondTurn.find((m) => m.role === "tool");
   assert.match(toolMsg.content, /declined to run active tool/);
 });
 
 test("nmap (a passive tool) does not trigger the approval prompt", async (t) => {
-  const { ollama, agent } = await setup(t);
+  const { llm, agent } = await setup(t);
 
-  ollama.queueToolCall("nmap", { target: "x" });
-  ollama.queueFinal("done");
+  llm.queueToolCall("nmap", { target: "x" });
+  llm.queueFinal("done");
 
   let asked = false;
   await agent.run({
@@ -382,20 +349,20 @@ test("nmap (a passive tool) does not trigger the approval prompt", async (t) => 
 // -----------------------------------------------------------------------------
 
 test("stops after maxSteps and asks for a summary", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("more ports"),
     agentOptions: { maxSteps: 3 },
   });
 
   // Exactly maxSteps tool-call turns, then the summary the loop asks for.
-  for (let i = 0; i < 3; i++) ollama.queueToolCall("nmap", { target: `h${i}` });
-  ollama.queueFinal("Summary: found several open ports.");
+  for (let i = 0; i < 3; i++) llm.queueToolCall("nmap", { target: `h${i}` });
+  llm.queueFinal("Summary: found several open ports.");
 
   const answer = await agent.run({ sessionId: "s1", userGoal: "scan everything" });
   assert.equal(mcp.calls.length, 3);
   assert.equal(answer, "Summary: found several open ports.");
 
-  const lastReq = ollama.requests.at(-1).body.messages;
+  const lastReq = llm.requests.at(-1).messages;
   assert.match(lastReq.at(-1).content, /Step budget exhausted/);
 });
 
@@ -404,9 +371,9 @@ test("stops after maxSteps and asks for a summary", async (t) => {
 // -----------------------------------------------------------------------------
 
 test("persists the conversation and reloads it across runs", async (t) => {
-  const { ollama, agent, memory, dir } = await setup(t);
+  const { llm, agent, memory, dir } = await setup(t);
 
-  ollama.queueFinal("first answer");
+  llm.queueFinal("first answer");
   await agent.run({ sessionId: "s1", userGoal: "first goal" });
 
   const stored = memory.getSession("s1").messages;
@@ -417,11 +384,11 @@ test("persists the conversation and reloads it across runs", async (t) => {
   assert.equal(reloaded.getSession("s1").messages.length, stored.length);
 });
 
-test("preserves the session even when Ollama errors mid-run", async (t) => {
+test("preserves the session even when the LLM errors mid-run", async (t) => {
   const { agent, memory } = await setup(t);
 
-  // No responses queued -> the mock returns HTTP 500 -> queryOllama throws.
-  await assert.rejects(agent.run({ sessionId: "s1", userGoal: "will fail" }), /Ollama returned 500/);
+  // No responses queued -> the mock throws.
+  await assert.rejects(agent.run({ sessionId: "s1", userGoal: "will fail" }), /no queued response/);
   const stored = memory.getSession("s1").messages;
   assert.ok(stored.some((m) => m.content === "will fail"));
 });
@@ -709,7 +676,7 @@ test("compactContext preserves the user goal when there is no system prompt", as
 // Narrated tool calls
 //
 // Small models given a tools array sometimes write the call out as text instead
-// of emitting it, then invent the result. Ollama returns that as plain content
+// of emitting it, then invent the result. The LLM returns that as plain content
 // with no tool_calls, so the loop must notice rather than pass the fabrication
 // off as an answer.
 // -----------------------------------------------------------------------------
@@ -761,17 +728,17 @@ test("ignores prose with no JSON at all", () => {
 });
 
 test("recovers a narrated call, runs it, and drops the invented output", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("22/tcp open ssh"),
   });
 
   // The model narrates the call and fabricates a scan report in the same turn.
-  ollama.queueFinal(
+  llm.queueFinal(
     'To scan 127.0.0.1 I will use nmap.\n' +
       '[{"name":"nmap","arguments":{"target":"127.0.0.1"}}]\n' +
       "PORT   STATE SERVICE\n3306/tcp open  mysql"
   );
-  ollama.queueFinal("Port 22 is open.");
+  llm.queueFinal("Port 22 is open.");
 
   const narrated = [];
   const answer = await agent.run({
@@ -788,7 +755,7 @@ test("recovers a narrated call, runs it, and drops the invented output", async (
   assert.equal(answer, "Port 22 is open.");
 
   // The fabricated report must not survive in the transcript the model sees.
-  const sent = ollama.requests.at(-1).body.messages;
+  const sent = llm.requests.at(-1).messages;
   assert.ok(
     !sent.some((m) => (m.content || "").includes("3306/tcp")),
     "invented tool output leaked into the transcript"
@@ -797,8 +764,8 @@ test("recovers a narrated call, runs it, and drops the invented output", async (
 });
 
 test("a genuine text answer still ends the loop", async (t) => {
-  const { ollama, mcp, agent } = await setup(t);
-  ollama.queueFinal("No scan was needed; the host is documented as offline.");
+  const { llm, mcp, agent } = await setup(t);
+  llm.queueFinal("No scan was needed; the host is documented as offline.");
 
   const answer = await agent.run({ sessionId: "s-plain", userGoal: "status?" });
 
@@ -838,18 +805,18 @@ test("extracts function-syntax calls with parentheses inside string args", () =>
 });
 
 test("recovers a functions.name narrated call and drops invented results", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => textContent("22/tcp open ssh"),
   });
 
-  ollama.queueFinal(
+  llm.queueFinal(
     'functions.nmap(target="127.0.0.1", flags=["-sS"])\n\n' +
       "Result:\n" +
       "22/tcp   open  ssh\n" +
       "80/tcp   open  http\n" +
       "3306/tcp open  mysql"
   );
-  ollama.queueFinal("Port 22 is open.");
+  llm.queueFinal("Port 22 is open.");
 
   const narrated = [];
   const answer = await agent.run({
@@ -863,18 +830,18 @@ test("recovers a functions.name narrated call and drops invented results", async
   assert.deepEqual(mcp.calls[0].args, { target: "127.0.0.1", flags: ["-sS"] });
   assert.equal(answer, "Port 22 is open.");
 
-  const sent = ollama.requests.at(-1).body.messages;
+  const sent = llm.requests.at(-1).messages;
   assert.ok(!sent.some((m) => (m.content || "").includes("3306/tcp")));
   assert.ok(sent.some((m) => m.role === "tool" && m.content === "22/tcp open ssh"));
 });
 
 test("backstop blocks unparseable fabricated results from reaching the user", async (t) => {
-  const { ollama, mcp, agent, memory } = await setup(t, {
+  const { llm, mcp, agent, memory } = await setup(t, {
     mcpHandler: () => textContent("should not run"),
   });
 
   // No parseable call syntax, but the model invented a scan report.
-  ollama.queueFinal(
+  llm.queueFinal(
     "I ran a scan.\n\n" +
       "Result:\n" +
       "22/tcp   open  ssh\n" +
@@ -894,9 +861,9 @@ test("backstop blocks unparseable fabricated results from reaching the user", as
 });
 
 test("backstop catches fenced invented output", async (t) => {
-  const { ollama, mcp, agent } = await setup(t);
+  const { llm, mcp, agent } = await setup(t);
 
-  ollama.queueFinal(
+  llm.queueFinal(
     "The scan returned:\n```\n22/tcp open ssh\n80/tcp open http\n```"
   );
 
@@ -907,12 +874,12 @@ test("backstop catches fenced invented output", async (t) => {
 });
 
 test("does not block a genuine final answer after a real tool ran", async (t) => {
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => textContent("22/tcp open ssh"),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("Result: port 22 is open.");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("Result: port 22 is open.");
 
   const answer = await agent.run({ sessionId: "s-real-result", userGoal: "scan localhost" });
   assert.equal(answer, "Result: port 22 is open.");
@@ -952,16 +919,16 @@ function errorContent(text) {
 }
 
 test("a non-retryable tool error is not retried", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () =>
       errorContent("Error: Command failed: sudo -n /usr/bin/nmap 127.0.0.1\nsudo: a password is required"),
   });
 
   // The model asks for the same tool three times, as both live models did.
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("I could not run nmap on this Node.");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("I could not run nmap on this Node.");
 
   const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
@@ -973,15 +940,15 @@ test("a non-retryable tool error is not retried", async (t) => {
 });
 
 test("the model is told the failure is environmental, not a bad argument", async (t) => {
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => errorContent("Error: Tool binary not found: /usr/bin/nikto. Is nikto installed?"),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("done");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("done");
   await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
-  const messages = ollama.requests.at(-1).body.messages;
+  const messages = llm.requests.at(-1).messages;
   const toolMessage = messages.find((m) => m.role === "tool");
   const instruction = messages.find(
     (m) => m.role === "user" && m.content.includes("Continue the rest of the task")
@@ -999,13 +966,13 @@ test("the model is told the failure is environmental, not a bad argument", async
 });
 
 test("an ordinary tool error stays retryable", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
   });
 
-  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
-  ollama.queueFinal("host is down");
+  llm.queueToolCall("nmap", { target: "10.0.0.1" });
+  llm.queueToolCall("nmap", { target: "10.0.0.1" });
+  llm.queueFinal("host is down");
 
   await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
@@ -1016,14 +983,14 @@ test("an ordinary tool error stays retryable", async (t) => {
 });
 
 test("a successful call is never treated as non-retryable", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     // Output that merely mentions permissions, without isError.
     mcpHandler: () => textContent("22/tcp open ssh — permission denied banner seen"),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("done");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("done");
 
   await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
@@ -1032,17 +999,17 @@ test("a successful call is never treated as non-retryable", async (t) => {
 });
 
 test("blocking one tool leaves the others usable", async (t) => {
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: (name) =>
       name === "nmap"
         ? errorContent("Error: sudo: a password is required")
         : textContent("metasploit ran"),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("metasploit", {});
-  ollama.queueFinal("done");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueToolCall("metasploit", {});
+  llm.queueFinal("done");
 
   await agent.run({
     sessionId: "s1",
@@ -1063,19 +1030,19 @@ test("a fabricated report is caught, then the skipped tool is actually run", asy
   // model invents the next tool's report (nmap) instead of calling it. The loop
   // must refuse the fabrication, direct the model to run nmap, and let the real
   // result through -- not terminate at the fabrication.
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: (name) =>
       name === "metasploit"
         ? textContent("module completed")
         : textContent("22/tcp open ssh"),
   });
 
-  ollama.queueToolCall("metasploit", {});
-  ollama.queueFinal(
+  llm.queueToolCall("metasploit", {});
+  llm.queueFinal(
     "Here are the results:\n\n```\nNmap scan report for 127.0.0.1\n9999/tcp open leak\n```"
   );
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("Result: nmap found 22/tcp open (ssh).");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("Result: nmap found 22/tcp open (ssh).");
 
   const answer = await agent.run({
     sessionId: "s1",
@@ -1098,15 +1065,15 @@ test("an unfenced inline scan list is caught when its tool never ran", async (t)
   // markdown list of ports with no code fence and no "Result:" label. The
   // broadened detector must catch it, and with no runnable tool left the
   // fabrication is refused rather than nudged.
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     mcpHandler: () =>
       errorContent(
         "Error: Command failed: sudo -n /usr/bin/nmap\nsudo: a password is required"
       ),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal(
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal(
     "The nmap scan revealed the following open ports:\n" +
       "- 22/tcp (SSH)\n- 80/tcp (HTTP)\n- 443/tcp (HTTPS)"
   );
@@ -1123,18 +1090,18 @@ test("an unfenced inline scan list is caught when its tool never ran", async (t)
 
 test("the debug trace records dropped tool_calls and each decision", async (t) => {
   const events = [];
-  const { ollama, mcp, agent } = await setup(t, {
+  const { llm, mcp, agent } = await setup(t, {
     agentOptions: { debug: (event, data) => events.push([event, data]) },
   });
 
   // The model asks for two tools in one turn. The trace's model.turn event
   // records both -- the signal that was missing when this exact shape hid a
   // real bug (the loop dropping the second call) in a live run.
-  ollama.queueMultiToolCall([
+  llm.queueMultiToolCall([
     { name: "nmap", args: { target: "127.0.0.1" } },
     { name: "metasploit", args: {} },
   ]);
-  ollama.queueFinal("Result: nmap found 22/tcp open (ssh).");
+  llm.queueFinal("Result: nmap found 22/tcp open (ssh).");
 
   await agent.run({
     sessionId: "s1",
@@ -1154,9 +1121,9 @@ test("the debug trace records dropped tool_calls and each decision", async (t) =
 test("with no budget left, a fabrication is refused rather than nudged", async (t) => {
   // The continuation nudge needs a turn to spend. On the final step there is
   // none, so an invented result is refused outright.
-  const { ollama, agent } = await setup(t, { agentOptions: { maxSteps: 1 } });
+  const { llm, agent } = await setup(t, { agentOptions: { maxSteps: 1 } });
 
-  ollama.queueFinal(
+  llm.queueFinal(
     "The nmap scan revealed the following open ports:\n- 22/tcp (SSH)"
   );
 
@@ -1168,12 +1135,12 @@ test("with no budget left, a fabrication is refused rather than nudged", async (
 });
 
 test("summarising a tool's real output is not blocked", async (t) => {
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => textContent("22/tcp open ssh\n80/tcp open http"),
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("Result: nmap found 22/tcp open (ssh) and 80/tcp open (http).");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("Result: nmap found 22/tcp open (ssh) and 80/tcp open (http).");
 
   const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
@@ -1183,12 +1150,12 @@ test("summarising a tool's real output is not blocked", async (t) => {
 });
 
 test("a tool that returned nothing usable cannot ground its own report", async (t) => {
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
   });
 
-  ollama.queueToolCall("nmap", { target: "10.0.0.1" });
-  ollama.queueFinal("Result:\n```\n10.0.0.1\n443/tcp open https\n```");
+  llm.queueToolCall("nmap", { target: "10.0.0.1" });
+  llm.queueFinal("Result:\n```\n10.0.0.1\n443/tcp open https\n```");
 
   const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
@@ -1230,9 +1197,9 @@ test("ungroundedToolsIn matches names case-insensitively but never inside words"
 });
 
 test("a plain code fence with no scan signature is not treated as fabrication", async (t) => {
-  const { ollama, mcp, agent } = await setup(t);
+  const { llm, mcp, agent } = await setup(t);
 
-  ollama.queueFinal('Here is the config I recommend:\n```json\n{"ports": []}\n```');
+  llm.queueFinal('Here is the config I recommend:\n```json\n{"ports": []}\n```');
 
   const answer = await agent.run({ sessionId: "s-fence-benign", userGoal: "advise me" });
 
@@ -1242,9 +1209,9 @@ test("a plain code fence with no scan signature is not treated as fabrication", 
 });
 
 test("a 'Result:' label followed by non-scan prose is not treated as fabrication", async (t) => {
-  const { ollama, agent } = await setup(t);
+  const { llm, agent } = await setup(t);
 
-  ollama.queueFinal("Result: The host did not respond to any probe.");
+  llm.queueFinal("Result: The host did not respond to any probe.");
 
   const answer = await agent.run({ sessionId: "s-result-plain", userGoal: "scan it" });
 
@@ -1253,9 +1220,9 @@ test("a 'Result:' label followed by non-scan prose is not treated as fabrication
 });
 
 test("an unfenced udp signature is caught like a tcp one", async (t) => {
-  const { ollama, agent } = await setup(t);
+  const { llm, agent } = await setup(t);
 
-  ollama.queueFinal(
+  llm.queueFinal(
     "The scan found these open ports:\n- 53/udp (DNS)\n- 123/udp (NTP)"
   );
 
@@ -1267,42 +1234,13 @@ test("an unfenced udp signature is caught like a tcp one", async (t) => {
 });
 
 // -----------------------------------------------------------------------------
-// Ollama request timeout
+// LLM request timeout
 // -----------------------------------------------------------------------------
-
-test("a stalled Ollama request fails with a timeout that names itself", async (t) => {
-  // A server that accepts the request and never answers — what a non-streaming
-  // generation looks like on the wire while the model is still working.
-  const server = http.createServer(() => {});
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const { port } = server.address();
-  const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
-  t.after(async () => {
-    await new Promise((r) => server.close(r));
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  const agent = new Agent({
-    mcpClient: new MockMcpClient(() => textContent("ok")),
-    ollamaUrl: `http://127.0.0.1:${port}`,
-    model: "mshin",
-    tools: OLLAMA_TOOLS,
-    memory: new AgentMemory(dir),
-    ollamaTimeoutMs: 150,
-  });
-
-  // Before this, undici's 300s default produced a bare "fetch failed" with no
-  // hint that a timeout was involved — it killed two live eval runs at ~329s.
-  await assert.rejects(
-    agent.run({ sessionId: "s1", userGoal: "hello" }),
-    /timed out after 0s \(model 'mshin'\).*raise ollamaTimeoutMs/s
-  );
-});
 
 test("the request timeout is generous by default", async (t) => {
   const { agent } = await setup(t);
   // A single turn on a 70B can run for minutes; the default must not be tight.
-  assert.equal(agent.ollamaTimeoutMs, 600_000);
+  assert.equal(agent.llmTimeoutMs, 600_000);
 });
 
 // -----------------------------------------------------------------------------
@@ -1336,13 +1274,13 @@ test("SessionLogger writes append-only JSONL events", () => {
 test("agent logs session.start, tool calls, results, and session.end", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
   const logger = new SessionLogger(dir);
-  const { ollama, agent } = await setup(t, {
+  const { llm, agent } = await setup(t, {
     mcpHandler: () => textContent("PORT 22/tcp open ssh"),
     agentOptions: { sessionLogger: logger },
   });
 
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueFinal("Port 22 is open.");
+  llm.queueToolCall("nmap", { target: "127.0.0.1" });
+  llm.queueFinal("Port 22 is open.");
 
   await agent.run({ sessionId: "s-logged", userGoal: "scan localhost" });
 
@@ -1359,15 +1297,15 @@ test("agent logs session.start, tool calls, results, and session.end", async (t)
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("agent logs session.error when Ollama fails", async (t) => {
+test("agent logs session.error when the LLM fails", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "mshin-test-"));
   const logger = new SessionLogger(dir);
   const { agent } = await setup(t, {
     agentOptions: { sessionLogger: logger },
   });
 
-  // No responses queued -> the mock returns HTTP 500.
-  await assert.rejects(agent.run({ sessionId: "s-error", userGoal: "will fail" }), /Ollama returned 500/);
+  // No responses queued -> the mock throws.
+  await assert.rejects(agent.run({ sessionId: "s-error", userGoal: "will fail" }), /no queued response/);
 
   const events = readFileSync(join(dir, "sessions", "s-error.jsonl"), "utf8")
     .trim()
@@ -1375,7 +1313,7 @@ test("agent logs session.error when Ollama fails", async (t) => {
     .map((line) => JSON.parse(line));
 
   assert.ok(events.some((e) => e.type === "session.start"));
-  assert.ok(events.some((e) => e.type === "session.error" && /Ollama returned 500/.test(e.error)));
+  assert.ok(events.some((e) => e.type === "session.error" && /no queued response/.test(e.error)));
 
   rmSync(dir, { recursive: true, force: true });
 });

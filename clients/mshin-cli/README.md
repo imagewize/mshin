@@ -2,8 +2,8 @@
 
 This package contains two Node-based clients for the Machin Shin Node:
 
-- **`mshin`** — interactive terminal harness that connects a local Ollama instance to the Machin Shin Kali MCP server.
-- **`mshin-call`** — single-tool MCP caller. No Ollama, no model, no prompt; just call one tool and print the result.
+- **`mshin`** — interactive terminal harness that connects an LLM to the Machin Shin Kali MCP server. Supports Ollama (local) and OpenAI-compatible providers such as OpenAI, Mistral, and Kimi (Moonshot).
+- **`mshin-call`** — single-tool MCP caller. No LLM, no prompt; just call one tool and print the result.
 
 ## Install
 
@@ -17,32 +17,54 @@ npm install
 ### Features
 
 - Discovers tools from the MCP server.
-- Sends the user prompt to Ollama with [native tool support](https://docs.ollama.com/capabilities/tool-calling).
+- Sends the user prompt to an LLM with native tool support.
 - Executes tool calls on the Machin Shin Node and feeds results back to the model.
 - Runs a simple observe-decide-act loop until the model produces a final answer.
+- Swappable LLM backend: Ollama for fully-local operation, or an OpenAI-compatible API for cloud models.
 
 ### Usage
 
 ```bash
-# Connect to the default Node IP:
+# Local Ollama (default backend)
 mshin 192.168.1.100
-
-# Or run the client directly:
 ./index.js --node http://192.168.1.100:3000 --model mshin
 
-# Use a different model:
+# Use a different Ollama model:
 mshin --model llama3.3:70b 192.168.1.100
+
+# OpenAI-compatible provider (Kimi, Mistral, OpenAI, OpenRouter, etc.)
+export MSHIN_LLM_API_KEY=<key>
+mshin --backend kimi --model kimi-k2.7 --node http://192.168.1.100:3000
+mshin --backend mistral --model mistral-small-latest --node http://192.168.1.100:3000
+
+# Override the provider base URL
+mshin --backend openai --api-base https://api.openai.com/v1 --model gpt-4o
 
 # Authenticate to a Node that has MSHIN_NODE_TOKEN set:
 mshin --token <token> 192.168.1.100
 # or export MSHIN_NODE_TOKEN=<token> once and run mshin as usual
 ```
 
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `MSHIN_NODE_URL` | Default `--node` value |
+| `MSHIN_NODE_TOKEN` | Default `--token` value |
+| `MSHIN_LLM_BACKEND` | Default `--backend` (`ollama`) |
+| `MSHIN_LLM_API_BASE` | Default `--api-base` |
+| `MSHIN_LLM_API_KEY` | Default `--api-key` |
+| `MSHIN_LLM_TIMEOUT_MS` | Per-turn timeout in milliseconds (default 600000) |
+| `OPENAI_API_KEY` | Fallback API key for `--backend openai` |
+| `MISTRAL_API_KEY` | Fallback API key for `--backend mistral` |
+| `MOONSHOT_API_KEY` | Fallback API key for `--backend kimi` |
+
 ### Requirements
 
 - Node.js 20+
-- Ollama running locally with the requested model pulled.
-- The `mshin` model created from `configs/ollama-modelfile`.
+- A reachable Machin Shin Node.
+- For the Ollama backend: Ollama running locally with the requested model pulled, and the `mshin` model created from `configs/ollama-modelfile`.
+- For cloud backends: an API key exported in the environment or passed with `--api-key`.
 
 ## `mshin-call` — single-tool caller
 
@@ -72,19 +94,23 @@ mshin-call whois '{"target":"example.com"}'
 
 ## How the agent loop works
 
-`index.js` is the CLI shell (arg parsing, MCP connection, the readline
-prompt); `agent.js` is where the observe-decide-act loop actually lives, in
-`Agent.run()`. Each turn: send the message history plus the MCP `tools`
-array to Ollama's [`/api/chat`](https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-chat-completion),
-look at what comes back, act on it, repeat --
-up to `DEFAULT_MAX_STEPS` (25) turns before the loop gives up and asks the
-model to summarize what it found so far.
+`index.js` is the CLI shell (arg parsing, MCP connection, backend selection,
+the readline prompt); `agent.js` is where the observe-decide-act loop actually
+lives, in `Agent.run()`. Each turn: send the message history plus the MCP
+`tools` array to the configured LLM backend, look at what comes back, act on
+it, repeat -- up to `DEFAULT_MAX_STEPS` (25) turns before the loop gives up and
+asks the model to summarize what it found so far.
+
+The backend abstraction lives in `llm-client.js`. It normalizes tool-call
+responses and message history between Ollama's `/api/chat` and the
+OpenAI-compatible `/v1/chat/completions` shape, so `agent.js` stays
+provider-agnostic.
 
 A few things about that loop aren't obvious from skimming it:
 
-- **Every tool call in a turn is executed, in order.** Ollama's API lets a
-  response carry multiple `tool_calls`; the loop runs all of them rather than
-  keeping only the first. A live `recon-chain` run showed models emitting
+- **Every tool call in a turn is executed, in order.** The LLM response may
+  carry multiple `tool_calls`; the loop runs all of them rather than keeping
+  only the first. A live `recon-chain` run showed models emitting
   `whois` and `nmap` in one turn, and dropping the second call made the model
   believe the scan had already run. Honouring every call the model emits keeps
   the transcript faithful to what actually happened.
@@ -162,7 +188,8 @@ host-mounted volume inside a Lima guest, or on a shared path on the Core — set
 
 `eval-harness.js` runs a scripted set of prompts against one or more models and
 records measurable agent behaviour. Use it to compare `mistral-small`,
-`qwen3:32b`, `llama3.3:70b`, or any other Ollama model before deciding on
+`qwen3:32b`, `llama3.3:70b`, `mistral-small-latest`, `kimi-k2.7`, or any other
+model supported by the configured backend before deciding on
 hardware.
 
 ### Measured metrics
@@ -184,7 +211,8 @@ Create a JSON file like `eval-config.json`:
 ```json
 {
   "models": ["mshin", "mistral-small"],
-  "ollamaUrl": "http://localhost:11434",
+  "backend": "ollama",
+  "apiBase": "http://localhost:11434",
   "nodeUrl": "http://192.168.1.100:3000",
   "nodeToken": "<token>",
   "cases": [
@@ -228,10 +256,10 @@ node eval-harness.js -f csv -o ./eval-results eval-config.json
 ```
 
 Reports are written to `--output-dir` (default `./eval-results`). The harness
-connects to the same Node and Ollama URLs as the interactive CLI and
-auto-approves active tools when `approveActiveTools` is true. An unknown
-`--format` is rejected before the first model runs, so a typo cannot discard a
-finished suite.
+connects to the same Node URL as the interactive CLI, uses the same backend
+selection (`backend`, `apiBase`, `apiKey`), and auto-approves active tools when
+`approveActiveTools` is true. An unknown `--format` is rejected before the first
+model runs, so a typo cannot discard a finished suite.
 
 ### expectedTools and the exit code
 

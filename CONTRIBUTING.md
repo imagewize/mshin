@@ -122,8 +122,10 @@ mshin/
 ├── clients/
 │   └── mshin-cli/             # MCP client harness: interactive agent loop + single-tool caller
 │       ├── package.json
-│       ├── index.js           # interactive Ollama-driven agent (mshin)
+│       ├── index.js           # interactive LLM-driven agent (mshin)
 │       ├── call.js            # single-tool MCP caller (mshin-call)
+│       ├── llm-client.js      # pluggable LLM backends (Ollama, OpenAI-compatible)
+│       ├── llm-client.test.js
 │       ├── agent.js
 │       ├── agent.test.js
 │       ├── findings-memory.js
@@ -132,6 +134,8 @@ mshin/
 │       ├── eval-harness.js
 │       ├── eval-harness.test.js
 │       ├── eval-config.example.json
+│       ├── eval-config.multi-tool.example.json
+│       ├── eval-config.model-comparison.json
 │       └── README.md
 └── assets/
     └── logo.txt               # ASCII logo

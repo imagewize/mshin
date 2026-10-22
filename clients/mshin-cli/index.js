@@ -4,15 +4,44 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import readline from "node:readline";
 import { Agent, AgentMemory, askYesNo } from "./agent.js";
 import { SessionLogger } from "./session-logger.js";
+import { createLlmClient } from "./llm-client.js";
+import {
+  DEFAULT_LLM_BACKEND,
+  DEFAULT_OLLAMA_URL,
+  DEFAULT_OPENAI_API_BASE,
+  DEFAULT_MISTRAL_API_BASE,
+  DEFAULT_KIMI_API_BASE,
+} from "./config.js";
 
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
-const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "mshin";
+
+function defaultApiBase(backend) {
+  switch (backend) {
+    case "ollama":
+      return DEFAULT_OLLAMA_URL;
+    case "openai":
+      return DEFAULT_OPENAI_API_BASE;
+    case "mistral":
+      return DEFAULT_MISTRAL_API_BASE;
+    case "kimi":
+      return DEFAULT_KIMI_API_BASE;
+    default:
+      return "";
+  }
+}
 
 function parseArgs() {
   const args = process.argv.slice(2);
   let nodeUrl = DEFAULT_NODE_URL;
-  let ollamaUrl = DEFAULT_OLLAMA_URL;
+  let backend = process.env.MSHIN_LLM_BACKEND || DEFAULT_LLM_BACKEND;
+  let apiBase = process.env.MSHIN_LLM_API_BASE || "";
+  let apiKey =
+    process.env.MSHIN_LLM_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.MISTRAL_API_KEY ||
+    process.env.MOONSHOT_API_KEY ||
+    "";
   let model = DEFAULT_MODEL;
   let nodeToken = "";
 
@@ -21,8 +50,18 @@ function parseArgs() {
       case "--node":
         nodeUrl = args[++i];
         break;
+      case "--backend":
+        backend = args[++i];
+        break;
+      case "--api-base":
+        apiBase = args[++i];
+        break;
+      case "--api-key":
+        apiKey = args[++i];
+        break;
       case "--ollama":
-        ollamaUrl = args[++i];
+        backend = "ollama";
+        apiBase = args[++i];
         break;
       case "--model":
         model = args[++i];
@@ -36,8 +75,14 @@ function parseArgs() {
 
 Options:
   --node URL      Machin Shin Node MCP URL (default: ${DEFAULT_NODE_URL})
-  --ollama URL    Ollama base URL (default: ${DEFAULT_OLLAMA_URL})
-  --model NAME    Ollama model name (default: ${DEFAULT_MODEL})
+  --backend NAME  LLM backend: ollama, openai, mistral, kimi
+                  (default: ${DEFAULT_LLM_BACKEND}; env: MSHIN_LLM_BACKEND)
+  --api-base URL  Provider base URL (env: MSHIN_LLM_API_BASE)
+  --api-key KEY   Provider API key (env: MSHIN_LLM_API_KEY, OPENAI_API_KEY,
+                  MISTRAL_API_KEY, or MOONSHOT_API_KEY)
+  --ollama URL    Shortcut for --backend ollama --api-base URL
+                  (default: ${DEFAULT_OLLAMA_URL})
+  --model NAME    Model name (default: ${DEFAULT_MODEL})
   --token TOKEN   Bearer token for Node authentication (or set MSHIN_NODE_TOKEN)
 
 The positional NODE_IP argument can be used as a shortcut for --node.
@@ -52,10 +97,14 @@ The positional NODE_IP argument can be used as a shortcut for --node.
     }
   }
 
-  return { nodeUrl, ollamaUrl, model, nodeToken };
+  if (!apiBase) {
+    apiBase = defaultApiBase(backend);
+  }
+
+  return { nodeUrl, backend, apiBase, apiKey, model, nodeToken };
 }
 
-function mcpToolsToOllama(tools) {
+function mcpToolsToFunctionSchema(tools) {
   return tools.map((t) => ({
     type: "function",
     function: {
@@ -67,25 +116,43 @@ function mcpToolsToOllama(tools) {
 }
 
 async function main() {
-  const { nodeUrl, ollamaUrl, model, nodeToken: tokenArg } = parseArgs();
+  const {
+    nodeUrl,
+    backend,
+    apiBase,
+    apiKey,
+    model,
+    nodeToken: tokenArg,
+  } = parseArgs();
   // The flag wins over the environment; both are optional. When the Node has
   // MSHIN_NODE_TOKEN set, every MCP request must carry it as a bearer token.
   const authToken = tokenArg || process.env.MSHIN_NODE_TOKEN || "";
 
   console.log("Starting Machin Shin Core...");
-  console.log(`  Ollama:  ${ollamaUrl}`);
+  console.log(`  Backend: ${backend}`);
+  console.log(`  API:     ${apiBase}`);
   console.log(`  Model:   ${model}`);
   console.log(`  Node:    ${nodeUrl}`);
   console.log(`  Token:   ${authToken ? "provided" : "none"}`);
   console.log("");
 
-  // Verify Ollama is reachable.
+  const llmClient = createLlmClient(backend, {
+    model,
+    apiBase,
+    apiKey,
+    timeoutMs: parseInt(process.env.MSHIN_LLM_TIMEOUT_MS, 10) || undefined,
+  });
+
+  // Verify the LLM endpoint is reachable.
   try {
-    const res = await fetch(`${ollamaUrl}/api/tags`);
-    if (!res.ok) throw new Error("Ollama /api/tags returned non-OK");
+    await llmClient.verify();
   } catch (err) {
-    console.error(`[ERROR] Cannot reach Ollama at ${ollamaUrl}: ${err.message}`);
-    console.error("        Is 'ollama serve' running on the Core?");
+    console.error(`[ERROR] Cannot reach ${backend} at ${apiBase}: ${err.message}`);
+    if (backend === "ollama") {
+      console.error("        Is 'ollama serve' running on the Core?");
+    } else {
+      console.error("        Check the URL and API key.");
+    }
     process.exit(1);
   }
 
@@ -115,10 +182,10 @@ async function main() {
   }
 
   const mcpTools = await client.listTools();
-  const ollamaTools = mcpToolsToOllama(mcpTools.tools);
+  const functionTools = mcpToolsToFunctionSchema(mcpTools.tools);
 
-  console.log(`Connected. Node is exposing ${ollamaTools.length} tool(s):`);
-  console.log(`  ${ollamaTools.map((t) => t.function.name).join(", ")}`);
+  console.log(`Connected. Node is exposing ${functionTools.length} tool(s):`);
+  console.log(`  ${functionTools.map((t) => t.function.name).join(", ")}`);
   console.log("");
   const dataDir = process.env.MSHIN_DATA_DIR;
   const memory = new AgentMemory(dataDir);
@@ -129,9 +196,9 @@ async function main() {
 
   const agent = new Agent({
     mcpClient: client,
-    ollamaUrl,
+    llmClient,
     model,
-    tools: ollamaTools,
+    tools: functionTools,
     memory,
     sessionLogger,
   });

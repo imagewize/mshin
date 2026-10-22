@@ -1,6 +1,7 @@
 {
   "models": ["mshin", "mistral-small"],
-  "ollamaUrl": "http://localhost:11434",
+  "backend": "ollama",
+  "apiBase": "http://localhost:11434",
   "nodeUrl": "http://192.168.1.100:3000",
   "cases": [
     {

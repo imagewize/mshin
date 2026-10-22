@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-22
+
+Multi-backend `mshin-cli` release. The interactive agent loop is no longer tied to Ollama; it now supports Ollama (local) and OpenAI-compatible providers (OpenAI, Mistral, Kimi/Moonshot, OpenRouter, etc.) through a single `--backend` flag.
+
+### Added
+
+- **`llm-client.js`** — pluggable LLM backend abstraction in `clients/mshin-cli/`. Converts provider-agnostic messages and tool calls to each backend's wire format and normalizes responses back to a common shape.
+- **`OllamaClient`** — existing local-Ollama behavior, moved from inline `postJson` calls in `agent.js` into `llm-client.js`.
+- **`OpenAiCompatibleClient`** — supports any `/v1/chat/completions` provider. Parses stringified `tool_calls` arguments, preserves `tool_call_id` on tool-result messages, and handles timeouts.
+- **`createLlmClient` factory** — selects the right client from `ollama`, `openai`, `mistral`, or `kimi` backend names.
+- **`llm-client.test.js`** — wire-format and normalization tests for Ollama and OpenAI-compatible clients.
+
+### Changed
+
+- **`mshin-cli` argument parsing** (`index.js`) now accepts `--backend`, `--api-base`, and `--api-key`, plus the environment variables `MSHIN_LLM_BACKEND`, `MSHIN_LLM_API_BASE`, `MSHIN_LLM_API_KEY`, and `MSHIN_LLM_TIMEOUT_MS`. The `--ollama` flag is retained as a shortcut for `--backend ollama --api-base <url>`.
+- **`Agent` constructor** now takes an `llmClient` instead of an `ollamaUrl`; `queryOllama` is replaced by `queryLlm`. Tool-call IDs are preserved so OpenAI-compatible backends receive correct `tool_call_id` values.
+- **`eval-harness.js`** reads `backend`, `apiBase`, and `apiKey` from the config (while keeping `ollamaUrl` as a backwards-compatible alias) and creates the appropriate LLM client per model run.
+- **Eval config examples** updated to the new `backend`/`apiBase` keys.
+- **`clients/mshin-cli/README.md`** documents the multi-backend usage, environment variables, and eval-harness config changes.
+- **`CONTRIBUTING.md`** project structure lists `llm-client.js` and the eval-config files.
+- **Package versions aligned** to `0.27.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+
+### Verified
+
+- `npm test` in `clients/mshin-cli/` passes 129/129 cases.
+- `npm test` in `servers/src/kali/` passes 71/71 cases (server unchanged; pre-commit check).
+
 ## [0.26.0] - 2026-10-22
 
 Single-tool MCP caller release. The existing `mshin` CLI is an interactive Ollama-driven agent loop; this release adds `mshin-call`, a lightweight companion that calls one Node tool from the command line with no model and no prompt.
@@ -1952,7 +1979,8 @@ hosts (Core for inference, Node for tool execution).
   `docs/architecture.md`, and `docs/cybersecurity-agent-roadmap.md` so borders
   line up in a monospace font.
 
-[Unreleased]: https://github.com/imagewize/mshin/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/imagewize/mshin/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/imagewize/mshin/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/imagewize/mshin/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/imagewize/mshin/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/imagewize/mshin/compare/v0.24.0...v0.24.1

@@ -10,7 +10,14 @@ export const DEFAULT_CONTEXT_TOKEN_BUDGET = 24_000;
 // One model turn, not one run. Ten minutes is generous for an 8B on a laptop
 // and still finite, so a genuinely wedged request surfaces instead of hanging
 // the operator's session.
-export const DEFAULT_OLLAMA_TIMEOUT_MS = 600_000;
+export const DEFAULT_LLM_TIMEOUT_MS = 600_000;
+
+// Default LLM backends for the multi-backend CLI.
+export const DEFAULT_LLM_BACKEND = "ollama";
+export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
+export const DEFAULT_OPENAI_API_BASE = "https://api.openai.com/v1";
+export const DEFAULT_MISTRAL_API_BASE = "https://api.mistral.ai/v1";
+export const DEFAULT_KIMI_API_BASE = "https://api.moonshot.cn/v1";
 
 // Long tool results (nmap/masscan/whois output) can dominate the context window.
 // Compression keeps the first and last N lines and omits the middle, rather

@@ -3,16 +3,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
-import http from "node:http";
-import https from "node:https";
-
 import { SessionLogger } from "./session-logger.js";
 import { FindingsMemory } from "./findings-memory.js";
 import {
   DEFAULT_MAX_STEPS,
   DEFAULT_MAX_HISTORY_MESSAGES,
   DEFAULT_CONTEXT_TOKEN_BUDGET,
-  DEFAULT_OLLAMA_TIMEOUT_MS,
+  DEFAULT_LLM_TIMEOUT_MS,
   DEFAULT_MAX_TOOL_RESULT_LINES,
   DEFAULT_TOOL_RESULT_HEAD_LINES,
   DEFAULT_TOOL_RESULT_TAIL_LINES,
@@ -388,72 +385,6 @@ function looksLikeFabricatedToolOutput(content) {
 }
 
 /**
- * POST JSON and read the whole response body.
- *
- * Deliberately node:http rather than fetch. With `stream: false` Ollama sends
- * no response headers until the entire generation has finished, and undici —
- * which backs global fetch — gives up after a default headersTimeout of 300s
- * and throws a bare `fetch failed` with no indication a timeout occurred. A
- * single turn on a large model passes 300s easily: it killed two evaluation
- * runs here at ~329s, at the same step, on two different models. Going through
- * node:http lets the limit be set deliberately and reported for what it is.
- */
-function postJson(url, body, timeoutMs, model) {
-  const payload = JSON.stringify(body);
-  const target = new URL(url);
-  const transport = target.protocol === "https:" ? https : http;
-
-  return new Promise((resolve, reject) => {
-    const req = transport.request(
-      target,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload),
-        },
-      },
-      (res) => {
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`Ollama returned ${res.statusCode}: ${data}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(data));
-          } catch (err) {
-            reject(new Error(`Ollama returned unparseable JSON: ${err.message}`));
-          }
-        });
-      }
-    );
-
-    // An inactivity timeout, which for a non-streaming generation is the whole
-    // wait: nothing arrives on the socket until the model is done.
-    if (timeoutMs > 0) {
-      req.setTimeout(timeoutMs, () => {
-        req.destroy(
-          new Error(
-            `Ollama request timed out after ${Math.round(timeoutMs / 1000)}s ` +
-              `(model '${model}'). One turn on a large model can take longer ` +
-              "than this; raise ollamaTimeoutMs if that is expected."
-          )
-        );
-      });
-    }
-
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
-  });
-}
-
-/**
  * Persistent session memory for the Machin Shin agent.
  *
  * Sessions are stored as JSON so the operator can review, delete, or migrate
@@ -531,13 +462,13 @@ function makeDebugLogger() {
 }
 
 /**
- * Cybersecurity agent that drives the observe-decide-act loop between Ollama
+ * Cybersecurity agent that drives the observe-decide-act loop between an LLM
  * and the Machin Shin Node MCP server.
  */
 class Agent {
   constructor({
     mcpClient,
-    ollamaUrl,
+    llmClient,
     model,
     tools,
     memory,
@@ -546,7 +477,7 @@ class Agent {
     maxSteps = DEFAULT_MAX_STEPS,
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
-    ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
+    llmTimeoutMs = DEFAULT_LLM_TIMEOUT_MS,
     maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
     toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
     toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
@@ -555,7 +486,7 @@ class Agent {
     debug = null,
   }) {
     this.mcpClient = mcpClient;
-    this.ollamaUrl = ollamaUrl;
+    this.llmClient = llmClient;
     this.model = model;
     this.tools = tools;
     this.memory = memory;
@@ -564,7 +495,7 @@ class Agent {
     this.maxSteps = maxSteps;
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
-    this.ollamaTimeoutMs = ollamaTimeoutMs;
+    this.llmTimeoutMs = llmTimeoutMs;
     this.maxToolResultLines = maxToolResultLines;
     this.toolResultHeadLines = toolResultHeadLines;
     this.toolResultTailLines = toolResultTailLines;
@@ -664,7 +595,7 @@ class Agent {
         this.debug("step", { n: step + 1, of: this.maxSteps });
         messages = this.compactContext(messages);
 
-        const response = await this.queryOllama(messages);
+        const response = await this.queryLlm(messages);
         const assistantMessage = response.message;
         messages.push(assistantMessage);
 
@@ -795,6 +726,7 @@ class Agent {
           });
           messages.pop();
           const call = {
+            id: `narrated-${narrated.name}-${Date.now()}`,
             function: { name: narrated.name, arguments: narrated.args },
           };
           messages.push({ role: "assistant", content: "", tool_calls: [call] });
@@ -813,6 +745,7 @@ class Agent {
         for (const call of callsToRun) {
           const name = call.function?.name;
           const args = call.function?.arguments || {};
+          const toolCallId = call.id || `${name}-${Date.now()}`;
 
           if (!this.isValidTool(name)) {
             this.debug("tool.invalid", { name });
@@ -823,6 +756,7 @@ class Agent {
             messages.push({
               role: "tool",
               name,
+              tool_call_id: toolCallId,
               content: `Tool '${name}' is not available on this Node.`,
             });
             continue;
@@ -841,6 +775,7 @@ class Agent {
             messages.push({
               role: "tool",
               name,
+              tool_call_id: toolCallId,
               content: unavailableTools.get(name),
             });
             continue;
@@ -873,6 +808,7 @@ class Agent {
               messages.push({
                 role: "tool",
                 name,
+                tool_call_id: toolCallId,
                 content: `User declined to run active tool '${name}'.`,
               });
               continue;
@@ -923,13 +859,13 @@ class Agent {
               `Tool '${name}' cannot run on this Node: ${text}\n` +
               "This tool is unavailable for this run; do not retry it.";
             unavailableTools.set(name, toolResult);
-            messages.push({ role: "tool", name, content: toolResult });
+            messages.push({ role: "tool", name, tool_call_id: toolCallId, content: toolResult });
             unavailableThisTurn.push(name);
             continue;
           }
 
           if (!result.isError) succeededTools.add(name);
-          messages.push({ role: "tool", name, content: text });
+          messages.push({ role: "tool", name, tool_call_id: toolCallId, content: text });
         }
 
         if (unavailableThisTurn.length > 0) {
@@ -949,7 +885,7 @@ class Agent {
       const budgetMessage =
         "Step budget exhausted. Here is a summary of what was discovered:";
       messages.push({ role: "user", content: budgetMessage });
-      const final = await this.queryOllama(messages);
+      const final = await this.queryLlm(messages);
       messages.push(final.message);
       this.memory.storeSession(sessionId, messages);
       this.sessionLogger?.write(sessionId, {
@@ -971,25 +907,8 @@ class Agent {
     }
   }
 
-  async queryOllama(messages) {
-    const body = {
-      model: this.model,
-      messages,
-      tools: this.tools,
-      stream: false,
-      options: {
-        temperature: 0,
-        top_p: 0.9,
-        top_k: 40,
-      },
-    };
-
-    return postJson(
-      `${this.ollamaUrl}/api/chat`,
-      body,
-      this.ollamaTimeoutMs,
-      this.model
-    );
+  async queryLlm(messages) {
+    return this.llmClient.chat(messages, this.tools);
   }
 
   isValidTool(name) {
