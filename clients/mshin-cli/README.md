@@ -1,13 +1,9 @@
-# Machin Shin CLI Client
+# Machin Shin CLI Clients
 
-An interactive terminal harness that connects a local Ollama instance to the Machin Shin Kali MCP server.
+This package contains two Node-based clients for the Machin Shin Node:
 
-## Features
-
-- Discovers tools from the MCP server.
-- Sends the user prompt to Ollama with [native tool support](https://docs.ollama.com/capabilities/tool-calling).
-- Executes tool calls on the Machin Shin Node and feeds results back to the model.
-- Runs a simple observe-decide-act loop until the model produces a final answer.
+- **`mshin`** — interactive terminal harness that connects a local Ollama instance to the Machin Shin Kali MCP server.
+- **`mshin-call`** — single-tool MCP caller. No Ollama, no model, no prompt; just call one tool and print the result.
 
 ## Install
 
@@ -16,7 +12,16 @@ cd /opt/mshin/clients/mshin-cli
 npm install
 ```
 
-## Usage
+## `mshin` — interactive agent loop
+
+### Features
+
+- Discovers tools from the MCP server.
+- Sends the user prompt to Ollama with [native tool support](https://docs.ollama.com/capabilities/tool-calling).
+- Executes tool calls on the Machin Shin Node and feeds results back to the model.
+- Runs a simple observe-decide-act loop until the model produces a final answer.
+
+### Usage
 
 ```bash
 # Connect to the default Node IP:
@@ -33,11 +38,37 @@ mshin --token <token> 192.168.1.100
 # or export MSHIN_NODE_TOKEN=<token> once and run mshin as usual
 ```
 
-## Requirements
+### Requirements
 
 - Node.js 20+
 - Ollama running locally with the requested model pulled.
 - The `mshin` model created from `configs/ollama-modelfile`.
+
+## `mshin-call` — single-tool caller
+
+Use this when you already know which tool you want and just need the raw output.
+
+### Usage
+
+```bash
+# List tools exposed by the Node
+mshin-call --list --node http://192.168.1.100:3000 --token <token>
+
+# Call one tool with JSON arguments
+mshin-call --node http://192.168.1.100:3000 --token <token> \
+  nmap '{"target":"127.0.0.1","flags":["-sV"]}'
+
+# Defaults and token can come from the environment
+export MSHIN_NODE_URL=http://192.168.1.100:3000
+export MSHIN_NODE_TOKEN=<token>
+mshin-call whois '{"target":"example.com"}'
+```
+
+### Requirements
+
+- Node.js 20+
+- A reachable Machin Shin Node.
+- The Node's bearer token if `MSHIN_NODE_TOKEN` is configured on the server.
 
 ## How the agent loop works
 
