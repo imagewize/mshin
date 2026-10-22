@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`dnsenum` on the Docker Node** no longer fails unconditionally. Two causes, both measured 2026-10-22 against a remote domain: the stock ~1500-entry subdomain wordlist cannot finish a brute force through a container DNS forwarder inside any sane per-call timeout (280s+ and still running), and dnsenum exits 30 when it cannot write `<domain>_ips.txt` to its working directory — which is read-only in the image — so the non-zero exit failed the call even when the scan ran. The handler now defaults to the shipped `wordlists/subdomains.txt` (~50 common subdomains; pass `-f <file>` in options for a deeper list), runs from the tmp dir, and uses the full default timeout instead of 60s.
+
+### Changed
+
+- **Per-tool timeouts on the MCP Node** (`servers/src/kali/tools.js`): `nmap` gets a 600s ceiling and `nikto`/`wpscan` 900s — a `-p-` scan of a firewalled host, nikto's full default test set, and `wpscan --enumerate` against a remote site all outgrew the 300s default (measured against a remote VPS through the Docker Node). `DEFAULT_TIMEOUT_MS` stays the floor; raising `MSHIN_TOOL_TIMEOUT_MS` raises the floor for every tool, and the higher value always applies. `runTool` now reports a timeout as such instead of a bare `Command failed`, and accepts a per-call working directory.
+- **`nikto` accepts an `options` parameter** (e.g. `-Tuning 1,2,3`), guarded by the same shell-injection checks as every other tool argument, so remote scans can be trimmed to fit the timeout.
+
 ## [0.26.0] - 2026-10-22
 
 Single-tool MCP caller release. The existing `mshin` CLI is an interactive Ollama-driven agent loop; this release adds `mshin-call`, a lightweight companion that calls one Node tool from the command line with no model and no prompt.
