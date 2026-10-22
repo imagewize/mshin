@@ -12,6 +12,9 @@
 #   scripts/setup_mcp_auth.sh              # generate a new token everywhere
 #   scripts/setup_mcp_auth.sh --check      # verify existing tokens match
 #   scripts/setup_mcp_auth.sh --token T    # use the token you already have
+#   scripts/setup_mcp_auth.sh --url U      # Node URL for OpenCode (default
+#                                          # http://localhost:3001/mcp, or
+#                                          # $MSHIN_NODE_URL)
 #
 # The script writes:
 #   - configs/mshin-node.env                (Docker Node)
@@ -29,7 +32,19 @@ OPENCODE_ENV="${HOME}/.config/opencode/.env"
 
 MODE="setup"
 PROVIDED_TOKEN=""
+NODE_URL="${MSHIN_NODE_URL:-http://localhost:3001/mcp}"
 WRITE_OPENCODE_ENV="${WRITE_OPENCODE_ENV:-yes}"
+
+mask_token() {
+    local token="$1"
+    if [ -z "$token" ]; then
+        echo "<not set>"
+    elif [ "${#token}" -le 8 ]; then
+        echo "****"
+    else
+        echo "${token:0:4}...${token: -4}"
+    fi
+}
 
 token_from_file() {
     local file="$1"
@@ -63,16 +78,18 @@ update_env_file() {
 
 patch_opencode_config() {
     local token="$1"
+    local node_url="$2"
     local config_file="${HOME}/.config/opencode/opencode.jsonc"
 
     mkdir -p "$(dirname "$config_file")"
     chmod 700 "$(dirname "$config_file")" 2>/dev/null || true
 
-    python3 - "$config_file" "$token" <<'PYEOF'
+    python3 - "$config_file" "$token" "$node_url" <<'PYEOF'
 import json, os, re, sys
 
 config_file = sys.argv[1]
 token = sys.argv[2]
+node_url = sys.argv[3]
 
 data = {}
 if os.path.exists(config_file):
@@ -93,7 +110,7 @@ mcp = data.setdefault('mcp', {})
 servers = mcp.setdefault('servers', {})
 servers['mshin'] = {
     'type': 'remote',
-    'url': 'http://localhost:3001/mcp',
+    'url': node_url,
     'oauth': False,
     'headers': {
         'Authorization': f'Bearer {token}'
@@ -137,7 +154,7 @@ print_config_snippets() {
     cat <<EOF
   "mshin": {
     "type": "remote",
-    "url": "http://localhost:3001/mcp",
+    "url": "${NODE_URL}",
     "oauth": false,
     "headers": {
       "Authorization": "Bearer ${token}"
@@ -166,11 +183,11 @@ check_tokens() {
     vibe_token="$(token_from_file "$VIBE_ENV" MSHIN_NODE_TOKEN)"
     opencode_token="$(token_from_file "$OPENCODE_ENV" MSHIN_NODE_TOKEN)"
 
-    echo "Token sources:"
-    echo "  Docker env file:  ${docker_token:-<not set>}"
-    echo "  Vibe env file:    ${vibe_token:-<not set>}"
-    echo "  OpenCode env file:${opencode_token:-<not set>}"
-    echo "  Shell env:        ${shell_token:-<not set>}"
+    echo "Token sources (masked):"
+    echo "  Docker env file:  $(mask_token "$docker_token")"
+    echo "  Vibe env file:    $(mask_token "$vibe_token")"
+    echo "  OpenCode env file:$(mask_token "$opencode_token")"
+    echo "  Shell env:        $(mask_token "$shell_token")"
 
     local all="${docker_token}${vibe_token}${opencode_token}${shell_token}"
     if [ -z "$all" ]; then
@@ -213,8 +230,12 @@ while [ $# -gt 0 ]; do
             PROVIDED_TOKEN="$2"
             shift 2
             ;;
+        --url)
+            NODE_URL="$2"
+            shift 2
+            ;;
         --help|-h)
-            sed -n '2,14p' "$0"
+            sed -n '2,18p' "$0"
             exit 0
             ;;
         *)
@@ -246,7 +267,7 @@ if [ "$WRITE_OPENCODE_ENV" != "no" ]; then
     update_env_file "$OPENCODE_ENV" MSHIN_NODE_TOKEN "$TOKEN" "Machin Shin Node bearer token for OpenCode"
 fi
 
-patch_opencode_config "$TOKEN"
+patch_opencode_config "$TOKEN" "$NODE_URL"
 
 echo "[OK] MSHIN_NODE_TOKEN synchronized."
 print_config_snippets "$TOKEN"

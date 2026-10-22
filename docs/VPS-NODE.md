@@ -81,9 +81,12 @@ docker compose -f configs/compose.yaml up -d --force-recreate
 ```
 
 From your machine, point Vibe or OpenCode at `http://<VPS_IP>:3000/mcp` with
-the same `MSHIN_NODE_TOKEN`. The scope allowlist rejects anything outside the
-engagement before a tool runs, and the VPS firewall should restrict `:3000` to
-your own IP. Never set `MSHIN_ALLOWED_TARGETS=0.0.0.0/0` for a client scan.
+the same `MSHIN_NODE_TOKEN`. On the client machine, sync the token and patch
+the OpenCode config with `scripts/setup_mcp_auth.sh --url http://<VPS_IP>:3000/mcp`
+(run it from a checkout of this repo). The scope allowlist rejects anything
+outside the engagement before a tool runs, and the VPS firewall should
+restrict `:3000` to your own IP. Never set `MSHIN_ALLOWED_TARGETS=0.0.0.0/0`
+for a client scan.
 
 ## Troubleshooting
 
@@ -104,7 +107,7 @@ your own IP. Never set `MSHIN_ALLOWED_TARGETS=0.0.0.0/0` for a client scan.
 ## Changelog
 
 - **2026-10-21** — Guide created alongside the discovery-honesty work (0.22.0): the fabrication guard, the `arp-scan` tool, and the host-side `scripts/lan_inventory.sh`. The "VPS sees everything" assumption is called out as false where it is false.
-- **2026-10-22** — Added "Scanning client sites from a VPS" section: scope the Node with `MSHIN_ALLOWED_TARGETS`, keep the token and firewall tight, and point Vibe/OpenCode at the VPS.
+- **2026-10-22** — Added "Scanning client sites from a VPS" section: scope the Node with `MSHIN_ALLOWED_TARGETS`, keep the token and firewall tight, and point Vibe/OpenCode at the VPS. `setup_mcp_auth.sh --url` now handles the VPS URL in the OpenCode config.
 
 ## See Also
 
