@@ -77,7 +77,10 @@ provision:
   # ffuf and john from various sources. The other three (metasploit, searchsploit,
   # enum4linux) come from their upstream vendors in a later block -- Kali
   # packages them, but none is Kali-only, and none needs Kali's repo grafted onto
-  # Debian (that part is still unsupported). Keep this list, the sudoers
+  # Debian (that part is still unsupported). wpscan is the one true Kali-only
+  # tool: it has no Debian package (and is not worth a Ruby gem install in a
+  # guest), so the unit's --tools flag below deliberately leaves it out -- a
+  # Debian guest runs every tool except wpscan. Keep this list, the sudoers
   # allowlist and the unit's --tools flag below in sync; see the tool-list
   # invariant in AGENTS.md.
   - mode: system

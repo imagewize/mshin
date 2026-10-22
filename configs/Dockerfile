@@ -20,7 +20,7 @@ FROM kalilinux/kali-rolling
 # Docker, the setup script's apt list *and* its sudoers allowlist both
 # collapse into this one list — the container needs no sudo at all, so the
 # "entry people forget" no longer exists.
-ARG KALI_TOOLS="nmap metasploit-framework exploitdb nikto whois tshark hydra sqlmap gobuster masscan dirb arping arp-scan dnsenum enum4linux ffuf john"
+ARG KALI_TOOLS="nmap metasploit-framework exploitdb nikto whois tshark hydra sqlmap gobuster masscan dirb arping arp-scan dnsenum enum4linux ffuf john wpscan"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -63,4 +63,4 @@ COPY servers/src/kali/ ./
 ENV HOME=/tmp
 
 # Keep this identical to the --tools flag in configs/mcp-kali.service.
-CMD ["node", "index.js", "--tools", "nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john"]
+CMD ["node", "index.js", "--tools", "nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan"]

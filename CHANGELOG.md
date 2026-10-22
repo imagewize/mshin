@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`wpscan` tool on the Node.** WordPress enumeration from the outside: WordPress version, themes, plugins, users and backups, plus known-vulnerability flagging. Same shape as the other network tools — `url` (target-scoped), optional `enumerate` (e.g. `u,vp,vt`) and `options`, all behind the `assertSafe` guards. Full vulnerability data needs `WPSCAN_API_TOKEN` in the Node's environment; without it the scan still enumerates and reports fewer vulnerabilities. On the bare-metal Node it runs as the service user (like `tshark`, `dirb`, `ffuf`): it is a plain network scanner, and sudo's `HOME=/root` would break its `$HOME/.wpscan` cache — so it has no sudoers entry. Docker: `wpscan` joined `KALI_TOOLS` and the `CMD` tool list. Debian (Lima) has no `wpscan` package, so the Lima unit's `--tools` flag deliberately leaves it out — the tool list invariant is otherwise updated in full (tools.js, setup script, systemd unit, Dockerfile, server README, and the example `--tools` lists in `docs/SETUP.md`/`KALI-OPENLLM.md`, which also regained the previously missing `arp-scan`).
+
 ## [0.24.1] - 2026-10-22
 
 Compose-project naming patch, born from a live Docker Desktop session: the Containers view grouped the Node under the compose file's directory name ("configs"), which read like a config dump rather than the Node. One top-level line pins the project name; the running stack was moved over and re-verified end to end.

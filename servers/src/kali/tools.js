@@ -92,6 +92,9 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
   // its $HOME/.cache/dirb resume dump on every run, and ffuf fails creating
   // $HOME/.config/ffuf on its first. Neither needs root, and unsudoed they
   // inherit the service user's writable home.
+  // wpscan is excluded for the same reason: it caches its database under
+  // $HOME/.wpscan, and it is a plain network scanner that needs no
+  // privileges.
   const needsSudo = useSudo && process.getuid && process.getuid() !== 0;
   const cmd = needsSudo ? "sudo" : bin;
   const cmdArgs = needsSudo ? ["-n", bin, ...args] : args;
@@ -786,6 +789,49 @@ const tools = [
         args.push(...options.split(/\s+/));
       }
       const output = await runTool("john", args, 300_000);
+      return { content: [{ type: "text", text: output }] };
+    },
+  },
+  {
+    name: "wpscan",
+    description:
+      "Run WPScan against a WordPress site: enumerate the WordPress version, " +
+      "themes, plugins, users and backups, and flag known vulnerabilities in " +
+      "them. Set WPSCAN_API_TOKEN in the Node's environment for full " +
+      "vulnerability data — without one the scan still enumerates but reports " +
+      "fewer vulnerabilities.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "WordPress site URL, e.g. 'http://192.168.1.100' or 'https://example.com/blog'.",
+        },
+        enumerate: {
+          type: "string",
+          description:
+            "Comma-separated enumeration targets, e.g. 'vp,vt,u' (vulnerable plugins, vulnerable themes, users). Default enumerates nothing.",
+        },
+        options: {
+          type: "string",
+          description: "Additional WPScan options, e.g. '--threads 10 --random-user-agent'.",
+        },
+      },
+      required: ["url"],
+    },
+    handler: async ({ url, enumerate, options }) => {
+      assertSafe(url, "url");
+      assertTargetInScope(url, "url");
+      const args = ["--no-banner", "--url", url];
+      if (enumerate) {
+        assertSafe(enumerate, "enumerate");
+        args.push("--enumerate", enumerate);
+      }
+      if (options) {
+        assertSafe(options, "options");
+        args.push(...options.split(/\s+/));
+      }
+      const output = await runTool("wpscan", args, 300_000, { useSudo: false });
       return { content: [{ type: "text", text: output }] };
     },
   },

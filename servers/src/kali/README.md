@@ -16,10 +16,12 @@ A small [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server t
 - `masscan`
 - `dirb`
 - `arping`
+- `arp-scan`
 - `dnsenum`
 - `enum4linux`
 - `ffuf`
 - `john`
+- `wpscan`
 
 ## Install
 
@@ -31,7 +33,7 @@ npm install
 ## Run
 
 ```bash
-node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,dnsenum,enum4linux,ffuf,john
+node index.js --tools nmap,metasploit,searchsploit,nikto,whois,tshark,hydra,sqlmap,gobuster,masscan,dirb,arping,arp-scan,dnsenum,enum4linux,ffuf,john,wpscan
 ```
 
 The server listens on port `3000` by default (override with `MSHIN_NODE_PORT`).

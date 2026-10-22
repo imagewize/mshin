@@ -27,6 +27,7 @@ export const TOOL_PATHS = {
   enum4linux: "/usr/bin/enum4linux",
   ffuf: "/usr/bin/ffuf",
   john: "/usr/bin/john",
+  wpscan: "/usr/bin/wpscan",
 };
 
 // Default timeout for any single tool invocation.
