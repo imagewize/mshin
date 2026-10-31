@@ -7,11 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-31
+
+Client–server contract release, born from a live Vibe + VPS Node session: long
+scans died client-side at the MCP SDK's 60s default while the Node was still
+scanning, and nmap results arrived as a raw text string that every client had
+to parse itself. Clients now carry an explicit request timeout, and the nmap
+tool returns parsed `structuredContent` next to the text.
+
 ### Added
 
 - **Structured nmap results** (`servers/src/kali/tools.js`). The nmap handler now returns the parsed report as MCP `structuredContent` (hosts with ports/protocol/state/service/version) alongside the usual text, via a new exported `parseNmapText()`. nmap's own `-oJ` JSON output is deliberately not used — Kali's nmap 7.991 parses `-oJ` as `-oN` with filename `J` (verified live on the Node), so the text table is parsed instead; it is stable across nmap builds. Covered by tests.
 - **Explicit MCP request timeout on the client** (`clients/mshin-cli/config.js`, `agent.js`, `call.js`). Every `callTool` now passes `{ timeout: mcpRequestTimeoutMs }`; previously the MCP SDK's 60s `DEFAULT_REQUEST_TIMEOUT_MSEC` applied, so any scan longer than a minute (e.g. `nmap -p-`, which the Node allows up to 600s) died client-side with a transport error while the server was still scanning. New `DEFAULT_MCP_REQUEST_TIMEOUT_MS` (960s — the highest built-in server ceiling plus margin), overridable with `MSHIN_MCP_TIMEOUT_MS`; `mshin-call` also gets a `--timeout MS` flag. Agent constructor takes `mcpRequestTimeoutMs`.
 - **`mshin-call` prints `structuredContent`** as pretty JSON after the text content when a tool returns it.
+
+### Changed
+
+- **Package versions aligned** to `0.28.0` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+- **`README.md`** — the Vibe/OpenCode diagrams and the live-run caveat said "16 Kali tools"; the Node exposes 19 (the contract test pins them). Quick Start gains the `mshin-call` one-liner, and Features documents structured results and the client timeout.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes 75/75 (72 pre-branch plus 3 new `parseNmapText` cases); `npm test` in `clients/mshin-cli/` passes 137/137 (135 pre-branch plus 2 new MCP-timeout cases).
+- Live: the real nmap handler executed against `127.0.0.1` with the actual nmap binary returned the text report plus `structuredContent` JSON (22/80/443 open with services and versions parsed; a two-host `targets` call parsed both hosts).
+- Live SDK check: `client.callTool(params, undefined, { timeout: 1000 })` against a 3s tool aborted at ~1s with `MCP error -32001: Request timed out`; without options the 60s default applies — confirming the wiring the agent and `mshin-call` now use.
+- **Not verified:** against the deployed Node — the server only serves `structuredContent` after this release is rolled out, and the Vibe connector's own request timeout is Vibe-side, not this repo's.
 
 ## [0.27.0] - 2026-10-31
 
