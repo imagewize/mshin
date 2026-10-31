@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **SYN-proxy inflation guard on the nmap handler** (`servers/src/kali/tools.js`). A firewall that answers every SYN on behalf of the target (cloud-provider edge, fail2ban-style tarpits) inflates a port scan to hundreds of `tcpwrapped` / guessed-service "open" ports, and the version probes on those phantom ports are what burn the scan timeout. When a host reports ≥ 30 open ports of which ≥ 80% are artifacts (`tcpwrapped`, or a service ending in `?` with no version), the handler now appends a `NOTE (syn-proxy suspected)` annotation to the text result and sets `synProxySuspected` / `synProxyNote` on `structuredContent` — naming the confirmed ports and pointing at the targeted `-p` re-scan instead of a refusal, so the real ports in the same report are not discarded. Measured against a Hetzner-hosted site: top-1000 `-sV` reported 354 open ports, 351 artifacts, 3 real (22/80/443). Exported as `detectSynProxyInflation()`; covered by tests.
+
 ## [0.28.0] - 2026-10-31
 
 Client–server contract release, born from a live Vibe + VPS Node session: long

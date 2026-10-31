@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, parseNmapText, assertDiscoveryNotFabricated } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, parseNmapText, assertDiscoveryNotFabricated, detectSynProxyInflation } from "./tools.js";
 import { isTargetAllowed, assertTargetInScope } from "./config.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
@@ -262,6 +262,103 @@ test("fabrication guard ignores small ranges and non-discovery scans", () => {
   assertDiscoveryNotFabricated(["-sn"], ["192.168.0.0/28"], sixteenUp);
   // Port/service scans report hosts too, but the guard is about discovery.
   assertDiscoveryNotFabricated(["-sV"], ["192.168.0.0/24"], ALL_UP_256);
+});
+
+// -----------------------------------------------------------------------------
+// SYN-proxy inflation guard — see the guard's comment in tools.js. A firewall
+// that answers every SYN inflates a port scan to hundreds of tcpwrapped /
+// guessed-service "open" ports; the annotation tells the model which ports are
+// real and which re-scan to run instead of chasing phantoms.
+// -----------------------------------------------------------------------------
+
+function buildInflatedReport() {
+  const ports = [];
+  // 32 open ports: 29 artifacts (tcpwrapped or guessed service, no version)
+  // and 3 confirmed — the measured shape of a scan through a SYN proxy.
+  for (let p = 1000; p < 1029; p++) {
+    ports.push(`${p}/tcp open  tcpwrapped`);
+  }
+  ports.push(
+    "1029/tcp open  netbios-ssn?",
+    "1030/tcp open  jetdirect?",
+    "22/tcp  open  ssh     OpenSSH 9.6p1 (protocol 2.0)",
+    "80/tcp  open  http    nginx",
+    "443/tcp open  ssl/http nginx",
+    "9999/tcp closed abyss"
+  );
+  return [
+    "Starting Nmap 7.991 ( https://nmap.org )",
+    "Nmap scan report for 203.0.113.10",
+    "Host is up (0.25s latency).",
+    "",
+    "PORT     STATE  SERVICE      VERSION",
+    ...ports,
+    "",
+    "Nmap done: 1 IP address (1 host up) scanned in 420.00 seconds",
+  ].join("\n");
+}
+
+test("syn-proxy guard annotates an inflated tcpwrapped report", () => {
+  const parsed = parseNmapText(buildInflatedReport());
+  const note = detectSynProxyInflation(parsed);
+  assert.ok(note, "expected an annotation");
+  assert.match(note, /syn-proxy suspected/);
+  assert.match(note, /34 open/);
+  assert.match(note, /31 of them/);
+  assert.match(note, /3 port\(s\) with a confirmed service/);
+  assert.match(note, /22\/ssh, 80\/http, 443\/ssl\/http/);
+  assert.match(note, /do not re-scan top-1000/);
+});
+
+test("syn-proxy guard annotates guessed-service inflation without tcpwrapped", () => {
+  // Same shape, but the fabric produces open ports nmap guesses a name for
+  // (service ends in `?`, no version) rather than tcpwrapped.
+  const ports = [];
+  for (let p = 2000; p < 2029; p++) {
+    ports.push(`${p}/tcp open  wap-wsp?`);
+  }
+  const parsed = parseNmapText(
+    [
+      "Nmap scan report for 203.0.113.11",
+      "PORT     STATE SERVICE  VERSION",
+      ...ports,
+      "22/tcp   open  ssh      OpenSSH 9.6p1",
+      "Nmap done: 1 IP address (1 host up) scanned in 300.00 seconds",
+    ].join("\n")
+  );
+  const note = detectSynProxyInflation(parsed);
+  assert.ok(note, "expected an annotation");
+  assert.match(note, /30 open/);
+  assert.match(note, /29 of them/);
+});
+
+test("syn-proxy guard stays quiet on honest scans", () => {
+  // Few open ports, all real — a normal server result.
+  const parsed = parseNmapText(SAMPLE_NMAP);
+  assert.equal(detectSynProxyInflation(parsed), null);
+  // No ports parsed at all (discovery output, empty report).
+  assert.equal(detectSynProxyInflation({ tool: "nmap", hosts: [] }), null);
+  assert.equal(detectSynProxyInflation(undefined), null);
+});
+
+test("syn-proxy guard stays quiet when artifacts are a minority", () => {
+  // 31 open ports but only half are artifacts — plausible real server.
+  const ports = [];
+  for (let p = 3000; p < 3016; p++) {
+    ports.push(`${p}/tcp open  tcpwrapped`);
+  }
+  for (let p = 3016; p < 3031; p++) {
+    ports.push(`${p}/tcp open  http     nginx`);
+  }
+  const parsed = parseNmapText(
+    [
+      "Nmap scan report for 203.0.113.12",
+      "PORT     STATE  SERVICE     VERSION",
+      ...ports,
+      "Nmap done: 1 IP address (1 host up) scanned in 200.00 seconds",
+    ].join("\n")
+  );
+  assert.equal(detectSynProxyInflation(parsed), null);
 });
 
 test("searchsploit, nikto, whois, hydra, sqlmap, gobuster, masscan, dirb, arping, arp-scan, dnsenum, enum4linux, ffuf, john, wpscan and writable-probe reject shell metacharacters", async () => {
