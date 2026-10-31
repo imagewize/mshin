@@ -27,6 +27,7 @@ Documentation map:
 | `docs/DOCKER-LOCAL-DEV.md` | Docker local dev: the default local path, the sandboxed Node, the Lima-vs-Docker measurements, and host-direct tool use from Vibe/OpenCode |
 | `configs/Dockerfile`, `configs/compose*.yaml` | The containerized Node and its compose files |
 | `lima/*.yaml` | Lima templates backing that guide |
+| `.vibe/config.toml` | Vibe project config: loads the shared `code-review` skill from the mistral-agents repo via `skill_paths` |
 | `docs/CYBERSECURITY-AGENT-ROADMAP.md` | Where the agent loop is headed |
 | `docs/AGENT-PERFORMANCE.md` | Making mshin-cli faster: streaming, parallel tools, caching |
 | `docs/EVAL-RUN-2026-10-20.md` | First model-comparison eval measurements (raw harness reports) |
@@ -264,6 +265,10 @@ So:
 ---
 
 ## Common Tasks
+
+### Review a branch or PR
+
+Load the `code-review` skill — it lives in the [mistral-agents](https://github.com/imagewize/mistral-agents) repo (`skills/code-review`), referenced from `.vibe/config.toml` via `skill_paths`, not vendored here. This repo has no `.agents/code-review.md`, so the skill applies this file's requirements as the project rules. A review reports only; never write to the working tree during one.
 
 ### Add a tool to the MCP server
 
