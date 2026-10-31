@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
@@ -7,7 +8,12 @@ import http from "node:http";
 import https from "node:https";
 
 import { SessionLogger } from "./session-logger.js";
-import { FindingsMemory } from "./findings-memory.js";
+import { FindingsMemory, summarizeToolOutput } from "./findings-memory.js";
+import { extractTextToolCall } from "./tool-call-extract.js";
+import {
+  looksLikeFabricatedToolOutput,
+  ungroundedToolsIn,
+} from "./fabrication-detect.js";
 import {
   DEFAULT_MAX_STEPS,
   DEFAULT_MAX_HISTORY_MESSAGES,
@@ -19,10 +25,24 @@ import {
   FINDINGS_SUMMARY_MARKER,
   ACTIVE_TOOLS,
   NON_RETRYABLE_TOOL_ERROR_RE,
+  DEFAULT_TOOL_RETRY_DELAY_MS,
 } from "./config.js";
 
 function isNonRetryableToolError(text) {
   return NON_RETRYABLE_TOOL_ERROR_RE.test(text || "");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Extract the text content of an MCP tool result. */
+function toolResultText(result) {
+  return (
+    result.content
+      ?.map((c) => (c.type === "text" ? c.text : ""))
+      .join("\n") || "(no output)"
+  );
 }
 
 function estimateTokens(text) {
@@ -36,11 +56,21 @@ function estimateMessageTokens(message) {
 }
 
 /**
- * Compress a long tool result down to a head/tail window so the LLM context
- * stays usable without dropping the entire message. The full output remains in
- * AgentMemory; only the copy sent to the model is truncated.
+ * Compress a long tool result so the LLM context stays usable without dropping
+ * the entire message. The full output remains in AgentMemory; only the copy
+ * sent to the model is slimmed.
+ *
+ * Two strategies, tried in order:
+ * 1. Tool-aware: when the result carries a tool name and the findings-memory
+ *    parsers can reduce it to structured signal (host/port/service/version for
+ *    nmap, registrar/dates for whois, ...), and that signal is smaller than
+ *    the head/tail window, use the signal — a 200-line nmap output reaches the
+ *    model as ~10 lines of pure signal instead of 51 lines of mostly boilerplate.
+ * 2. Head/tail window (the original behaviour) as the fallback, for tools with
+ *    no parser or output whose signal is not smaller.
  */
 function compressToolResult(text, {
+  toolName = null,
   maxLines = DEFAULT_MAX_TOOL_RESULT_LINES,
   headLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
   tailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
@@ -48,343 +78,23 @@ function compressToolResult(text, {
   const lines = text.split("\n");
   if (lines.length <= maxLines) return text;
 
+  if (toolName) {
+    const signal = summarizeToolOutput(toolName, text, headLines + tailLines);
+    if (signal) {
+      // The head/tail fallback renders headLines + 1 + tailLines lines; only
+      // prefer the signal when it is strictly smaller than that.
+      if (signal.split("\n").length < headLines + tailLines + 1) {
+        return `${signal}\n... (full ${lines.length}-line output kept in session memory) ...`;
+      }
+    }
+  }
+
   const omitted = lines.length - headLines - tailLines;
   return [
     ...lines.slice(0, headLines),
     `... (${omitted} lines omitted) ...`,
     ...lines.slice(-tailLines),
   ].join("\n");
-}
-
-/**
- * Recover a tool call the model wrote as text instead of emitting through the
- * function-calling interface.
- *
- * Small models given a tools array sometimes narrate the call -- "To scan
- * 127.0.0.1, I will use nmap..." followed by `[{"name":"nmap","arguments":
- * {...}}]` and, worse, an invented scan report. Ollama returns that as plain
- * `content` with no `tool_calls`, so without this the loop treats the whole
- * fabrication as the model's final answer and hands it to the operator as
- * though a scan had run. Lowering the sampling temperature makes this rarer
- * but never impossible, so the loop refuses to depend on it.
- *
- * This is a workaround for smaller models that don't reliably use the
- * function-calling API. It attempts multiple extraction strategies:
- * 1. JSON payload extraction (handles `[{...}]` and bare `{...}` objects)
- * 2. Function syntax extraction (handles `functions.nmap(...)` or `nmap(...)`)
- *
- * Returns { name, args } for the first payload naming a tool this Node
- * actually exposes, or null. Requiring a known tool name is what keeps a
- * legitimate answer that merely quotes JSON from being mistaken for a call.
- *
- * @param {string} content - The assistant message content to search for embedded tool calls
- * @param {Function} isValidTool - Function to check if a tool name is valid: (name) => boolean
- * @returns {Object|null} Extracted tool call with name and args, or null if none found
- * @returns {string} returns.name - The tool name
- * @returns {Object} returns.args - The tool arguments as a plain object
- */
-export function extractTextToolCall(content, isValidTool) {
-  if (!content) return null;
-
-  // Mistral-family models wrap the payload; strip the marker if present.
-  const text = content.replace("[TOOL_CALLS]", " ");
-
-  const json = extractJsonToolCall(text, isValidTool);
-  if (json) return json;
-
-  return extractFunctionSyntaxToolCall(text, isValidTool);
-}
-
-function extractJsonToolCall(text, isValidTool) {
-  // Walk every balanced {...} span rather than regexing for one shape: the
-  // payload may be bare, fenced in ```json, or embedded mid-sentence.
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] !== "{") continue;
-    let depth = 0;
-    for (let j = i; j < text.length; j++) {
-      if (text[j] === "{") depth++;
-      else if (text[j] === "}") depth--;
-      if (depth !== 0) continue;
-
-      let parsed;
-      try {
-        parsed = JSON.parse(text.slice(i, j + 1));
-      } catch {
-        break; // not JSON; move the start marker along
-      }
-      const name = parsed?.name ?? parsed?.function?.name;
-      const args =
-        parsed?.arguments ?? parsed?.parameters ?? parsed?.function?.arguments ?? {};
-      if (typeof name === "string" && isValidTool(name) && typeof args === "object") {
-        return { name, args };
-      }
-      break; // valid JSON but not a call to a known tool; try the next `{`
-    }
-  }
-  return null;
-}
-
-function extractFunctionSyntaxToolCall(text, isValidTool) {
-  // Some models emit calls as text: functions.nmap(target="127.0.0.1") or
-  // nmap(target="127.0.0.1", flags=['-sS']). Prefer the `functions.` prefix
-  // because it is less likely to appear in ordinary prose.
-  for (const { name, argString } of findFunctionCalls(text)) {
-    if (!isValidTool(name)) continue;
-    try {
-      const args = parsePythonLikeArgs(argString);
-      return { name, args };
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-/**
- * Locate `name(...)`-style calls in free text and return each one's name
- * alongside the raw, unparsed argument string between its parentheses.
- *
- * The regex only finds the opening `name(`; everything after that is walked
- * by hand rather than matched with a closing-paren regex, because the naive
- * `\)` match breaks the moment an argument contains its own parens (a
- * nested call) or a `)` inside a quoted string (e.g. a shell flag). The scan
- * below tracks paren depth and, while inside a quote, ignores parens
- * entirely (and skips an escaped quote so it doesn't end the string early).
- */
-function findFunctionCalls(text) {
-  const calls = [];
-  // Match optional `functions.` prefix.
-  const pattern = /(?:functions\.)?([a-zA-Z_]\w*)\s*\(/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    const name = match[1];
-    const start = match.index + match[0].length;
-    let depth = 1;
-    let i = start;
-    let quote = null;
-    while (i < text.length && depth > 0) {
-      const ch = text[i];
-      if (quote) {
-        if (ch === "\\" && i + 1 < text.length) {
-          i += 2;
-          continue;
-        }
-        if (ch === quote) quote = null;
-      } else if (ch === '"' || ch === "'") {
-        quote = ch;
-      } else if (ch === "(") {
-        depth++;
-      } else if (ch === ")") {
-        depth--;
-      }
-      i++;
-    }
-    if (depth === 0) {
-      calls.push({ name, argString: text.slice(start, i - 1) });
-    }
-  }
-  return calls;
-}
-
-/**
- * Parse a Python-like keyword-argument string -- `target="1.2.3.4", flags=['-sS']`
- * -- into a plain object, without a general expression parser.
- *
- * Only `key=value` pairs are collected; a bare positional value (no `=`) is
- * scanned past and dropped, since every tool this agent calls takes named
- * arguments (per its MCP schema), so a positional the model wrote has no
- * schema field to land in anyway. Each value's own syntax (string/list/
- * object/literal) is handled by `parsePythonLikeValue`.
- */
-function parsePythonLikeArgs(argString) {
-  const args = {};
-  let i = 0;
-  while (i < argString.length) {
-    while (i < argString.length && /[\s,]/.test(argString[i])) i++;
-    if (i >= argString.length) break;
-
-    let key = "";
-    while (i < argString.length && /[a-zA-Z0-9_]/.test(argString[i])) key += argString[i++];
-    if (!key) {
-      // Unexpected token; skip to next delimiter.
-      while (i < argString.length && !/[,=]/.test(argString[i])) i++;
-      continue;
-    }
-
-    while (i < argString.length && /\s/.test(argString[i])) i++;
-    if (i >= argString.length || argString[i] !== "=") {
-      // Positional argument; skip its value.
-      let depth = 0;
-      while (i < argString.length) {
-        if (argString[i] === "(" || argString[i] === "[" || argString[i] === "{") depth++;
-        else if (argString[i] === ")" || argString[i] === "]" || argString[i] === "}") depth--;
-        else if (argString[i] === "," && depth === 0) break;
-        i++;
-      }
-      continue;
-    }
-    i++; // skip =
-
-    while (i < argString.length && /\s/.test(argString[i])) i++;
-    const parsed = parsePythonLikeValue(argString, i);
-    args[key] = parsed.value;
-    i = parsed.nextIndex;
-  }
-  return args;
-}
-
-/**
- * Recursive-descent parser for one argument value at `text[start:]`, used by
- * `parsePythonLikeArgs`. Returns the parsed JS value and the index just past
- * what it consumed, so the caller can keep scanning the rest of the string.
- *
- * Handles the shapes a model actually emits: a quoted string (with `\`
- * escapes), a `[...]` list (elements recursively parsed, so nested
- * lists/objects/strings all work), a `{...}` object (delegated to
- * `JSON.parse` -- Python dict syntax with double-quoted keys happens to be
- * valid JSON, and this loop only needs to find the matching `}`), or a bare
- * token (number/boolean/None/word) handed to `parseLiteral`.
- */
-function parsePythonLikeValue(text, start) {
-  let i = start;
-  while (i < text.length && /\s/.test(text[i])) i++;
-  if (i >= text.length) return { value: null, nextIndex: i };
-
-  const ch = text[i];
-  if (ch === '"' || ch === "'") {
-    let str = "";
-    const quote = ch;
-    i++;
-    while (i < text.length && text[i] !== quote) {
-      if (text[i] === "\\" && i + 1 < text.length) {
-        str += text[i + 1];
-        i += 2;
-      } else {
-        str += text[i];
-        i++;
-      }
-    }
-    i++; // skip closing quote
-    return { value: str, nextIndex: i };
-  }
-
-  if (ch === "[") {
-    const arr = [];
-    i++; // skip [
-    while (i < text.length && text[i] !== "]") {
-      while (i < text.length && /[\s,]/.test(text[i])) i++;
-      if (i < text.length && text[i] === "]") break;
-      const elem = parsePythonLikeValue(text, i);
-      arr.push(elem.value);
-      i = elem.nextIndex;
-    }
-    i++; // skip ]
-    return { value: arr, nextIndex: i };
-  }
-
-  if (ch === "{") {
-    let depth = 1;
-    const startObj = i;
-    i++;
-    while (i < text.length && depth > 0) {
-      if (text[i] === "{") depth++;
-      else if (text[i] === "}") depth--;
-      i++;
-    }
-    try {
-      return { value: JSON.parse(text.slice(startObj, i)), nextIndex: i };
-    } catch {
-      return { value: text.slice(startObj, i), nextIndex: i };
-    }
-  }
-
-  let token = "";
-  while (i < text.length && !/[,\)\]]/.test(text[i])) token += text[i++];
-  token = token.trim();
-  return { value: parseLiteral(token), nextIndex: i };
-}
-
-// Coerce a bare (unquoted) token to its likely type -- covering both
-// Python's spelling (`True`/`False`/`None`) and JSON's, since the model may
-// mix conventions. Anything that isn't a recognized literal or number is
-// returned as-is (a plain string).
-function parseLiteral(token) {
-  if (token === "True" || token === "true") return true;
-  if (token === "False" || token === "false") return false;
-  if (token === "None" || token === "null") return null;
-  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  if (/^-?\d+\.\d+$/.test(token)) return parseFloat(token);
-  return token;
-}
-
-/**
- * Heuristic check for a model that invented tool output instead of calling a
- * tool -- e.g. writing its own fake nmap report rather than emitting a call
- * `extractTextToolCall` could have recovered. Pair it with the grounding check
- * at the call site: text like this is a summary when the tool it describes
- * actually returned a result, and a fabrication when it did not.
- *
- * Looks for two shapes: a fenced code block, or a "Result:" label, either of
- * which is followed by text that reads like genuine scan output (an
- * `<port>/tcp` or `<port>/udp` token near "open"/"closed"/"filtered"). This
- * is deliberately narrow -- it is meant to catch confident fabrication, not
- * to flag every code block or every use of the word "result".
- *
- * Detection strategies (in order):
- * 1. Fenced code blocks containing "Result:", "Results:", or scan-like signatures
- * 2. "Result:" label followed by port/protocol or state keywords
- * 3. Unfenced scan-like signatures (port/protocol near state keywords)
- *
- * The scan signature specifically looks for patterns like "22/tcp open" or
- * "443/tcp closed" which are characteristic of nmap and similar tool outputs.
- *
- * @param {string} content - The message content to check for fabricated tool output
- * @returns {boolean} true if the content looks like fabricated tool output, false otherwise
- */
-function looksLikeFabricatedToolOutput(content) {
-  if (!content) return false;
-
-  // A port/proto token next to a port-state word is the signature of scan
-  // output wherever it appears -- fenced, labelled, or loose in prose.
-  const scanSignature = (text) =>
-    /\d+\/(tcp|udp)\b/i.test(text) && /\b(open|closed|filtered)\b/i.test(text);
-
-  // Fenced code block containing "Result:" or scan-like output.
-  const fenced = content.match(/```[\s\S]*?```/g) || [];
-  for (const block of fenced) {
-    const inner = block.slice(3, -3).toLowerCase();
-    if (
-      inner.includes("result:") ||
-      inner.includes("results:") ||
-      scanSignature(inner)
-    ) {
-      return true;
-    }
-  }
-
-  // "Result:" followed by output that looks like a tool report.
-  const resultIdx = content.toLowerCase().indexOf("result:");
-  if (resultIdx !== -1) {
-    const tail = content.slice(resultIdx);
-    if (
-      /\d+\/(tcp|udp)\b/i.test(tail) ||
-      /\b(open|closed|filtered)\b/i.test(tail)
-    ) {
-      return true;
-    }
-  }
-
-  // Unfenced, unlabelled scan output. The live recon-chain fabrication took
-  // exactly this shape -- an inline markdown list ("- 22/tcp (SSH)") under the
-  // prose "the nmap scan revealed the following open ports", with no code fence
-  // and no "Result:" label for the two checks above to catch. The call site
-  // only blocks this when the tool it reads like never returned a result, so a
-  // genuine scan summary stays untouched.
-  if (scanSignature(content)) {
-    return true;
-  }
-
-  return false;
 }
 
 /**
@@ -454,6 +164,136 @@ function postJson(url, body, timeoutMs, model) {
 }
 
 /**
+ * POST JSON and read a streaming (NDJSON) response, calling onToken for each
+ * content delta. Returns the assembled final message.
+ *
+ * Ollama's /api/chat with stream:true sends newline-delimited JSON chunks.
+ * Each chunk carries a `message` with incremental `content` and possibly
+ * `tool_calls` (in the final chunk(s)). This function accumulates content
+ * across chunks, fires onToken for each delta, and resolves with the full
+ * assembled message so the rest of the loop is unchanged.
+ *
+ * Used instead of postJson so the operator sees the model generate in real
+ * time rather than staring at a blank prompt for the whole turn.
+ */
+function postJsonStream(url, body, timeoutMs, model, onToken) {
+  const payload = JSON.stringify({ ...body, stream: true });
+  const target = new URL(url);
+  const transport = target.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          let data = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => { data += chunk; });
+          res.on("end", () =>
+            reject(new Error(`Ollama returned ${res.statusCode}: ${data}`))
+          );
+          return;
+        }
+
+        let buffer = "";
+        let fullContent = "";
+        let toolCalls = null;
+        let settled = false;
+
+        function assembleAndResolve() {
+          if (settled) return;
+          settled = true;
+          resolve({
+            message: {
+              role: "assistant",
+              content: fullContent,
+              ...(toolCalls ? { tool_calls: toolCalls } : {}),
+            },
+          });
+        }
+
+        function processLine(line) {
+          if (!line.trim()) return;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.message?.content) {
+              fullContent += parsed.message.content;
+              if (onToken) onToken(parsed.message.content);
+            }
+            if (parsed.message?.tool_calls) {
+              toolCalls = parsed.message.tool_calls.map((tc) => ({
+                ...tc,
+                function: {
+                  ...tc.function,
+                  arguments:
+                    typeof tc.function?.arguments === "string"
+                      ? JSON.parse(tc.function.arguments)
+                      : tc.function?.arguments || {},
+                },
+              }));
+            }
+            if (parsed.done) {
+              assembleAndResolve();
+            }
+          } catch {
+            // Skip malformed lines — a partial chunk at the buffer boundary
+            // is normal and will be completed by the next data event.
+          }
+        }
+
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          buffer += chunk;
+          // NDJSON: each line is a separate JSON object. The last line may be
+          // incomplete (no trailing newline yet), so keep it in the buffer.
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            processLine(line);
+          }
+        });
+        res.on("end", () => {
+          // Process any remaining buffer — the last line may lack a trailing
+          // newline (a single-chunk response has no newline at all).
+          if (buffer.trim()) {
+            processLine(buffer);
+          }
+          // Stream ended without a done:true chunk — resolve with whatever
+          // accumulated. An empty result means the model produced nothing.
+          assembleAndResolve();
+        });
+        res.on("error", reject);
+      }
+    );
+
+    // An inactivity timeout: with streaming, data arrives continuously, so
+    // this fires only if the model stalls mid-generation.
+    if (timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(
+          new Error(
+            `Ollama request timed out after ${Math.round(timeoutMs / 1000)}s ` +
+              `(model '${model}'). One turn on a large model can take longer ` +
+              "than this; raise ollamaTimeoutMs if that is expected."
+          )
+        );
+      });
+    }
+
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/**
  * Persistent session memory for the Machin Shin agent.
  *
  * Sessions are stored as JSON so the operator can review, delete, or migrate
@@ -479,7 +319,21 @@ class AgentMemory {
   }
 
   save() {
-    writeFileSync(this.storePath, JSON.stringify(this.sessions, null, 2));
+    // Fire-and-forget async write. The JSONL session log is the durable audit
+    // trail; memory.json is a convenience cache that can lag without harm.
+    // The previous writeFileSync blocked the event loop on every turn while
+    // rewriting the full sessions file. The returned promise lets callers
+    // (tests, shutdown) wait for the write to land.
+    this._lastSave = writeFile(
+      this.storePath,
+      JSON.stringify(this.sessions, null, 2)
+    ).catch(() => {});
+    return this._lastSave;
+  }
+
+  /** Wait for any in-flight async save to complete. */
+  async flushSave() {
+    if (this._lastSave) await this._lastSave;
   }
 
   getSession(id) {
@@ -547,6 +401,7 @@ class Agent {
     maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
     ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
+    toolRetryDelayMs = DEFAULT_TOOL_RETRY_DELAY_MS,
     maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
     toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
     toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
@@ -565,6 +420,7 @@ class Agent {
     this.maxHistoryMessages = maxHistoryMessages;
     this.contextTokenBudget = contextTokenBudget;
     this.ollamaTimeoutMs = ollamaTimeoutMs;
+    this.toolRetryDelayMs = toolRetryDelayMs;
     this.maxToolResultLines = maxToolResultLines;
     this.toolResultHeadLines = toolResultHeadLines;
     this.toolResultTailLines = toolResultTailLines;
@@ -580,12 +436,20 @@ class Agent {
       contextHighWaterTokens: 0,
       nonRetryableToolErrors: 0,
       blockedToolRetries: 0,
+      transientToolRetries: 0,
       steps: 0,
       errors: 0,
     };
     // Injectable so tests can capture the trace; falls back to the env-gated
     // logger for real runs.
     this.debug = debug || makeDebugLogger();
+    // Per-run cache of successful tool results, keyed by tool name + sorted
+    // args. Cleared at the start of each run. Prevents redundant scans when
+    // context compaction drops a result and the model re-issues the same call.
+    this.toolCache = new Map();
+    // Whether the most recent run's final answer was streamed via onToken.
+    // The CLI uses this to avoid reprinting a streamed answer in onComplete.
+    this.lastAnswerStreamed = false;
   }
 
   /**
@@ -614,17 +478,27 @@ class Agent {
    * @param {Function} [options.onApproval] - Callback to request user approval for active tools: (name, args) => boolean
    * @param {Function} [options.onComplete] - Callback when the run finishes: (answer)
    * @param {Function} [options.onNarratedToolCall] - Callback when a text-form tool call is recovered: (name)
+   * @param {Function} [options.onToken] - Callback for each streamed content delta: (text)
    * @returns {Promise<string>} The final answer content (or warning if fabrication blocked)
    * @throws {Error} On unrecoverable errors during execution
    */
-  async run({ sessionId, userGoal, onToolCall, onToolResult, onApproval, onComplete, onNarratedToolCall }) {
+  async run({ sessionId, userGoal, onToolCall, onToolResult, onApproval, onComplete, onNarratedToolCall, onToken }) {
     let messages = this.memory.getSession(sessionId).messages.slice();
 
     const systemPrompt =
-      "You are Machin Shin, a careful cybersecurity assistant. " +
-      "Use the provided tools one at a time. After each tool result, " +
-      "decide the single next best action or finish with a concise answer. " +
-      "Never assume results; base every decision on actual tool output.";
+      "You are Machin Shin, a careful cybersecurity assistant.\n\n" +
+      "Rules:\n" +
+      "- Call tools one at a time. After each tool result, decide the single " +
+      "next best action or finish with a concise answer.\n" +
+      "- Never assume results. Base every decision on actual tool output.\n" +
+      "- Never describe results from a tool you have not called. If a tool " +
+      "failed or is unavailable, say so plainly.\n" +
+      "- When you emit multiple tool calls in one turn, they must be independent " +
+      "(no call may depend on another's result).\n" +
+      "- Summarise scan results as structured lists (host:port, service, version) " +
+      "rather than prose.\n" +
+      "- You are scanning authorized targets only. If a target is out of scope " +
+      "or a tool refuses it, report the refusal and suggest alternatives.";
 
     if (messages.length === 0) {
       messages.push({ role: "system", content: systemPrompt });
@@ -638,6 +512,9 @@ class Agent {
     // Clear findings memory for this new run - Option B: structured findings memory
     // Each run gets its own findings summary that builds up as tools execute
     this.findingsMemory.clear();
+    // Clear the per-run tool result cache
+    this.toolCache.clear();
+    this.lastAnswerStreamed = false;
 
     messages.push({ role: "user", content: userGoal });
     this.debug("run.start", {
@@ -664,7 +541,7 @@ class Agent {
         this.debug("step", { n: step + 1, of: this.maxSteps });
         messages = this.compactContext(messages);
 
-        const response = await this.queryOllama(messages);
+        const response = await this.queryOllama(messages, onToken);
         const assistantMessage = response.message;
         messages.push(assistantMessage);
 
@@ -758,6 +635,7 @@ class Agent {
               answer: warning,
               metrics: { ...this.metrics },
             });
+            this.lastAnswerStreamed = false;
             if (onComplete) onComplete(warning);
             return warning;
           }
@@ -770,6 +648,7 @@ class Agent {
             answer: assistantMessage.content,
             metrics: { ...this.metrics },
           });
+          this.lastAnswerStreamed = true;
           if (onComplete) onComplete(assistantMessage.content);
           return assistantMessage.content;
         }
@@ -810,126 +689,48 @@ class Agent {
         // turn, which would break tool-call/result pairing.
         const unavailableThisTurn = [];
 
-        for (const call of callsToRun) {
-          const name = call.function?.name;
-          const args = call.function?.arguments || {};
+        // Partition calls into passive (parallel) and active (sequential).
+        // Passive tools have no side effects and no inter-call data dependency,
+        // so they run concurrently. Active tools mutate state and require
+        // per-call user approval, so they run sequentially after the passive
+        // batch. The per-call logic lives in _executeToolCall; this section
+        // just decides the execution order.
+        const ctx = {
+          sessionId,
+          messages,
+          unavailableTools,
+          succeededTools,
+          unavailableThisTurn,
+          onToolCall,
+          onToolResult,
+          onApproval,
+        };
 
-          if (!this.isValidTool(name)) {
-            this.debug("tool.invalid", { name });
-            this.sessionLogger?.write(sessionId, {
-              type: "tool.invalid",
-              name,
-            });
-            messages.push({
-              role: "tool",
-              name,
-              content: `Tool '${name}' is not available on this Node.`,
-            });
-            continue;
-          }
+        const passiveCalls = callsToRun.filter(
+          (c) => !this.isActiveTool(c.function?.name)
+        );
+        const activeCalls = callsToRun.filter(
+          (c) => this.isActiveTool(c.function?.name)
+        );
 
-          if (unavailableTools.has(name)) {
-            // Answered from the transcript instead of re-running the tool: the
-            // model has already been told, so repeat it verbatim and spend no
-            // step budget on a call that cannot behave differently.
-            this.metrics.blockedToolRetries++;
-            this.debug("tool.unavailable-cached", { name });
-            this.sessionLogger?.write(sessionId, {
-              type: "tool.unavailable.cached",
-              name,
-            });
-            messages.push({
-              role: "tool",
-              name,
-              content: unavailableTools.get(name),
-            });
-            continue;
-          }
-
-          this.metrics.toolCalls++;
-          this.debug("tool.call", { name, args });
-          this.sessionLogger?.write(sessionId, {
-            type: "tool.call",
-            name,
-            args,
+        // Run passive tools concurrently. Promise.allSettled ensures one
+        // tool's failure does not abort the others. Each call's synchronous
+        // sections are atomic in JS's single-threaded model, so shared-state
+        // mutations (metrics, findings, caches) are safe under parallelism.
+        if (passiveCalls.length > 0) {
+          this.debug("tools.parallel", {
+            count: passiveCalls.length,
+            names: passiveCalls.map((c) => c.function?.name),
           });
-          if (onToolCall) onToolCall(name, args);
+          await Promise.allSettled(
+            passiveCalls.map((call) => this._executeToolCall(call, ctx))
+          );
+        }
 
-          if (this.isActiveTool(name)) {
-            this.metrics.approvalRequests++;
-            this.sessionLogger?.write(sessionId, {
-              type: "approval.request",
-              name,
-              args,
-            });
-            const approved = await onApproval(name, args);
-            this.sessionLogger?.write(sessionId, {
-              type: "approval.response",
-              name,
-              approved,
-            });
-            if (!approved) {
-              this.metrics.approvalDenied++;
-              messages.push({
-                role: "tool",
-                name,
-                content: `User declined to run active tool '${name}'.`,
-              });
-              continue;
-            }
-            this.metrics.approvalGranted++;
-          }
-
-          const result = await this.mcpClient.callTool({ name, arguments: args });
-          const text =
-            result.content
-              ?.map((c) => (c.type === "text" ? c.text : ""))
-              .join("\n") || "(no output)";
-
-          if (onToolResult) onToolResult(name, text);
-          this.debug("tool.result", {
-            name,
-            isError: !!result.isError,
-            chars: text.length,
-          });
-          this.sessionLogger?.write(sessionId, {
-            type: "tool.result",
-            name,
-            isError: !!result.isError,
-            text,
-          });
-
-          // Process tool result with FindingsMemory (Option B: structured findings memory)
-          // This extracts key facts that will survive context compaction
-          if (!result.isError) {
-            this.findingsMemory.processToolResult(name, text, args);
-            succeededTools.add(name);
-          }
-
-          if (result.isError && isNonRetryableToolError(text)) {
-            this.metrics.nonRetryableToolErrors++;
-            this.debug("tool.unavailable", { name });
-            this.sessionLogger?.write(sessionId, {
-              type: "tool.unavailable",
-              name,
-              reason: text,
-            });
-            // Keep the tool result slot short and factual. A long imperative
-            // block in a role:"tool" slot -- which the model expects to hold
-            // tool output -- stopped live 7-8B models terminating on the next
-            // turn. The direction to continue goes in the role:"user" message
-            // below, after all results for the turn.
-            const toolResult =
-              `Tool '${name}' cannot run on this Node: ${text}\n` +
-              "This tool is unavailable for this run; do not retry it.";
-            unavailableTools.set(name, toolResult);
-            messages.push({ role: "tool", name, content: toolResult });
-            unavailableThisTurn.push(name);
-            continue;
-          }
-
-          if (!result.isError) succeededTools.add(name);
-          messages.push({ role: "tool", name, content: text });
+        // Run active tools sequentially — the approval gate fires per call,
+        // and each result is visible to the user before the next starts.
+        for (const call of activeCalls) {
+          await this._executeToolCall(call, ctx);
         }
 
         if (unavailableThisTurn.length > 0) {
@@ -949,7 +750,7 @@ class Agent {
       const budgetMessage =
         "Step budget exhausted. Here is a summary of what was discovered:";
       messages.push({ role: "user", content: budgetMessage });
-      const final = await this.queryOllama(messages);
+      const final = await this.queryOllama(messages, onToken);
       messages.push(final.message);
       this.memory.storeSession(sessionId, messages);
       this.sessionLogger?.write(sessionId, {
@@ -957,6 +758,7 @@ class Agent {
         answer: final.message.content,
         metrics: { ...this.metrics },
       });
+      this.lastAnswerStreamed = true;
       if (onComplete) onComplete(final.message.content);
       return final.message.content;
     } catch (err) {
@@ -971,12 +773,11 @@ class Agent {
     }
   }
 
-  async queryOllama(messages) {
+  async queryOllama(messages, onToken) {
     const body = {
       model: this.model,
       messages,
       tools: this.tools,
-      stream: false,
       options: {
         temperature: 0,
         top_p: 0.9,
@@ -984,11 +785,15 @@ class Agent {
       },
     };
 
-    return postJson(
+    // Streaming (stream: true) is set inside postJsonStream. The response is
+    // NDJSON; onToken fires for each content delta so the CLI can print the
+    // model's output as it generates rather than after the full turn.
+    return postJsonStream(
       `${this.ollamaUrl}/api/chat`,
       body,
       this.ollamaTimeoutMs,
-      this.model
+      this.model,
+      onToken
     );
   }
 
@@ -996,24 +801,236 @@ class Agent {
     return this.tools.some((t) => t.function.name === name);
   }
 
+  /**
+   * Execute a single tool call end-to-end: validate the tool name, check the
+   * unavailable-tools and result caches, run the approval gate for active
+   * tools, call the MCP server, process the result through findings memory,
+   * and push the result message(s) to the conversation history.
+   *
+   * Extracted from the run() loop so that passive (non-active) tool calls can
+   * execute concurrently via Promise.allSettled. Each call's synchronous
+   * sections are atomic in JS's single-threaded model, so shared-state
+   * mutations (metrics, findings, caches, unavailableTools, succeededTools)
+   * are safe under parallel execution. Only the MCP call itself is async.
+   *
+   * @param {Object} call - The tool call: { function: { name, arguments } }
+   * @param {Object} ctx - Run-scoped context shared across calls in one turn
+   * @param {string} ctx.sessionId
+   * @param {Array} ctx.messages - Message history (modified in-place)
+   * @param {Map} ctx.unavailableTools - Tools that failed non-retryably this run
+   * @param {Set} ctx.succeededTools - Tools that returned without isError
+   * @param {Array} ctx.unavailableThisTurn - Names of tools unavailable this turn
+   * @param {Function} [ctx.onToolCall] - (name, args) => void
+   * @param {Function} [ctx.onToolResult] - (name, text) => void
+   * @param {Function} [ctx.onApproval] - (name, args) => Promise<boolean>
+   */
+  async _executeToolCall(call, ctx) {
+    const {
+      sessionId,
+      messages,
+      unavailableTools,
+      succeededTools,
+      unavailableThisTurn,
+      onToolCall,
+      onToolResult,
+      onApproval,
+    } = ctx;
+    const name = call.function?.name;
+    const args = call.function?.arguments || {};
+
+    if (!this.isValidTool(name)) {
+      this.debug("tool.invalid", { name });
+      this.sessionLogger?.write(sessionId, { type: "tool.invalid", name });
+      messages.push({
+        role: "tool",
+        name,
+        content: `Tool '${name}' is not available on this Node.`,
+      });
+      return;
+    }
+
+    if (unavailableTools.has(name)) {
+      // Answered from the transcript instead of re-running the tool: the
+      // model has already been told, so repeat it verbatim and spend no
+      // step budget on a call that cannot behave differently.
+      this.metrics.blockedToolRetries++;
+      this.debug("tool.unavailable-cached", { name });
+      this.sessionLogger?.write(sessionId, {
+        type: "tool.unavailable.cached",
+        name,
+      });
+      messages.push({
+        role: "tool",
+        name,
+        content: unavailableTools.get(name),
+      });
+      return;
+    }
+
+    // Result cache: if this exact call succeeded earlier in the run, return
+    // the cached output instantly. Prevents redundant scans when context
+    // compaction drops a result and the model re-issues the same call.
+    const cacheKey = `${name}:${JSON.stringify(args, Object.keys(args).sort())}`;
+    if (this.toolCache.has(cacheKey)) {
+      const cached = this.toolCache.get(cacheKey);
+      this.debug("tool.cache-hit", { name });
+      this.sessionLogger?.write(sessionId, {
+        type: "tool.cache-hit",
+        name,
+      });
+      if (onToolResult) onToolResult(name, cached);
+      messages.push({ role: "tool", name, content: cached });
+      return;
+    }
+
+    this.metrics.toolCalls++;
+    this.debug("tool.call", { name, args });
+    this.sessionLogger?.write(sessionId, {
+      type: "tool.call",
+      name,
+      args,
+    });
+    if (onToolCall) onToolCall(name, args);
+
+    if (this.isActiveTool(name)) {
+      this.metrics.approvalRequests++;
+      this.sessionLogger?.write(sessionId, {
+        type: "approval.request",
+        name,
+        args,
+      });
+      const approved = await onApproval(name, args);
+      this.sessionLogger?.write(sessionId, {
+        type: "approval.response",
+        name,
+        approved,
+      });
+      if (!approved) {
+        this.metrics.approvalDenied++;
+        messages.push({
+          role: "tool",
+          name,
+          content: `User declined to run active tool '${name}'.`,
+        });
+        return;
+      }
+      this.metrics.approvalGranted++;
+    }
+
+    const result = await this._callToolWithRetry(name, args, sessionId);
+    const text = toolResultText(result);
+
+    // Cache successful results so a re-issued identical call returns instantly.
+    if (!result.isError) {
+      this.toolCache.set(cacheKey, text);
+    }
+
+    if (onToolResult) onToolResult(name, text);
+    this.debug("tool.result", {
+      name,
+      isError: !!result.isError,
+      chars: text.length,
+    });
+    this.sessionLogger?.write(sessionId, {
+      type: "tool.result",
+      name,
+      isError: !!result.isError,
+      text,
+    });
+
+    // Process tool result with FindingsMemory (Option B: structured findings memory)
+    // This extracts key facts that will survive context compaction
+    if (!result.isError) {
+      this.findingsMemory.processToolResult(name, text, args);
+      succeededTools.add(name);
+    }
+
+    if (result.isError && isNonRetryableToolError(text)) {
+      this.metrics.nonRetryableToolErrors++;
+      this.debug("tool.unavailable", { name });
+      this.sessionLogger?.write(sessionId, {
+        type: "tool.unavailable",
+        name,
+        reason: text,
+      });
+      // Keep the tool result slot short and factual. A long imperative
+      // block in a role:"tool" slot -- which the model expects to hold
+      // tool output -- stopped live 7-8B models terminating on the next
+      // turn. The direction to continue goes in the role:"user" message
+      // below, after all results for the turn.
+      const toolResult =
+        `Tool '${name}' cannot run on this Node: ${text}\n` +
+        "This tool is unavailable for this run; do not retry it.";
+      unavailableTools.set(name, toolResult);
+      messages.push({ role: "tool", name, content: toolResult });
+      unavailableThisTurn.push(name);
+      return;
+    }
+
+    if (!result.isError) succeededTools.add(name);
+    messages.push({ role: "tool", name, content: text });
+  }
+
   isActiveTool(name) {
     return ACTIVE_TOOLS.has(name);
   }
 
   /**
+   * Call the MCP server, retrying once after a short backoff when the failure
+   * looks transient. Non-retryable errors (missing binary, sudoers gap, ...)
+   * fail identically on a second call, so they are returned immediately for
+   * the unavailable-tools path. Everything else — thrown transport errors and
+   * retryable isError results such as timeouts or connection resets — gets a
+   * single retry, which catches most network blips without making the operator
+   * wait on failures that cannot heal.
+   */
+  async _callToolWithRetry(name, args, sessionId) {
+    const maxAttempts = 2;
+    for (let attempt = 1; ; attempt++) {
+      let result;
+      try {
+        result = await this.mcpClient.callTool({ name, arguments: args });
+      } catch (err) {
+        if (attempt >= maxAttempts || isNonRetryableToolError(err?.message)) throw err;
+        await this._noteRetry(name, attempt, String(err?.message || err), sessionId);
+        continue;
+      }
+      if (result.isError && attempt < maxAttempts) {
+        const text = toolResultText(result);
+        if (!isNonRetryableToolError(text)) {
+          await this._noteRetry(name, attempt, text, sessionId);
+          continue;
+        }
+      }
+      return result;
+    }
+  }
+
+  async _noteRetry(name, attempt, reason, sessionId) {
+    this.metrics.transientToolRetries++;
+    const summary = reason.slice(0, 200);
+    this.debug("tool.retry", { name, attempt, reason: summary });
+    this.sessionLogger?.write(sessionId, {
+      type: "tool.retry",
+      name,
+      attempt,
+      reason: summary,
+    });
+    await sleep(this.toolRetryDelayMs);
+  }
+
+  /**
    * Known tools the content talks about that never returned a result. This is
    * what separates a summary from a fabrication once some other tool has run:
-   * a real whois result does not license an invented nmap report.
+   * a real whois result does not license an invented nmap report. The logic
+   * lives in fabrication-detect.js; this delegates with this Node's tool list.
    */
   ungroundedToolsIn(content, succeededTools) {
-    if (!content) return [];
-    return this.tools
-      .map((t) => t.function.name)
-      .filter(
-        (name) =>
-          !succeededTools.has(name) &&
-          new RegExp(`\\b${name}\\b`, "i").test(content)
-      );
+    return ungroundedToolsIn(
+      content,
+      this.tools.map((t) => t.function.name),
+      succeededTools
+    );
   }
 
   /**
@@ -1050,6 +1067,7 @@ class Agent {
     let working = messages.map((m) => {
       if (m.role !== "tool" || !m.content) return m;
       const compressed = compressToolResult(m.content, {
+        toolName: m.name,
         maxLines: this.maxToolResultLines,
         headLines: this.toolResultHeadLines,
         tailLines: this.toolResultTailLines,

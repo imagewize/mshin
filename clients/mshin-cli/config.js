@@ -19,6 +19,12 @@ export const DEFAULT_MAX_TOOL_RESULT_LINES = 60;
 export const DEFAULT_TOOL_RESULT_HEAD_LINES = 25;
 export const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
 
+// One retry after this delay catches most transient MCP failures (connection
+// resets, tool timeouts). Failures that no retry can fix (missing binary,
+// sudoers gap) are filtered out before the retry, so the operator never waits
+// on a call that will fail identically.
+export const DEFAULT_TOOL_RETRY_DELAY_MS = 2_000;
+
 // Marker prefix identifying the findings-summary message compactContext()
 // maintains (Option B). Used both to find and refresh that single message
 // and to keep it out of eviction.

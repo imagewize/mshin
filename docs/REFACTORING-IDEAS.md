@@ -39,8 +39,7 @@ The following were tempting but carry more cost than benefit for a project this 
 
 **Completed (0.16.1):** `node:test` coverage for `compactContext()` and the fabrication heuristics — 12 cases pinning eviction order, the preserved floor, the token high-water mark, transcript non-mutation, the detector's deliberate narrowness, and `ungroundedToolsIn`'s name matching.
 
-**Later, only if a concrete pain motivates it:**
-1. Extract tool-call extraction and fabrication detection from `agent.js` (no shim).
+**Completed (0.26.0, `feature/agent-performance`):** tool-call extraction moved to `clients/mshin-cli/tool-call-extract.js` and fabrication detection to `clients/mshin-cli/fabrication-detect.js` — no re-export shim; `agent.js` imports both and the one test import was updated directly. Done as part of the agent-performance work (see [Agent Performance](AGENT-PERFORMANCE.md)), not preemptively.
 
 ### Success metrics
 

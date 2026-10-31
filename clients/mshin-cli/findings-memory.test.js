@@ -7,6 +7,7 @@ import {
   parseWhoisOutput,
   parseSearchsploitOutput,
   parseNiktoOutput,
+  summarizeToolOutput,
 } from "./findings-memory.js";
 
 // ============================================================================
@@ -365,5 +366,93 @@ describe("parseNiktoOutput", () => {
     assert.equal(findings.host, null);
     assert.equal(findings.server, null);
     assert.deepEqual(findings.vulnerabilities, []);
+  });
+});
+
+// ============================================================================
+// summarizeToolOutput — compact signal rendering for context compression
+// ============================================================================
+
+describe("summarizeToolOutput", () => {
+  it("renders nmap text output as hosts and open ports", () => {
+    const output = [
+      "Starting Nmap 7.94 at 2026-10-31 04:00 UTC",
+      "Nmap scan report for 192.0.2.10",
+      "Host is up (0.001s latency).",
+      "PORT   STATE SERVICE VERSION",
+      "22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu",
+      "80/tcp open  http    Apache httpd 2.4.52",
+      "OS details: Linux 5.15",
+      "Nmap done: 1 IP address scanned",
+    ].join("\n");
+    const signal = summarizeToolOutput("nmap", output);
+    assert.match(signal, /nmap: 1 host\(s\), 2 open port\(s\)/);
+    assert.match(signal, /192\.0\.2\.10:22\/tcp open ssh OpenSSH 8\.9p1 Ubuntu/);
+    assert.match(signal, /192\.0\.2\.10:80\/tcp open http Apache httpd 2\.4\.52/);
+    assert.match(signal, /OS 192\.0\.2\.10: Linux 5\.15/);
+  });
+
+  it("renders whois output as registrar, dates, and name servers", () => {
+    const output = [
+      "Domain Name: EXAMPLE.COM",
+      "Registrar: Example Registrar LLC",
+      "Creation Date: 2020-01-01T00:00:00Z",
+      "Expiration Date: 2027-01-01T00:00:00Z",
+      "Name Server: NS1.EXAMPLE.COM",
+      "Name Server: NS2.EXAMPLE.COM",
+    ].join("\n");
+    const signal = summarizeToolOutput("whois", output);
+    assert.match(signal, /whois: domain EXAMPLE\.COM/);
+    assert.match(signal, /registrar Example Registrar LLC/);
+    assert.match(signal, /created 2020-01-01/);
+    assert.match(signal, /expires 2027-01-01/);
+    assert.match(signal, /NS NS1\.EXAMPLE\.COM/);
+  });
+
+  it("renders searchsploit results with paths, EDB ids, and CVEs", () => {
+    const output = [
+      "apache 2.4.49",
+      "-------------------------------------------------------------------- ----------------------------------------",
+      "Exploit Title                                                          | Path",
+      "-------------------------------------------------------------------- ----------------------------------------",
+      "Apache HTTP Server 2.4.49 - Path Traversal (CVE-2021-41773)            | linux/webapps/49519.txt",
+    ].join("\n");
+    const signal = summarizeToolOutput("searchsploit", output);
+    assert.match(signal, /searchsploit apache 2\.4\.49: 1 result\(s\)/);
+    assert.match(signal, /CVE-2021-41773.*linux\/webapps\/49519\.txt \(EDB-49519\)/);
+  });
+
+  it("renders nikto findings", () => {
+    const output = [
+      "+ Target IP: 192.0.2.10",
+      "+ Server: Apache/2.4.52",
+      "+ 200 CVE-2021-41773 - Path traversal vulnerability",
+    ].join("\n");
+    const signal = summarizeToolOutput("nikto", output);
+    assert.match(signal, /nikto: host 192\.0\.2\.10, server Apache\/2\.4\.52/);
+    assert.match(signal, /\[CVE-2021-41773\].*Path traversal/);
+  });
+
+  it("falls back to the generic entity parser for unknown tools", () => {
+    const output = "scanned 192.0.2.10, found 443/tcp open, CVE-2021-44228 mentioned";
+    const signal = summarizeToolOutput("gobuster", output);
+    assert.match(signal, /gobuster: hosts 192\.0\.2\.10/);
+    assert.match(signal, /ports 443\/tcp/);
+    assert.match(signal, /CVEs CVE-2021-44228/);
+  });
+
+  it("returns null when nothing structured can be extracted", () => {
+    assert.equal(summarizeToolOutput("nmap", "total prose, no hosts or ports"), null);
+    assert.equal(summarizeToolOutput("whois", "no fields here"), null);
+    assert.equal(summarizeToolOutput("anything", ""), null);
+  });
+
+  it("caps long signal output with an omitted marker", () => {
+    const lines = ["Nmap scan report for 192.0.2.10", "Host is up."];
+    for (let i = 0; i < 100; i++) lines.push(`${2000 + i}/tcp open svc${i} v${i}`);
+    const signal = summarizeToolOutput("nmap", lines.join("\n"), 10);
+    const out = signal.split("\n");
+    assert.ok(out.length <= 11);
+    assert.match(out.at(-1), /more signal lines omitted/);
   });
 });

@@ -323,6 +323,84 @@ test("harness marks failures and records error messages", async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("harness breaks wall-clock time down by phase", async () => {
+  const dir = makeTempDir();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Emits the same debug events the real agent loop emits, with small real
+  // delays so each phase has measurable wall time.
+  class TimingAgent {
+    constructor() {
+      this.metrics = {
+        toolCalls: 1,
+        narratedToolCalls: 0,
+        fabricatedOutputsBlocked: 0,
+        approvalRequests: 1,
+        approvalGranted: 1,
+        approvalDenied: 0,
+        contextHighWaterTokens: 0,
+        nonRetryableToolErrors: 0,
+        blockedToolRetries: 0,
+        steps: 1,
+        errors: 0,
+      };
+      this.debug = () => {};
+    }
+
+    async run({ onToolCall, onToolResult, onApproval, onToken, onComplete }) {
+      this.debug("step", { n: 1 });
+      await sleep(30);
+      onToken("Hel");
+      this.debug("model.turn", { toolCalls: ["nmap"] });
+      this.debug("approval.request", { name: "metasploit" });
+      await sleep(10);
+      await onApproval("metasploit", {});
+      this.debug("approval.response", { name: "metasploit", approved: true });
+      this.debug("tool.call", { name: "nmap", args: {} });
+      await sleep(20);
+      onToolCall("nmap", {});
+      onToolResult("nmap", "ok");
+      this.debug("tool.result", { name: "nmap" });
+      onComplete("done");
+      return "done";
+    }
+  }
+
+  const harness = new EvalHarness({
+    outputDir: dir,
+    createAgent: () => ({ agent: new TimingAgent(), sessionId: "s1" }),
+  });
+
+  const results = await harness.runSuite({
+    models: ["mshin"],
+    cases: [{ name: "timed", prompt: "go" }],
+  });
+
+  const r = results[0];
+  assert.ok(r.timing.llmMs >= 25, `llmMs was ${r.timing.llmMs}`);
+  assert.ok(r.timing.toolMs >= 15, `toolMs was ${r.timing.toolMs}`);
+  assert.ok(r.timing.approvalMs >= 5, `approvalMs was ${r.timing.approvalMs}`);
+  assert.ok(
+    r.timing.firstTokenMs >= 20 && r.timing.firstTokenMs < r.durationMs,
+    `firstTokenMs was ${r.timing.firstTokenMs}`
+  );
+  assert.ok(r.timing.overheadMs >= 0);
+  assert.ok(
+    r.timing.llmMs + r.timing.toolMs + r.timing.approvalMs <= r.durationMs + 5,
+    "phases must not exceed total wall time"
+  );
+
+  // The breakdown reaches the reports.
+  const mdPath = writeReport(results, { outputDir: dir, format: "md" });
+  const md = readFileSync(mdPath, "utf8");
+  assert.match(md, /\*\*Timing:\*\* LLM \d+ ms, tools \d+ ms/);
+  const csvPath = writeReport(results, { outputDir: dir, format: "csv" });
+  const csv = readFileSync(csvPath, "utf8");
+  assert.match(csv, /llmMs,toolMs,approvalMs,firstTokenMs,overheadMs/);
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // Report writing
 // ---------------------------------------------------------------------------
@@ -580,7 +658,7 @@ test("writeReport quotes CSV fields containing commas, quotes or newlines", () =
   assert.match(row, /"scan, then lookup"/);
   assert.match(row, /"boom: said ""no"""/);
   assert.match(row, /"nmap,whois"/);
-  assert.equal(header.split(",").length, 23);
+  assert.equal(header.split(",").length, 29);
   rmSync(dir, { recursive: true, force: true });
 });
 

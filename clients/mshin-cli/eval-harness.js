@@ -156,9 +156,31 @@ async function createMcpClient(nodeUrl, nodeToken) {
 }
 
 /**
+ * Total wall-clock milliseconds covered by a set of [start, end] intervals,
+ * with overlaps merged — parallel tool calls must not be double-counted.
+ */
+function unionMs(intervals) {
+  if (intervals.length === 0) return 0;
+  const sorted = intervals.slice().sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let [curStart, curEnd] = sorted[0];
+  for (const [start, end] of sorted.slice(1)) {
+    if (start <= curEnd) {
+      curEnd = Math.max(curEnd, end);
+    } else {
+      total += curEnd - curStart;
+      curStart = start;
+      curEnd = end;
+    }
+  }
+  return total + (curEnd - curStart);
+}
+
+/**
  * Run a set of evaluation cases against one or more models and collect
  * measurable agent behaviour: steps, tool-call success, narrated calls,
- * fabricated output, context high-water mark, and wall-clock time.
+ * fabricated output, context high-water mark, wall-clock time, and a
+ * per-phase timing breakdown (LLM turns vs. tool execution vs. approvals).
  */
 class EvalHarness {
   constructor({ outputDir, createAgent, verbose = false }) {
@@ -189,10 +211,57 @@ class EvalHarness {
 
     const { agent, sessionId } = this.createAgent(model, testCase);
 
+    // Per-phase timing, measured by wrapping the agent's debug trace: the
+    // loop already emits step/model.turn (LLM turn boundaries), tool.call /
+    // tool.result, and approval.request / approval.response events, so the
+    // breakdown costs no extra instrumentation inside the agent.
+    const timing = {
+      llmMs: 0,
+      toolMs: 0,
+      approvalMs: 0,
+      firstTokenMs: null,
+      overheadMs: 0,
+    };
+    const originalDebug =
+      typeof agent.debug === "function" ? agent.debug.bind(agent) : null;
+    let turnStart = null;
+    const toolStarts = new Map(); // name -> stack of start timestamps (parallel calls)
+    const toolIntervals = [];
+    const approvalStarts = new Map();
+    agent.debug = (event, data) => {
+      const now = Date.now();
+      if (event === "step") {
+        turnStart = now;
+      } else if (event === "model.turn" && turnStart != null) {
+        timing.llmMs += now - turnStart;
+        turnStart = null;
+      } else if (event === "tool.call") {
+        const stack = toolStarts.get(data?.name) || [];
+        stack.push(now);
+        toolStarts.set(data?.name, stack);
+      } else if (event === "tool.result") {
+        const stack = toolStarts.get(data?.name);
+        if (stack && stack.length > 0) toolIntervals.push([stack.pop(), now]);
+      } else if (event === "approval.request") {
+        approvalStarts.set(data?.name, now);
+      } else if (event === "approval.response") {
+        const started = approvalStarts.get(data?.name);
+        if (started != null) {
+          timing.approvalMs += now - started;
+          approvalStarts.delete(data?.name);
+        }
+      }
+      if (originalDebug) originalDebug(event, data);
+    };
+
     try {
       finalAnswer = await agent.run({
         sessionId,
         userGoal: testCase.prompt,
+        onToken: () => {
+          // Time to first streamed token, relative to run start.
+          if (timing.firstTokenMs === null) timing.firstTokenMs = Date.now() - startTime;
+        },
         onToolCall: (name, args) => {
           toolCalls.push({ name, args, time: Date.now() });
           if (this.verbose) {
@@ -226,6 +295,12 @@ class EvalHarness {
     }
 
     const endTime = Date.now();
+
+    timing.toolMs = unionMs(toolIntervals);
+    timing.overheadMs = Math.max(
+      0,
+      endTime - startTime - timing.llmMs - timing.toolMs - timing.approvalMs
+    );
 
     // expectedTools is a behavioural expectation, not a harness assertion: a
     // model that skips a tool is a result worth recording, not a broken run.
@@ -270,6 +345,8 @@ class EvalHarness {
       contextHighWaterTokens: agent.metrics.contextHighWaterTokens,
       nonRetryableToolErrors: agent.metrics.nonRetryableToolErrors,
       blockedToolRetries: agent.metrics.blockedToolRetries,
+      transientToolRetries: agent.metrics.transientToolRetries ?? 0,
+      timing,
       errors: agent.metrics.errors,
       expectedTools,
       missingTools,
@@ -364,6 +441,8 @@ function writeMarkdownReport(results, outputDir) {
 - **Prompt:** ${r.prompt}
 - **Overall:** ${verdictLabel(overallPassOf(r))}\n- **Run:** ${verdictLabel(r.success !== false)}${r.error ? ` — ${r.error}` : ""}\n- **Behaviour:** ${behaviourLabel(r)}
 - **Duration:** ${r.durationMs} ms
+- **Timing:** LLM ${r.timing?.llmMs ?? "—"} ms, tools ${r.timing?.toolMs ?? "—"} ms, approvals ${r.timing?.approvalMs ?? "—"} ms, first token ${r.timing?.firstTokenMs ?? "—"} ms, overhead ${r.timing?.overheadMs ?? "—"} ms
+- **Transient tool retries:** ${r.transientToolRetries ?? 0}
 - **Steps:** ${r.steps} / ${r.maxSteps}
 - **Tool calls:** ${r.toolCallCount} (${r.narratedToolCallCount} narrated)
 - **Fabricated outputs blocked:** ${r.fabricatedOutputsBlocked}\n- **Continuation nudges:** ${r.continuationNudges ?? 0}
@@ -424,6 +503,12 @@ function writeCsvReport(results, outputDir) {
     "contextHighWaterTokens",
     "nonRetryableToolErrors",
     "blockedToolRetries",
+    "transientToolRetries",
+    "llmMs",
+    "toolMs",
+    "approvalMs",
+    "firstTokenMs",
+    "overheadMs",
     "errors",
     "expectedTools",
     "expectedToolsMet",
@@ -451,6 +536,12 @@ function writeCsvReport(results, outputDir) {
       r.contextHighWaterTokens,
       r.nonRetryableToolErrors,
       r.blockedToolRetries,
+      r.transientToolRetries ?? "",
+      r.timing?.llmMs ?? "",
+      r.timing?.toolMs ?? "",
+      r.timing?.approvalMs ?? "",
+      r.timing?.firstTokenMs ?? "",
+      r.timing?.overheadMs ?? "",
       r.errors,
       r.expectedTools ? r.expectedTools.join(",") : "",
       r.expectedToolsMet === null ? "" : r.expectedToolsMet,

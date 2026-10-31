@@ -89,6 +89,24 @@ async function main() {
     process.exit(1);
   }
 
+  // Pre-warm the model in the background. The first real turn is slow while
+  // Ollama loads the model into memory (cold start: 10-30s for a 24B), so a
+  // tiny one-token request is fired now and left to finish while the operator
+  // reads the tool list and types a prompt. Best-effort: a failed warm-up
+  // just means the first turn pays the cold start.
+  console.log(`  Warming up model '${model}' in the background...`);
+  void fetch(`${ollamaUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "Hi" }],
+      stream: false,
+      options: { num_predict: 1 },
+    }),
+    signal: AbortSignal.timeout(120_000),
+  }).catch(() => {});
+
   // Connect to the Machin Shin Node MCP server over Streamable HTTP.
   const client = new Client(
     { name: "mshin-cli", version: "1.0.0" },
@@ -206,26 +224,45 @@ async function main() {
   });
 
   async function runPrompt(sessionId, userInput) {
+    // Tracks whether the last write to stdout was a streamed token (no
+    // trailing newline). Tool/result lines and the final answer need to
+    // insert a newline before themselves when this is true, so they don't
+    // run into the streamed text.
+    let needsNewline = false;
+    const printLine = (text) => {
+      if (needsNewline) {
+        process.stdout.write("\n");
+        needsNewline = false;
+      }
+      console.log(text);
+    };
+
     try {
       await agent.run({
         sessionId,
         userGoal: userInput,
+        onToken: (text) => {
+          // Stream the model's output as it generates, so the operator sees
+          // progress instead of a blank prompt for the whole turn.
+          process.stdout.write(text);
+          needsNewline = true;
+        },
         onToolCall: (name, args) => {
-          console.log(`  [tool] ${name}(${JSON.stringify(args)})`);
+          printLine(`  [tool] ${name}(${JSON.stringify(args)})`);
         },
         onNarratedToolCall: (name) => {
           // Worth showing: the model wrote the call out instead of emitting
           // it, which usually means the persona was built with a sampling
           // temperature above 0. The loop recovered, but the model is a step
           // away from inventing results instead.
-          console.log(
+          printLine(
             `  [recovered] '${name}' was written as text, not called. Running it anyway.`
           );
         },
         onToolResult: (name, text) => {
           // Keep the UI tidy; full results live in memory.
           const preview = text.split("\n").slice(0, 3).join("\n");
-          console.log(`  [result] ${preview}${text.length > preview.length ? " ..." : ""}`);
+          printLine(`  [result] ${preview}${text.length > preview.length ? " ..." : ""}`);
         },
         onApproval: async (name, args) => {
           const argSummary = JSON.stringify(args, null, 2);
@@ -235,7 +272,17 @@ async function main() {
           );
         },
         onComplete: (answer) => {
-          console.log(`\n${answer}\n`);
+          if (agent.lastAnswerStreamed) {
+            // The answer was already printed via onToken; just end the line
+            // so the next prompt starts clean.
+            if (needsNewline) {
+              process.stdout.write("\n");
+              needsNewline = false;
+            }
+          } else {
+            // Loop-generated answer (e.g. fabrication warning) — not streamed.
+            console.log(`\n${answer}\n`);
+          }
         },
       });
     } catch (err) {

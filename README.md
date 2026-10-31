@@ -310,6 +310,7 @@ bridged LAN guest.
 - [Refactoring Ideas](docs/REFACTORING-IDEAS.md) – Cleanups worth doing, and the ones deliberately avoided
 - [Agent Roadmap](docs/CYBERSECURITY-AGENT-ROADMAP.md) – Where the agent loop is headed
 - [Agent-Loop Investigations](docs/AGENT-LOOP-INVESTIGATIONS.md) – Defects found by running the evaluation harness, and what is still open
+- [Agent Performance](docs/AGENT-PERFORMANCE.md) – Making mshin-cli faster: streaming, parallel tools, caching, and a richer system prompt
 - [Eval Run 2026-10-20](docs/EVAL-RUN-2026-10-20.md) – First model-comparison measurements: 7–8B pass, 4B fabricates, 32B unrunnable on 16GB
 - [Eval Run 2026-10-21](docs/EVAL-RUN-2026-10-21.md) – The same suite against the sandboxed Docker Node: 8B tier unchanged, sandbox is a drop-in Node
 - [Raspberry Pi Node](docs/RASPBERRY-PI-NODE.md) – Running the Node on a Raspberry Pi

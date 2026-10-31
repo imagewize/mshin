@@ -1,6 +1,6 @@
 {
   "name": "mshin-kali-mcp-server",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "MCP server exposing a curated set of Kali Linux security tools for Machin Shin.",
   "type": "module",
   "main": "index.js",
