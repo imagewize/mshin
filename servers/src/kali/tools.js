@@ -225,13 +225,20 @@ export function parseNmapText(output) {
     }
     const portMatch = t.match(/^(\d+)\/(\w+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
     if (portMatch && current) {
-      current.ports.push({
+      const port = {
         port: parseInt(portMatch[1], 10),
         protocol: portMatch[2],
         state: portMatch[3],
         service: portMatch[4],
         version: (portMatch[5] || "").trim() || null,
-      });
+      };
+      // Flag the SYN-proxy signature per port, so a client reading the JSON
+      // can ignore artifact ports without the host-level annotation having
+      // fired (isSynProxyArtifact is defined below; function declarations
+      // hoist).
+      port.likelyArtifact =
+        port.state === "open" && isSynProxyArtifact(port);
+      current.ports.push(port);
     }
   }
   return { tool: "nmap", hosts };

@@ -310,6 +310,25 @@ test("syn-proxy guard annotates an inflated tcpwrapped report", () => {
   assert.match(note, /do not re-scan top-1000/);
 });
 
+test("parseNmapText flags artifact ports with likelyArtifact per port", () => {
+  const parsed = parseNmapText(buildInflatedReport());
+  const byPort = Object.fromEntries(
+    parsed.hosts[0].ports.map((p) => [p.port, p])
+  );
+  // tcpwrapped and guessed-service open ports are artifacts...
+  assert.equal(byPort[1000].likelyArtifact, true);
+  assert.equal(byPort[1029].service, "netbios-ssn?");
+  assert.equal(byPort[1029].likelyArtifact, true);
+  // ...confirmed services and closed ports are not...
+  assert.equal(byPort[22].likelyArtifact, false);
+  assert.equal(byPort[80].likelyArtifact, false);
+  assert.equal(byPort[9999].state, "closed");
+  assert.equal(byPort[9999].likelyArtifact, false);
+  // ...and an honest scan flags nothing.
+  const honest = parseNmapText(SAMPLE_NMAP).hosts[0].ports;
+  assert.ok(honest.every((p) => p.likelyArtifact === false));
+});
+
 test("syn-proxy guard annotates guessed-service inflation without tcpwrapped", () => {
   // Same shape, but the fabric produces open ports nmap guesses a name for
   // (service ends in `?`, no version) rather than tcpwrapped.
