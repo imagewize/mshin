@@ -19,6 +19,7 @@
 
 - **Private & Offline**: No cloud dependencies—your data stays yours.
 - **Real-Time Tool Access**: LLM directly executes Kali Linux tools (Nmap, Metasploit, etc.) via MCP.
+- **Structured Tool Results**: nmap scans return parsed JSON (`structuredContent`: hosts, ports, services, versions) alongside the raw text, and MCP clients carry an explicit request timeout (`MSHIN_MCP_TIMEOUT_MS`, default 960s) so long scans like `nmap -p-` no longer die at the SDK's 60s default.
 - **Scalable Architecture**: Two-machine setup for optimal performance.
 - **Wheel of Time Themed**: Named for the Black Wind of the Ways—the relentless hunter that finds what hides in the dark.
 
@@ -80,7 +81,7 @@ either — Vibe speaks the same Streamable HTTP MCP the CLI does:
 │ Mistral Platform  │◄───►│ macOS Host        │◄───►│ Docker Container  │
 │ (Mistral Pro)     │     │ Mistral Vibe CLI  │     │ mshin-node        │
 │ - Inference       │     │ - Agent loop      │     │ - MCP Server      │
-│ - No local model  │     │ - MCP client      │     │ - 16 Kali tools   │
+│ - No local model  │     │ - MCP client      │     │ - 19 Kali tools   │
 └───────────────────┘     └───────────────────┘     └───────────────────┘
 ```
 
@@ -141,7 +142,7 @@ speaks the same Streamable HTTP MCP the CLI does:
 │ macOS Host                   │         │ Docker Container  │
 │ - Ollama (local inference)   │ ◄─────► │ mshin-node        │
 │ - OpenCode (agent + MCP      │         │ - MCP Server      │
-│   client, runs Mistral Small)│         │ - 16 Kali tools   │
+│   client, runs Mistral Small)│         │ - 19 Kali tools   │
 └──────────────────────────────┘         └───────────────────┘
 ```
 
@@ -204,7 +205,7 @@ opencode run -m ollama/<MODEL_TAG> "Run an Nmap scan on 127.0.0.1 and analyze th
 ```
 
 Caveats worth knowing — these come from a live run of this mode (opencode
-v2.0.32, `ministral-3:8b-32k`, all 16 tools connected) and apply wherever the
+v2.0.32, `ministral-3:8b-32k`, all 19 tools connected) and apply wherever the
 Node runs — container, Lima guest, or physical:
 
 - **Private and offline**, like the two-machine setup — but one host must fit both the
@@ -294,6 +295,11 @@ bridged LAN guest.
 4. **Try a Command:**
   ```
    "Machin Shin, run an Nmap scan on 192.168.1.1 and analyze the results."
+  ```
+5. **One tool, no model:** call the Node directly with `mshin-call`:
+  ```bash
+   mshin-call --node http://<MSHIN_NODE_IP>:3000 nmap '{"target":"127.0.0.1","flags":["-sV"]}'
+   # See clients/mshin-cli/README.md
   ```
 
 ---
