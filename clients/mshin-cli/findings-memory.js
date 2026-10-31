@@ -147,9 +147,11 @@ function parseNmapOutput(output) {
 
     // Port line: "22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu"
     // The format is: port/protocol state service (version/product info)
-    // We need to match port/protocol first, then state
+    // We need to match port/protocol first, then state. The trailing group
+    // captures the version/product remainder -- an earlier `\s*($|.*)` shape
+    // swallowed it into the match, leaving the version always null.
     const portLineMatch = trimmed.match(
-      /^(\d+)\/(\w+)\s+(\w+)\s+(\S+)\s*($|.*)/
+      /^(\d+)\/(\w+)\s+(\w+)\s+(\S+)(?:\s+(.*))?$/
     );
     
     if (portLineMatch) {
@@ -158,8 +160,7 @@ function parseNmapOutput(output) {
       // Only process open ports
       if (state === "open") {
         // The rest of the line after service might contain version info
-        // Find where the service name ends and version begins
-        const restOfLine = trimmed.slice(portLineMatch[0].length).trim();
+        const restOfLine = (portLineMatch[5] || "").trim();
         let version = null;
         let product = null;
         
@@ -550,6 +551,108 @@ const PARSERS = {
 };
 
 /**
+ * Render one tool's raw output as compact structured "signal" — the facts a
+ * model actually reasons about (host/port/service/version for nmap, registrar
+ * and dates for whois, exploit paths and CVEs for searchsploit) — dropping the
+ * prose boilerplate. Used by context compression so a 200-line nmap output
+ * can reach the LLM as ~10 lines of signal instead of a head/tail window.
+ *
+ * Returns null when the parser extracts nothing structured, so the caller can
+ * fall back to plain head/tail truncation rather than replacing real output
+ * with an empty summary.
+ *
+ * @param {string} toolName - Name of the tool that produced the output
+ * @param {string} output - Raw tool output
+ * @param {number} [maxLines] - Cap on rendered signal lines before an omitted marker
+ * @returns {string|null} Compact multi-line signal, or null if nothing was extracted
+ */
+function summarizeToolOutput(toolName, output, maxLines = 40) {
+  if (!output) return null;
+  const parser = PARSERS[toolName] || parseGenericOutput;
+  const findings = parser(output, toolName);
+  const lines = [];
+
+  switch (toolName) {
+    case "nmap": {
+      const hosts = findings.hosts || [];
+      const open = findings.openPorts || [];
+      if (hosts.length === 0 && open.length === 0) return null;
+      lines.push(`nmap: ${hosts.length} host(s), ${open.length} open port(s)`);
+      for (const port of open) {
+        const svc = [port.service, port.version].filter(Boolean).join(" ");
+        lines.push(`  ${port.host}:${port.port}/${port.protocol} open ${svc}`.trimEnd());
+      }
+      for (const host of hosts) {
+        if (host.mac) {
+          lines.push(`  host ${host.ip} MAC ${host.mac}${host.vendor ? ` (${host.vendor})` : ""}`);
+        }
+      }
+      for (const os of findings.osMatches || []) {
+        lines.push(`  OS ${os.host}: ${os.name}${os.accuracy ? ` (${os.accuracy}%)` : ""}`);
+      }
+      break;
+    }
+    case "whois": {
+      if (!findings.domain && !findings.ip) return null;
+      const parts = [];
+      if (findings.domain) parts.push(`domain ${findings.domain}`);
+      if (findings.ip) parts.push(`ip ${findings.ip}`);
+      if (findings.registrar) parts.push(`registrar ${findings.registrar}`);
+      if (findings.creationDate) parts.push(`created ${findings.creationDate}`);
+      if (findings.expirationDate) parts.push(`expires ${findings.expirationDate}`);
+      lines.push(`whois: ${parts.join(", ")}`);
+      for (const ns of findings.nameServers || []) lines.push(`  NS ${ns}`);
+      break;
+    }
+    case "searchsploit": {
+      const results = findings.results || [];
+      if (results.length === 0) return null;
+      lines.push(`searchsploit ${findings.query || ""}: ${results.length} result(s)`.trimEnd());
+      for (const r of results) {
+        const cves = r.cves?.length ? ` ${r.cves.join(", ")}` : "";
+        const edb = r.edbId ? ` (EDB-${r.edbId})` : "";
+        lines.push(`  ${r.title} | ${r.path}${edb}${cves}`);
+      }
+      break;
+    }
+    case "nikto": {
+      const vulns = findings.vulnerabilities || [];
+      const items = findings.interestingItems || [];
+      if (!findings.host && vulns.length === 0 && items.length === 0) return null;
+      lines.push(`nikto: host ${findings.host || "?"}, server ${findings.server || "?"}`);
+      for (const v of vulns) lines.push(`  [${v.type}] ${v.description}`);
+      for (const it of items) lines.push(`  ${it.type}: ${it.description}`);
+      break;
+    }
+    default: {
+      const hosts = findings.hosts || [];
+      const ports = findings.ports || [];
+      const cves = findings.cves || [];
+      const interesting = findings.interestingLines || [];
+      if (hosts.length === 0 && ports.length === 0 && cves.length === 0 && interesting.length === 0) {
+        return null;
+      }
+      if (hosts.length > 0) lines.push(`${toolName}: hosts ${hosts.join(", ")}`);
+      if (ports.length > 0) {
+        lines.push(`${toolName}: ports ${ports.map((p) => `${p.port}/${p.protocol}`).join(", ")}`);
+      }
+      if (cves.length > 0) lines.push(`${toolName}: CVEs ${cves.join(", ")}`);
+      for (const line of interesting) lines.push(`  ${line}`);
+      break;
+    }
+  }
+
+  if (lines.length > maxLines) {
+    const omitted = lines.length - maxLines;
+    return [
+      ...lines.slice(0, maxLines),
+      `... (${omitted} more signal lines omitted; full output in session memory) ...`,
+    ].join("\n");
+  }
+  return lines.join("\n");
+}
+
+/**
  * FindingsMemory - Maintains a structured summary of findings extracted from tool outputs.
  * 
  * This summary persists even when the raw tool output is compressed or dropped during
@@ -916,5 +1019,5 @@ class FindingsMemory {
   }
 }
 
-export { FindingsMemory, parseNmapOutput, parseWhoisOutput, parseSearchsploitOutput, parseNiktoOutput };
+export { FindingsMemory, parseNmapOutput, parseWhoisOutput, parseSearchsploitOutput, parseNiktoOutput, summarizeToolOutput };
 export default FindingsMemory;
