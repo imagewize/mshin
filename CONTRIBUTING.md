@@ -88,6 +88,7 @@ mshin/
 │   ├── REFACTORING-IDEAS.md    # Cleanups worth doing (and ones avoided)
 │   ├── CYBERSECURITY-AGENT-ROADMAP.md  # Agent roadmap
 │   ├── AGENT-LOOP-INVESTIGATIONS.md    # Agent-loop defects and open questions
+│   ├── AGENT-PERFORMANCE.md            # Making mshin-cli faster: streaming, parallel tools, caching
 │   ├── EVAL-RUN-2026-10-20.md         # First model-comparison eval measurements
 │   ├── EVAL-RUN-2026-10-21.md         # Same suite against the Docker Node
 │   ├── RASPBERRY-PI-NODE.md            # Raspberry Pi Node guide
