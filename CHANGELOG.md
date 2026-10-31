@@ -37,8 +37,9 @@ Agent-performance release for `mshin-cli`, plus the tool-timeout and dnsenum fix
 
 ### Verified
 
-- `npm test` in `clients/mshin-cli/` passes 135/135 (118 pre-branch cases plus 17 new: tool-aware compression, `summarizeToolOutput` rendering, transient retry semantics, and the eval timing breakdown). `npm test` in `servers/src/kali/` passes 72/72 (pre-commit check).
-- Smoke-run of the new modules: a 203-line nmap output compresses to 3 signal lines carrying the open port and version; the pre-warm request fires at CLI startup. Not verified against a live Ollama/Node: no model load or MCP round trip was exercised in this environment.
+- `npm test` in `clients/mshin-cli/` passes 135/135 (118 pre-branch cases plus 17 new: tool-aware compression, `summarizeToolOutput` rendering, transient retry semantics, and the eval timing breakdown). `npm test` in `servers/src/kali/` passes 72/72 (pre-commit check, run in a clean worktree of the pushed HEAD).
+- Smoke-run of the new modules: a 203-line nmap output compresses to 3 signal lines carrying the open port and version.
+- Live against the local Docker Node (`http://localhost:3001`, bearer token from `configs/mshin-node.env`) and local Ollama (`mshin` model), 2026-10-31: the `mshin` CLI with a piped prompt fired the background pre-warm, connected with the token, listed all 19 tools, and ran a real `nmap -sV` of `127.0.0.1:3000` through MCP — `3000/tcp open http Node.js Express framework` — then streamed the final answer and exited 0; the `MSHIN_DEBUG=1` trace shows the `tools.parallel`, `tool.call`/`tool.result` events. The eval harness against the same Node scored the case PASS with the timing breakdown populated: 65.6 s total = 54.2 s LLM + 11.4 s tool + 18 ms overhead, first content token at 59.6 s (turn 1 was a pure tool call, so the first streamed content arrived in turn 2).
 
 ## [0.26.0] - 2026-10-22
 
