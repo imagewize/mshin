@@ -15,6 +15,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { DEFAULT_MCP_REQUEST_TIMEOUT_MS } from "./config.js";
 
 const DEFAULT_NODE_URL = "http://192.168.1.100:3000";
 
@@ -22,6 +23,7 @@ function parseArgs(argv) {
     const args = argv.slice(2);
     let nodeUrl = process.env.MSHIN_NODE_URL || DEFAULT_NODE_URL;
     let token = process.env.MSHIN_NODE_TOKEN || "";
+    let timeoutMs = DEFAULT_MCP_REQUEST_TIMEOUT_MS;
     let list = false;
     let help = false;
     const positional = [];
@@ -33,6 +35,12 @@ function parseArgs(argv) {
                 break;
             case "--token":
                 token = args[++i];
+                break;
+            case "--timeout":
+                timeoutMs = parseInt(args[++i], 10);
+                if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+                    fail(`--timeout must be a positive number of milliseconds`);
+                }
                 break;
             case "--list":
             case "-l":
@@ -48,7 +56,7 @@ function parseArgs(argv) {
         }
     }
 
-    return { nodeUrl, token, list, help, positional };
+    return { nodeUrl, token, timeoutMs, list, help, positional };
 }
 
 function usage() {
@@ -57,12 +65,15 @@ function usage() {
 Options:
   --node URL      Machin Shin Node MCP URL (default: ${DEFAULT_NODE_URL})
   --token TOKEN   Bearer token for Node authentication (or set MSHIN_NODE_TOKEN)
+  --timeout MS    MCP request timeout in milliseconds (default: ${DEFAULT_MCP_REQUEST_TIMEOUT_MS},
+                  or MSHIN_MCP_TIMEOUT_MS; the SDK's own 60s default kills long scans)
   --list, -l      List tools exposed by the Node
   --help, -h      Show this help
 
 Environment:
-  MSHIN_NODE_URL    default --node value
-  MSHIN_NODE_TOKEN  default --token value
+  MSHIN_NODE_URL        default --node value
+  MSHIN_NODE_TOKEN      default --token value
+  MSHIN_MCP_TIMEOUT_MS  default --timeout value
 
 Examples:
   mshin-call --node http://192.168.1.100:3000 --token <token> nmap '{"target":"127.0.0.1"}'
@@ -108,7 +119,7 @@ async function listTools(client) {
     }
 }
 
-async function callTool(client, name, argsJson) {
+async function callTool(client, name, argsJson, timeoutMs) {
     let args = {};
     if (argsJson !== undefined) {
         try {
@@ -118,7 +129,13 @@ async function callTool(client, name, argsJson) {
         }
     }
 
-    const result = await client.callTool({ name, arguments: args });
+    // Explicit request timeout — the SDK default of 60s kills any tool call
+    // that runs longer, even though the Node allows long scans server-side.
+    const result = await client.callTool(
+        { name, arguments: args },
+        undefined,
+        { timeout: timeoutMs }
+    );
 
     if (result.isError) {
         console.error("Tool returned an error:");
@@ -130,6 +147,9 @@ async function callTool(client, name, argsJson) {
         } else {
             console.log(JSON.stringify(item));
         }
+    }
+    if (result.structuredContent !== undefined) {
+        console.log(JSON.stringify(result.structuredContent, null, 2));
     }
 
     return result.isError ? 1 : 0;
@@ -144,7 +164,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 async function main() {
-    const { nodeUrl, token, list, help, positional } = parseArgs(process.argv);
+    const { nodeUrl, token, timeoutMs, list, help, positional } = parseArgs(process.argv);
 
     if (help) {
         usage();
@@ -163,7 +183,7 @@ async function main() {
                 fail("Provide a tool name, or use --list.");
             }
             const [toolName, argsJson] = positional;
-            exitCode = await callTool(client, toolName, argsJson);
+            exitCode = await callTool(client, toolName, argsJson, timeoutMs);
         }
     } finally {
         try {

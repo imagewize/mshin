@@ -204,6 +204,39 @@ function assertDiscoveryNotFabricated(flags, specs, output) {
   }
 }
 
+// Parse nmap's normal text report into a structured object so the handler can
+// return it as MCP structuredContent next to the raw text — clients get real
+// JSON (hosts, ports, state, service, version) instead of only a string.
+// The port table format is stable across nmap versions:
+//   "Nmap scan report for imagewize.com (188.245.200.144)"
+//   "22/tcp   open  ssh        OpenSSH 9.6p1 (protocol 2.0)"
+// (nmap's own -oJ JSON output is NOT used: Kali's nmap 7.991 build parses
+// "-oJ" as "-oN" with filename "J" — verified live on the Node.)
+export function parseNmapText(output) {
+  const hosts = [];
+  let current = null;
+  for (const line of (output || "").split("\n")) {
+    const t = line.trim();
+    const hostMatch = t.match(/^Nmap scan report for (.+?)(?:\s+\(([^)]+)\))?$/);
+    if (hostMatch) {
+      current = { target: hostMatch[1], address: hostMatch[2] || hostMatch[1], ports: [] };
+      hosts.push(current);
+      continue;
+    }
+    const portMatch = t.match(/^(\d+)\/(\w+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
+    if (portMatch && current) {
+      current.ports.push({
+        port: parseInt(portMatch[1], 10),
+        protocol: portMatch[2],
+        state: portMatch[3],
+        service: portMatch[4],
+        version: (portMatch[5] || "").trim() || null,
+      });
+    }
+  }
+  return { tool: "nmap", hosts };
+}
+
 // -----------------------------------------------------------------------------
 // Tool definitions exposed to MCP clients
 // -----------------------------------------------------------------------------
@@ -267,7 +300,12 @@ const tools = [
       }
       const output = await runTool("nmap", [...flags, ...specs], toolTimeout(NMAP_TIMEOUT_MS));
       assertDiscoveryNotFabricated(flags, specs, output);
-      return { content: [{ type: "text", text: output }] };
+      // structuredContent carries the parsed report as JSON next to the raw
+      // text, so MCP clients don't have to regex the text themselves.
+      return {
+        content: [{ type: "text", text: output }],
+        structuredContent: parseNmapText(output),
+      };
     },
   },
   {

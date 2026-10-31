@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, assertDiscoveryNotFabricated } from "./tools.js";
+import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, parseNmapText, assertDiscoveryNotFabricated } from "./tools.js";
 import { isTargetAllowed, assertTargetInScope } from "./config.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
@@ -155,6 +155,65 @@ test("nmap rejects a non-string target", async () => {
 test("nmap rejects a null byte in the target", async () => {
   const nmap = byName("nmap");
   await assert.rejects(nmap.handler({ target: "8.8.8.8\0evil" }), /unsafe characters|null byte/);
+});
+
+// parseNmapText — the structuredContent the nmap handler returns next to the
+// raw text (see the parser comment in tools.js)
+
+const SAMPLE_NMAP = [
+  "Starting Nmap 7.991 ( https://nmap.org ) at 2026-10-31 04:35 +0000",
+  "Nmap scan report for imagewize.com (188.245.200.144)",
+  "Host is up (0.25s latency).",
+  "Not shown: 990 closed tcp ports (conn-refused)",
+  "",
+  "PORT    STATE  SERVICE  VERSION",
+  "22/tcp  open   ssh      OpenSSH 9.6p1 (protocol 2.0)",
+  "53/tcp  open   domain   (generic dns response: NXDOMAIN)",
+  "80/tcp  open   http     nginx",
+  "443/tcp open   ssl/http nginx",
+  "9999/tcp closed abyss",
+  "",
+  "Nmap done: 1 IP address (1 host up) scanned in 56.03 seconds",
+].join("\n");
+
+test("parseNmapText extracts hosts, ports, states, services and versions", () => {
+  const parsed = parseNmapText(SAMPLE_NMAP);
+  assert.equal(parsed.tool, "nmap");
+  assert.equal(parsed.hosts.length, 1);
+  const host = parsed.hosts[0];
+  assert.equal(host.target, "imagewize.com");
+  assert.equal(host.address, "188.245.200.144");
+  assert.deepEqual(
+    host.ports.map((p) => [p.port, p.protocol, p.state, p.service, p.version]),
+    [
+      [22, "tcp", "open", "ssh", "OpenSSH 9.6p1 (protocol 2.0)"],
+      [53, "tcp", "open", "domain", "(generic dns response: NXDOMAIN)"],
+      [80, "tcp", "open", "http", "nginx"],
+      [443, "tcp", "open", "ssl/http", "nginx"],
+      [9999, "tcp", "closed", "abyss", null],
+    ]
+  );
+});
+
+test("parseNmapText handles a bare-IP host line and multiple hosts", () => {
+  const parsed = parseNmapText(
+    "Nmap scan report for 192.0.2.1\nHost is up.\n80/tcp open http nginx\n" +
+      "Nmap scan report for 192.0.2.2\nHost is up.\n22/tcp open ssh OpenSSH 9.6p1\n"
+  );
+  assert.deepEqual(
+    parsed.hosts.map((h) => [h.target, h.address, h.ports.length]),
+    [
+      ["192.0.2.1", "192.0.2.1", 1],
+      ["192.0.2.2", "192.0.2.2", 1],
+    ]
+  );
+});
+
+test("parseNmapText ignores header/boilerplate lines and empty output", () => {
+  const parsed = parseNmapText("PORT STATE SERVICE VERSION\nNmap done: 0 IP addresses scanned\n");
+  assert.deepEqual(parsed.hosts, []);
+  assert.deepEqual(parseNmapText(""), { tool: "nmap", hosts: [] });
+  assert.deepEqual(parseNmapText(undefined), { tool: "nmap", hosts: [] });
 });
 
 // -----------------------------------------------------------------------------
