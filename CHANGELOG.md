@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Structured nmap results** (`servers/src/kali/tools.js`). The nmap handler now returns the parsed report as MCP `structuredContent` (hosts with ports/protocol/state/service/version) alongside the usual text, via a new exported `parseNmapText()`. nmap's own `-oJ` JSON output is deliberately not used — Kali's nmap 7.991 parses `-oJ` as `-oN` with filename `J` (verified live on the Node), so the text table is parsed instead; it is stable across nmap builds. Covered by tests.
+- **Explicit MCP request timeout on the client** (`clients/mshin-cli/config.js`, `agent.js`, `call.js`). Every `callTool` now passes `{ timeout: mcpRequestTimeoutMs }`; previously the MCP SDK's 60s `DEFAULT_REQUEST_TIMEOUT_MSEC` applied, so any scan longer than a minute (e.g. `nmap -p-`, which the Node allows up to 600s) died client-side with a transport error while the server was still scanning. New `DEFAULT_MCP_REQUEST_TIMEOUT_MS` (960s — the highest built-in server ceiling plus margin), overridable with `MSHIN_MCP_TIMEOUT_MS`; `mshin-call` also gets a `--timeout MS` flag. Agent constructor takes `mcpRequestTimeoutMs`.
+- **`mshin-call` prints `structuredContent`** as pretty JSON after the text content when a tool returns it.
+
 ## [0.27.0] - 2026-10-31
 
 Agent-performance release for `mshin-cli`, plus the tool-timeout and dnsenum fixes from #54. The agent loop was sequential by design — one LLM turn, then one tool call at a time, with `stream: false` leaving the terminal blank for the whole generation. This release makes the loop stream, run independent tools in parallel, and cache results, then goes further: tool-aware context compression, transient-error retry, model pre-warming, and a per-phase timing breakdown in the eval harness. The full analysis, design decisions, and success metrics live in `docs/AGENT-PERFORMANCE.md`.

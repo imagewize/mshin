@@ -25,6 +25,17 @@ export const DEFAULT_TOOL_RESULT_TAIL_LINES = 25;
 // on a call that will fail identically.
 export const DEFAULT_TOOL_RETRY_DELAY_MS = 2_000;
 
+// Timeout for a single MCP callTool request. The MCP SDK's own default is
+// 60s (DEFAULT_REQUEST_TIMEOUT_MSEC), which silently kills any scan that
+// runs longer — even though the Node allows nmap up to 600s and
+// nikto/wpscan up to 900s server-side. The default here covers the highest
+// built-in server ceiling plus a minute of margin; override with
+// MSHIN_MCP_TIMEOUT_MS (milliseconds) when the Node's MSHIN_TOOL_TIMEOUT_MS
+// is raised above the built-in ceilings.
+const envMcpTimeoutMs = parseInt(process.env.MSHIN_MCP_TIMEOUT_MS, 10);
+export const DEFAULT_MCP_REQUEST_TIMEOUT_MS =
+  Number.isFinite(envMcpTimeoutMs) && envMcpTimeoutMs > 0 ? envMcpTimeoutMs : 960_000;
+
 // Marker prefix identifying the findings-summary message compactContext()
 // maintains (Option B). Used both to find and refresh that single message
 // and to keep it out of eviction.

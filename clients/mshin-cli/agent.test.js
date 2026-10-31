@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, compressToolResult } from "./agent.js";
 import { extractTextToolCall } from "./tool-call-extract.js";
 import { SessionLogger } from "./session-logger.js";
+import { DEFAULT_MCP_REQUEST_TIMEOUT_MS } from "./config.js";
 
 // -----------------------------------------------------------------------------
 // Test doubles
@@ -101,10 +102,12 @@ class MockMcpClient {
   constructor(handler) {
     this.handler = handler;
     this.calls = [];
+    this.callOptions = [];
   }
 
-  async callTool({ name, arguments: args }) {
+  async callTool({ name, arguments: args }, _resultSchema, options) {
     this.calls.push({ name, args });
+    this.callOptions.push(options);
     return this.handler(name, args);
   }
 }
@@ -1094,6 +1097,38 @@ test("an ordinary tool error stays retryable", async (t) => {
   assert.equal(agent.metrics.transientToolRetries, 2);
   assert.equal(agent.metrics.nonRetryableToolErrors, 0);
   assert.equal(agent.metrics.blockedToolRetries, 0);
+});
+
+test("tool calls carry an explicit MCP request timeout, not the SDK's 60s default", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => textContent("ok"),
+    agentOptions: { mcpRequestTimeoutMs: 123_456 },
+  });
+
+  ollama.queueToolCall("nmap", { target: "192.0.2.1" });
+  ollama.queueFinal("done");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.ok(mcp.callOptions.length >= 1, "at least one MCP call recorded");
+  for (const options of mcp.callOptions) {
+    assert.deepEqual(options, { timeout: 123_456 });
+  }
+});
+
+test("the MCP request timeout defaults above the SDK's 60s default", async (t) => {
+  const { ollama, mcp, agent } = await setup(t);
+
+  ollama.queueToolCall("nmap", { target: "192.0.2.1" });
+  ollama.queueFinal("done");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.ok(
+    DEFAULT_MCP_REQUEST_TIMEOUT_MS > 60_000,
+    "default must exceed the MCP SDK's DEFAULT_REQUEST_TIMEOUT_MSEC (60s)"
+  );
+  assert.deepEqual(mcp.callOptions[0], { timeout: DEFAULT_MCP_REQUEST_TIMEOUT_MS });
 });
 
 test("a transient isError result is retried once and the success is used", async (t) => {

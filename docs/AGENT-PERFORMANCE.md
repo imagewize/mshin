@@ -321,6 +321,15 @@ How to measure whether these changes worked:
 
 ## Changelog
 
+- **2026-10-31 (post-merge follow-up)** — Live use of the merged loop against a
+  remote VPS exposed two gaps the ten items above did not cover: every
+  `callTool` still rode the MCP SDK's 60s `DEFAULT_REQUEST_TIMEOUT_MSEC`, so a
+  `nmap -p-` the Node allows up to 600s died client-side at 60s, and tool
+  results were text-only strings. Fixed on
+  `feature/mcp-request-timeout-structured-results`: clients now pass an explicit
+  request timeout (`DEFAULT_MCP_REQUEST_TIMEOUT_MS`, `MSHIN_MCP_TIMEOUT_MS`,
+  `mshin-call --timeout`), and the nmap handler returns parsed
+  `structuredContent` next to the text.
 - **2026-10-31** — P2 and P3 implemented on `feature/agent-performance`:
   tool-aware context compression (`summarizeToolOutput` + `toolName` in
   `compressToolResult`, including the nmap text-parser version fix), transient

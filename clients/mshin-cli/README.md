@@ -62,6 +62,10 @@ mshin-call --node http://192.168.1.100:3000 --token <token> \
 export MSHIN_NODE_URL=http://192.168.1.100:3000
 export MSHIN_NODE_TOKEN=<token>
 mshin-call whois '{"target":"example.com"}'
+
+# Long scans (nmap -p- and friends) need more than the MCP SDK's 60s default
+# request timeout — mshin-call and the agent default to 960s, override with:
+export MSHIN_MCP_TIMEOUT_MS=1800000   # or: mshin-call --timeout 1800000 ...
 ```
 
 ### Requirements

@@ -26,6 +26,7 @@ import {
   ACTIVE_TOOLS,
   NON_RETRYABLE_TOOL_ERROR_RE,
   DEFAULT_TOOL_RETRY_DELAY_MS,
+  DEFAULT_MCP_REQUEST_TIMEOUT_MS,
 } from "./config.js";
 
 function isNonRetryableToolError(text) {
@@ -402,6 +403,7 @@ class Agent {
     contextTokenBudget = DEFAULT_CONTEXT_TOKEN_BUDGET,
     ollamaTimeoutMs = DEFAULT_OLLAMA_TIMEOUT_MS,
     toolRetryDelayMs = DEFAULT_TOOL_RETRY_DELAY_MS,
+    mcpRequestTimeoutMs = DEFAULT_MCP_REQUEST_TIMEOUT_MS,
     maxToolResultLines = DEFAULT_MAX_TOOL_RESULT_LINES,
     toolResultHeadLines = DEFAULT_TOOL_RESULT_HEAD_LINES,
     toolResultTailLines = DEFAULT_TOOL_RESULT_TAIL_LINES,
@@ -421,6 +423,7 @@ class Agent {
     this.contextTokenBudget = contextTokenBudget;
     this.ollamaTimeoutMs = ollamaTimeoutMs;
     this.toolRetryDelayMs = toolRetryDelayMs;
+    this.mcpRequestTimeoutMs = mcpRequestTimeoutMs;
     this.maxToolResultLines = maxToolResultLines;
     this.toolResultHeadLines = toolResultHeadLines;
     this.toolResultTailLines = toolResultTailLines;
@@ -989,7 +992,14 @@ class Agent {
     for (let attempt = 1; ; attempt++) {
       let result;
       try {
-        result = await this.mcpClient.callTool({ name, arguments: args });
+        // Pass an explicit request timeout: the MCP SDK's default is 60s,
+        // which would kill long scans (nmap -p- and friends) client-side
+        // while the Node is still happily running them server-side.
+        result = await this.mcpClient.callTool(
+          { name, arguments: args },
+          undefined,
+          { timeout: this.mcpRequestTimeoutMs }
+        );
       } catch (err) {
         if (attempt >= maxAttempts || isNonRetryableToolError(err?.message)) throw err;
         await this._noteRetry(name, attempt, String(err?.message || err), sessionId);
