@@ -5,7 +5,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, extractTextToolCall, compressToolResult } from "./agent.js";
+import { Agent, AgentMemory, ACTIVE_TOOLS, askYesNo, compressToolResult } from "./agent.js";
+import { extractTextToolCall } from "./tool-call-extract.js";
 import { SessionLogger } from "./session-logger.js";
 
 // -----------------------------------------------------------------------------
@@ -74,8 +75,11 @@ class MockOllama {
           res.end(JSON.stringify({ error: "no queued response" }));
           return;
         }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(next));
+        // The agent always uses stream:true, so respond with NDJSON: each
+        // queued response is one JSON line terminated by a newline. The
+        // agent's postJsonStream splits on newlines and parses each line.
+        res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+        res.end(JSON.stringify(next) + "\n");
       });
     });
     await new Promise((resolve) => this.server.listen(0, "127.0.0.1", resolve));
@@ -160,7 +164,7 @@ async function setup(t, { mcpHandler = () => textContent("ok"), agentOptions = {
 // The request the agent sends to Ollama
 // -----------------------------------------------------------------------------
 
-test("sends model, tools and stream:false in the /api/chat body", async (t) => {
+test("sends model, tools and stream:true in the /api/chat body", async (t) => {
   const { ollama, agent } = await setup(t);
   ollama.queueFinal("done");
   await agent.run({ sessionId: "s1", userGoal: "hello" });
@@ -168,7 +172,7 @@ test("sends model, tools and stream:false in the /api/chat body", async (t) => {
   const req = ollama.requests[0];
   assert.equal(req.url, "/api/chat");
   assert.equal(req.body.model, "mshin");
-  assert.equal(req.body.stream, false);
+  assert.equal(req.body.stream, true);
   assert.equal(req.body.options?.temperature, 0);
   assert.deepEqual(req.body.tools, OLLAMA_TOOLS);
   assert.equal(req.body.messages[0].role, "system");
@@ -408,6 +412,8 @@ test("persists the conversation and reloads it across runs", async (t) => {
 
   ollama.queueFinal("first answer");
   await agent.run({ sessionId: "s1", userGoal: "first goal" });
+  // save() is fire-and-forget async; flush before reading from disk.
+  await memory.flushSave();
 
   const stored = memory.getSession("s1").messages;
   assert.ok(stored.some((m) => m.role === "user" && m.content === "first goal"));
@@ -502,6 +508,78 @@ test("compactContext refreshes the findings summary instead of freezing it", asy
 test("compressToolResult keeps short output unchanged", () => {
   const text = "line one\nline two\nline three";
   assert.equal(compressToolResult(text), text);
+});
+
+// -----------------------------------------------------------------------------
+// Tool-aware compression (structured signal via the findings-memory parsers)
+// -----------------------------------------------------------------------------
+
+function longNmapOutput(closedLines = 80) {
+  const lines = [
+    "Starting Nmap 7.94 ( https://nmap.org ) at 2026-10-31 04:00 UTC",
+    "Nmap scan report for 192.0.2.10",
+    "Host is up (0.0010s latency).",
+    "PORT   STATE SERVICE VERSION",
+  ];
+  // Filler: closed ports parse as port lines but carry no open-port signal.
+  for (let i = 0; i < closedLines; i++) {
+    lines.push(`${1000 + i}/tcp closed svc${i}    Product ${i}.0`);
+  }
+  lines.push("22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.1");
+  lines.push("OS details: Linux 5.15 - 6.1");
+  lines.push("Network Distance: 1 hop");
+  lines.push("Nmap done: 1 IP address (1 host up) scanned in 12.34 seconds");
+  return lines.join("\n");
+}
+
+test("compressToolResult renders nmap output as structured signal when smaller than head/tail", () => {
+  const text = longNmapOutput();
+  const compressed = compressToolResult(text, { toolName: "nmap" });
+  const lines = compressed.split("\n");
+
+  // Far below the 25+25 head/tail window, and the real signal survives.
+  assert.ok(lines.length < 51, `expected signal-sized output, got ${lines.length} lines`);
+  assert.match(compressed, /nmap: 1 host\(s\), 1 open port\(s\)/);
+  assert.match(compressed, /22\/tcp open ssh OpenSSH 8\.9p1/);
+  assert.match(compressed, /session memory/);
+});
+
+test("compressToolResult falls back to head/tail when the tool yields no signal", () => {
+  const prose = Array.from({ length: 100 }, (_, i) => `prose line ${i}`).join("\n");
+  const compressed = compressToolResult(prose, { toolName: "nmap" });
+  // No host/port parsed -> no signal -> classic head/tail with omitted marker.
+  assert.match(compressed, /\.\.\. \(50 lines omitted\) \.\.\./);
+  assert.ok(compressed.startsWith("prose line 0"));
+});
+
+test("compressToolResult without a toolName keeps the head/tail behaviour", () => {
+  const text = longNmapOutput();
+  const compressed = compressToolResult(text);
+  assert.match(compressed, /lines omitted/);
+  assert.ok(!compressed.includes("session memory"));
+});
+
+test("compressToolResult uses the generic parser for tools without a dedicated one", () => {
+  const lines = ["filler"];
+  for (let i = 0; i < 100; i++) lines.push(`noise ${i}`);
+  lines.push("found CVE-2021-44228 in output, host 192.0.2.10, port 8443/tcp open");
+  const compressed = compressToolResult(lines.join("\n"), { toolName: "gobuster" });
+  assert.match(compressed, /gobuster: hosts 192\.0\.2\.10/);
+  assert.match(compressed, /8443\/tcp/);
+  assert.match(compressed, /CVE-2021-44228/);
+});
+
+test("compactContext compresses a named tool result via its parser", async (t) => {
+  const { agent } = await setup(t);
+  const messages = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "scan it" },
+    { role: "tool", name: "nmap", content: longNmapOutput() },
+  ];
+  const compacted = agent.compactContext(messages);
+  const toolMsg = compacted.find((m) => m.role === "tool");
+  assert.match(toolMsg.content, /nmap: 1 host\(s\)/);
+  assert.ok(toolMsg.content.split("\n").length < 51);
 });
 
 test("compressToolResult truncates long output to head and tail", () => {
@@ -1001,6 +1079,7 @@ test("the model is told the failure is environmental, not a bad argument", async
 test("an ordinary tool error stays retryable", async (t) => {
   const { ollama, mcp, agent } = await setup(t, {
     mcpHandler: () => errorContent("Error: Host 10.0.0.1 appears to be down."),
+    agentOptions: { toolRetryDelayMs: 0 },
   });
 
   ollama.queueToolCall("nmap", { target: "10.0.0.1" });
@@ -1009,10 +1088,97 @@ test("an ordinary tool error stays retryable", async (t) => {
 
   await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
-  // A transient failure must not disable the tool: both calls reached MCP.
-  assert.equal(mcp.calls.length, 2);
+  // A transient failure must not disable the tool: both turns reached MCP,
+  // each with one in-call retry (2 turns x 2 attempts = 4 MCP calls).
+  assert.equal(mcp.calls.length, 4);
+  assert.equal(agent.metrics.transientToolRetries, 2);
   assert.equal(agent.metrics.nonRetryableToolErrors, 0);
   assert.equal(agent.metrics.blockedToolRetries, 0);
+});
+
+test("a transient isError result is retried once and the success is used", async (t) => {
+  let attempts = 0;
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => {
+      attempts++;
+      return attempts === 1
+        ? errorContent("Error: tool timed out after 30s")
+        : textContent("22/tcp open ssh");
+    },
+    agentOptions: { toolRetryDelayMs: 0 },
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("SSH is open.");
+
+  const results = [];
+  const answer = await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onToolResult: (name, text) => results.push(text),
+  });
+
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.transientToolRetries, 1);
+  // The retried success is what the model saw, not the timeout error.
+  assert.deepEqual(results, ["22/tcp open ssh"]);
+  assert.equal(answer, "SSH is open.");
+});
+
+test("a thrown transport error is retried once", async (t) => {
+  let attempts = 0;
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => {
+      attempts++;
+      if (attempts === 1) throw new Error("ECONNRESET");
+      return textContent("ok");
+    },
+    agentOptions: { toolRetryDelayMs: 0 },
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.transientToolRetries, 1);
+});
+
+test("a non-retryable error result is not retried in-call", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => errorContent("sudo: a password is required"),
+    agentOptions: { toolRetryDelayMs: 0 },
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("cannot run it");
+
+  await agent.run({ sessionId: "s1", userGoal: "scan it" });
+
+  // One attempt only: the unavailable-tools path handles it, no retry.
+  assert.equal(mcp.calls.length, 1);
+  assert.equal(agent.metrics.transientToolRetries, 0);
+  assert.equal(agent.metrics.nonRetryableToolErrors, 1);
+});
+
+test("a persistent transient failure is retried only once per call", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => {
+      throw new Error("ECONNRESET");
+    },
+    agentOptions: { toolRetryDelayMs: 0 },
+  });
+
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+
+  // Two attempts, then the error is out of retries. Passive calls run under
+  // Promise.allSettled, so the throw is contained and the loop continues.
+  const answer = await agent.run({ sessionId: "s1", userGoal: "scan it" });
+  assert.equal(answer, "done");
+  assert.equal(mcp.calls.length, 2);
+  assert.equal(agent.metrics.transientToolRetries, 1);
 });
 
 test("a successful call is never treated as non-retryable", async (t) => {
@@ -1021,14 +1187,39 @@ test("a successful call is never treated as non-retryable", async (t) => {
     mcpHandler: () => textContent("22/tcp open ssh — permission denied banner seen"),
   });
 
+  // Different targets so the result cache does not serve the second call.
   ollama.queueToolCall("nmap", { target: "127.0.0.1" });
-  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.2" });
   ollama.queueFinal("done");
 
   await agent.run({ sessionId: "s1", userGoal: "scan it" });
 
   assert.equal(mcp.calls.length, 2);
   assert.equal(agent.metrics.nonRetryableToolErrors, 0);
+});
+
+test("an identical repeat call is served from cache without calling MCP", async (t) => {
+  const { ollama, mcp, agent } = await setup(t, {
+    mcpHandler: () => textContent("22/tcp open ssh"),
+  });
+
+  // Same tool, same args, two turns — the second must hit the cache.
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueToolCall("nmap", { target: "127.0.0.1" });
+  ollama.queueFinal("done");
+
+  const results = [];
+  await agent.run({
+    sessionId: "s1",
+    userGoal: "scan it",
+    onToolResult: (name, text) => results.push(text),
+  });
+
+  // Only one MCP call — the second was answered from the cache.
+  assert.equal(mcp.calls.length, 1);
+  // Both turns received the same result text (one real, one cached).
+  assert.equal(results.length, 2);
+  assert.equal(results[0], results[1]);
 });
 
 test("blocking one tool leaves the others usable", async (t) => {
