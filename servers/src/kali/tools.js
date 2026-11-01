@@ -225,16 +225,82 @@ export function parseNmapText(output) {
     }
     const portMatch = t.match(/^(\d+)\/(\w+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
     if (portMatch && current) {
-      current.ports.push({
+      const port = {
         port: parseInt(portMatch[1], 10),
         protocol: portMatch[2],
         state: portMatch[3],
         service: portMatch[4],
         version: (portMatch[5] || "").trim() || null,
-      });
+      };
+      // Flag the SYN-proxy signature per port, so a client reading the JSON
+      // can ignore artifact ports without the host-level annotation having
+      // fired (isSynProxyArtifact is defined below; function declarations
+      // hoist).
+      port.likelyArtifact =
+        port.state === "open" && isSynProxyArtifact(port);
+      current.ports.push(port);
     }
   }
   return { tool: "nmap", hosts };
+}
+
+// SYN-proxy inflation guard (annotation, not a refusal).
+//
+// Firewalls in front of many internet-facing hosts answer every SYN on behalf
+// of the target (cloud-provider edge, fail2ban-style tarpits, port-spoofing
+// fabrics). A port scan through such a fabric reports hundreds of "open"
+// ports: connect() succeeds, so nmap marks the port open, but the real
+// listener is absent, so the port closes immediately — nmap's `tcpwrapped` —
+// or the service guess ends in `?` with no banner. Measured 2026-11-01
+// against a Hetzner-hosted site: top-1000 with -sV reported 354 open ports,
+// 351 of them artifacts; only 22/80/443 carried a real service.
+//
+// The inflated result is worse than useless: version probes on phantom ports
+// are what burn the scan timeout, and a model reading the report may treat
+// netbios/jetdirect-style ghosts as findings. So the handler annotates the
+// result — refusing it outright would discard the real ports buried in the
+// same scan. The heuristic fires per host when a scan (not a discovery scan)
+// reports many open ports and nearly all of them are artifacts:
+//   - SYN_PROXY_MIN_OPEN: below this many open ports the result is cheap to
+//     read by hand and a real server could plausibly match it;
+//   - SYN_PROXY_ARTIFACT_SHARE: artifact = tcpwrapped, or a service ending in
+//     `?` with no version (nmap only appends `?` when the probe got nothing).
+const SYN_PROXY_MIN_OPEN = 30;
+const SYN_PROXY_ARTIFACT_SHARE = 0.8;
+
+function isSynProxyArtifact(port) {
+  return (
+    port.service === "tcpwrapped" ||
+    (port.service.endsWith("?") && !port.version)
+  );
+}
+
+// Takes a parseNmapText result; returns the annotation string for the first
+// host matching the signature, or null when no host matches.
+export function detectSynProxyInflation(parsed) {
+  for (const host of parsed?.hosts || []) {
+    const open = (host.ports || []).filter((p) => p.state === "open");
+    if (open.length < SYN_PROXY_MIN_OPEN) continue;
+    const artifacts = open.filter(isSynProxyArtifact);
+    if (artifacts.length / open.length < SYN_PROXY_ARTIFACT_SHARE) continue;
+    const confirmed = open.length - artifacts.length;
+    const confirmedList = open
+      .filter((p) => !isSynProxyArtifact(p))
+      .map((p) => `${p.port}/${p.service}`)
+      .join(", ");
+    return (
+      `NOTE (syn-proxy suspected): ${host.target} reports ${open.length} open ` +
+      `ports, but ${artifacts.length} of them are tcpwrapped or guessed ` +
+      `services with no banner — the signature of a SYN-proxying firewall ` +
+      `answering every SYN on behalf of the target. Treat only the ` +
+      `${confirmed} port(s) with a confirmed service/version as real ` +
+      `(${confirmedList || "none"}) and ignore the rest. Version probes on ` +
+      `the phantom ports are also what burns the scan timeout — do not ` +
+      `re-scan top-1000; if you need certainty about a specific ambiguous ` +
+      `port, re-run with flags ['-sV','-p','<that port>'].`
+    );
+  }
+  return null;
 }
 
 // -----------------------------------------------------------------------------
@@ -301,10 +367,20 @@ const tools = [
       const output = await runTool("nmap", [...flags, ...specs], toolTimeout(NMAP_TIMEOUT_MS));
       assertDiscoveryNotFabricated(flags, specs, output);
       // structuredContent carries the parsed report as JSON next to the raw
-      // text, so MCP clients don't have to regex the text themselves.
+      // text, so MCP clients don't have to regex the text themselves. A
+      // SYN-proxy-inflated report gets the annotation in both — the model
+      // reading either shape must see it.
+      const parsed = parseNmapText(output);
+      const synProxyNote = detectSynProxyInflation(parsed);
+      if (synProxyNote) {
+        return {
+          content: [{ type: "text", text: `${output}\n\n${synProxyNote}` }],
+          structuredContent: { ...parsed, synProxySuspected: true, synProxyNote },
+        };
+      }
       return {
         content: [{ type: "text", text: output }],
-        structuredContent: parseNmapText(output),
+        structuredContent: parsed,
       };
     },
   },
