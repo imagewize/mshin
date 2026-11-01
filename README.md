@@ -323,6 +323,7 @@ bridged LAN guest.
 - [VPS Node](docs/VPS-NODE.md) – Running the Node on a VPS: faithful for internet targets, blind to your home LAN (Layer-2 truth)
 - [Mac Mini M4 Pro Core](docs/MAC-MINI-M4-CORE.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
 - [Agent Guidelines](AGENTS.md) – Rules for AI agents contributing to this repo
+- [Vibe project config](.vibe/config.toml) – Loads the shared `/code-review` skill from the [mistral-agents](https://github.com/imagewize/mistral-agents) repo
 
 ---
 

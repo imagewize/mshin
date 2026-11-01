@@ -45,7 +45,8 @@ Have an idea for a new feature or tool integration? Open an issue with:
   ```bash
    git commit -m "Add feature: your feature description"
   ```
-5. **Push to your fork** and submit a pull request to the `main` branch.
+5. **Run the review skill** if you work with [Mistral Vibe](https://docs.mistral.ai/vibe/) in this folder: ask for `/code-review` on your branch before opening the PR. The skill is referenced, not vendored — `.vibe/config.toml` points `skill_paths` at the [mistral-agents](https://github.com/imagewize/mistral-agents) repo's `skills/` directory, so clone that repo to `~/code/mistral-agents` (or add the same `skill_paths` line to your `~/.vibe/config.toml`) and the skill is available here.
+6. **Push to your fork** and submit a pull request to the `main` branch.
 
 ---
 
@@ -77,6 +78,8 @@ mshin/
 ├── LICENSE                    # MIT License
 ├── CONTRIBUTING.md            # This file
 ├── AGENTS.md                  # Guidelines for AI agents
+├── .vibe/
+│   └── config.toml            # Vibe project config: loads the shared /code-review skill from the mistral-agents repo
 ├── KALI-OPENLLM.md            # Complete single-file master guide
 ├── docs/
 │   ├── ARCHITECTURE.md        # System architecture

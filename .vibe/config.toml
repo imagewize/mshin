@@ -1,0 +1,14 @@
+# Project-local Vibe config for Machin Shin. Vibe reads this only when the
+# repo folder is trusted (it asks once on first use in a new clone).
+#
+# Reference, don't copy: the shared Mistral Vibe skills — including the
+# /code-review skill — live in the mistral-agents repo
+# (https://github.com/imagewize/mistral-agents, under skills/). Vibe searches
+# skill_paths before this project's .vibe/skills/ and .agents/skills/, so
+# anyone with that repo cloned to ~/code/mistral-agents gets the same skills
+# when working in here.
+#
+# No clone at ~/code/mistral-agents? Either add the same skill_paths line to
+# your ~/.vibe/config.toml (all your projects), or copy skills/code-review/
+# from mistral-agents to .agents/skills/code-review/ in this repo.
+skill_paths = ["~/code/mistral-agents/skills"]
