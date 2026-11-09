@@ -13,6 +13,10 @@
 
 **Machin Shin** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral Small 3 by default, larger models if your hardware allows) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
 
+## Authorized use only
+
+Machin Shin orchestrates offensive-security tools. **Use it only against systems you own or have explicit written authorization to test.** Unauthorized scanning, exploitation, or data access is illegal in most jurisdictions and violates the terms of service of most networks. The maintainers assume no liability for misuse.
+
 ---
 
 ## Features
