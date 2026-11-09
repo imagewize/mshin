@@ -1,0 +1,5 @@
+# Gitleaks false positives
+# These are documentation placeholders (YOUR_API_KEY) in old AbuseIPDB curl examples.
+# They are not real secrets.
+b097b10c41156740439d35d30963831534c6e229:docs/workflows.md:curl-auth-header:94
+7a1f8c6c2c93c99ff0792eb766319c8c2fb6f674:docs/workflows.md:curl-auth-header:94
