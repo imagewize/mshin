@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-11-09
+
 ### Added
 
 - **Security policy** (`SECURITY.md`). New root-level policy for private vulnerability reporting — GitHub Security Advisories on the Security tab, or `jasper@imagewize.com` with `[mshin security]` in the subject — plus a supported-versions table, response expectations (acknowledgement within 72 hours, status every 7 days), and scope (MCP server, CLI, Docker image, token handling). Cross-referenced from `README.md`, `CONTRIBUTING.md`, and `AGENTS.md`. Docs only; no code changes.
