@@ -33,6 +33,7 @@ Documentation map:
 | `docs/AGENT-PERFORMANCE.md` | Making mshin-cli faster: streaming, parallel tools, caching |
 | `docs/EVAL-RUN-2026-10-20.md` | First model-comparison eval measurements (raw harness reports) |
 | `docs/EVAL-RUN-2026-10-21.md` | Same suite against the sandboxed Docker Node (raw harness report) |
+| `docs/EVAL-RUN-2026-11-09-CONCURRENT-MCP-CALLS.md` | Raw benchmark: the Node runs concurrent `tools/call` in parallel, across sessions and within one |
 | `docs/RASPBERRY-PI-NODE.md` | Raspberry Pi Node guide |
 | `docs/VPS-NODE.md` | VPS Node guide: internet targets, never your home LAN |
 | `docs/MAC-MINI-M4-CORE.md` | Mac Mini M4 Pro Core with Pi Node guide |
@@ -175,6 +176,17 @@ Follow the existing format exactly. `mcp-kali.service` is a real systemd unit wi
 - Absolute paths
 - Timeouts on anything that can hang (`timeout 30s ...`)
 - Do not leave servers, watchers, or other long-running processes running in the background when you finish; if you start one to test, stop it
+- When invoking a shell tool from the agent harness, pass a structured arguments object (`{ "command": "..." }`); a bare command string is rejected by harness validation (`runtime_builtin.arguments: Input should be an object`)
+
+### macOS / BSD userland
+
+This repo is developed on a Mac (Darwin), and GNU-isms fail there. Verified on Darwin 25.6:
+
+- `/bin/bash` is **bash 3.2** — every `#!/bin/bash` script (see [Scripts](#scripts)) runs under it. No `mapfile`, `&>>`, `${var,,}`, `wait -n`. Keep scripts to bash-3.2-safe constructs.
+- GNU coreutils are **not installed**: `timeout` does not exist. The bullet above assumes GNU `timeout` — on macOS rely on the tool-call timeout parameter instead (`gtimeout` only if `coreutils` was brew-installed; check with `command -v gtimeout` first).
+- BSD `sed`: `sed -i` requires a suffix — `sed -i '' -e ...`; `sed --version` is an illegal option.
+- BSD `stat`: no `-c`; use `stat -f %z <file>`.
+- Millisecond timestamps: use `python3 -c 'import time;print(int(time.time()*1000))'`. Older macOS `date` prints a literal `N` for `%N`, which then breaks bash arithmetic with `value too great for base`.
 
 ### Destructive operations
 
