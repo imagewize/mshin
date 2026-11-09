@@ -18,6 +18,7 @@ Documentation map:
 | ---- | ------- |
 | `CLAUDE.md` | Repo facts, architecture, conventions (canonical) |
 | `README.md` | Project overview and quick start |
+| `SECURITY.md` | Security policy: private vulnerability reporting |
 | `CONTRIBUTING.md` | Human contribution workflow, project structure tree |
 | `KALI-OPENLLM.md` | Complete single-file master guide |
 | `docs/ARCHITECTURE.md` | System design and hardware sizing |

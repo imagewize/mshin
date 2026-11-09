@@ -78,6 +78,7 @@ mshin/
 ├── LICENSE                    # MIT License
 ├── CONTRIBUTING.md            # This file
 ├── AGENTS.md                  # Guidelines for AI agents
+├── SECURITY.md                # Security policy: private vulnerability reporting
 ├── .vibe/
 │   └── config.toml            # Vibe project config: loads the shared /code-review skill from the mistral-agents repo
 ├── KALI-OPENLLM.md            # Complete single-file master guide

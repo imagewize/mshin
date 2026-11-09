@@ -1,6 +1,6 @@
 {
   "name": "mshin-cli",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "CLI clients for the Machin Shin Node: an interactive Ollama agent loop and a single-tool MCP caller.",
   "type": "module",
   "main": "index.js",
