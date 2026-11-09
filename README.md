@@ -13,6 +13,8 @@
 
 **Machin Shin** is a **Wheel of Time-inspired cybersecurity AI system** that combines a **local LLM** (Mistral Small 3 by default, larger models if your hardware allows) with **Kali Linux tools** via **Model Context Protocol (MCP)**. It enables **real-time, AI-augmented penetration testing, threat analysis, and incident response**—all while keeping your data **private and offline**.
 
+That describes the default **two-machine setup**. The same Node also runs as a **Docker container** on a single Mac, driven by **Mistral Vibe** (cloud inference via a Mistral Pro subscription) or **OpenCode** (local Ollama), and the CLI can pair a cloud GPU with a Node on your LAN. See [Architecture](#architecture) for all four deployment modes and their privacy trade-offs.
+
 ## Authorized use only
 
 Machin Shin orchestrates offensive-security tools. **Use it only against systems you own or have explicit written authorization to test.** Unauthorized scanning, exploitation, or data access is illegal in most jurisdictions and violates the terms of service of most networks. The maintainers assume no liability for misuse.
@@ -21,7 +23,7 @@ Machin Shin orchestrates offensive-security tools. **Use it only against systems
 
 ## Features
 
-- **Private & Offline**: No cloud dependencies—your data stays yours.
+- **Private & Offline**: No cloud dependencies—your data stays yours in the default local setups (the Mistral Vibe mode in [Architecture](#architecture) is the cloud exception).
 - **Real-Time Tool Access**: LLM directly executes Kali Linux tools (Nmap, Metasploit, etc.) via MCP.
 - **Structured Tool Results**: nmap scans return parsed JSON (`structuredContent`: hosts, ports, services, versions) alongside the raw text, and MCP clients carry an explicit request timeout (`MSHIN_MCP_TIMEOUT_MS`, default 960s) so long scans like `nmap -p-` no longer die at the SDK's 60s default.
 - **Scalable Architecture**: Two-machine setup for optimal performance.
