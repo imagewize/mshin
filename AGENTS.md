@@ -22,6 +22,7 @@ Documentation map:
 | `CONTRIBUTING.md` | Human contribution workflow, project structure tree |
 | `KALI-OPENLLM.md` | Complete single-file master guide |
 | `docs/ARCHITECTURE.md` | System design and hardware sizing |
+| `docs/DEPLOYMENT-MODES.md` | The four deployment modes (two-machine default, cloud hybrid, Vibe/OpenCode + Docker Node) |
 | `docs/SETUP.md` | Step-by-step installation |
 | `docs/WORKFLOWS.md` | Example cybersecurity tasks |
 | `docs/LIMA-LOCAL-DEV.md` | Maintenance-mode Lima setup on macOS; its one live use is the bridged guest for ARP LAN discovery |
