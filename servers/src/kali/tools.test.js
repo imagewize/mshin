@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
-import { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, parseNmapText, assertDiscoveryNotFabricated, detectSynProxyInflation } from "./tools.js";
+import { tools, TOOL_PATHS, runTool, buildMsfScript, buildEnum4linuxArgs, buildGobusterArgs, parseNmapText, assertDiscoveryNotFabricated, detectSynProxyInflation } from "./tools.js";
 import { isTargetAllowed, assertTargetInScope } from "./config.js";
 
 // These tests exercise the tool contract and — most importantly — the shell
@@ -470,6 +470,55 @@ test("buildEnum4linuxArgs puts options before the target", () => {
 test("buildEnum4linuxArgs still rejects shell metacharacters", () => {
   assert.throws(() => buildEnum4linuxArgs("evil; reboot", undefined), /unsafe characters/);
   assert.throws(() => buildEnum4linuxArgs("192.168.1.100", "-a; reboot"), /unsafe characters/);
+});
+
+test("buildGobusterArgs uses --domain in dns mode (gobuster 3.8 made -d mean --delay)", () => {
+  assert.deepEqual(
+    buildGobusterArgs({ mode: "dns", domain: "example.com", wordlist: "/w.txt" }),
+    ["dns", "--domain", "example.com", "-w", "/w.txt"]
+  );
+  assert.deepEqual(buildGobusterArgs({ mode: "dir", url: "http://192.168.1.100" }), [
+    "dir",
+    "-u",
+    "http://192.168.1.100",
+  ]);
+  assert.throws(() => buildGobusterArgs({ mode: "dns" }), /domain required/);
+  assert.throws(() => buildGobusterArgs({ mode: "dns", domain: "evil; reboot" }), /unsafe characters/);
+});
+
+test("runTool includes the failing command's stderr in the thrown error", async () => {
+  // /bin/sh stands in for a Kali binary: writes to stderr, exits 3. execFile
+  // keeps that output on err.stderr, away from err.message — runTool must
+  // surface it or a failed scan reports only "Command failed: <cmd>".
+  const orig = TOOL_PATHS.whois;
+  TOOL_PATHS.whois = "/bin/sh";
+  try {
+    await assert.rejects(
+      runTool("whois", ["-c", "echo boom-on-stderr >&2; exit 3"], 5000, { useSudo: false }),
+      /boom-on-stderr/
+    );
+  } finally {
+    TOOL_PATHS.whois = orig;
+  }
+});
+
+test("runTool still reports a timeout distinctly from a crash", async () => {
+  const orig = TOOL_PATHS.whois;
+  TOOL_PATHS.whois = "/bin/sh";
+  try {
+    await assert.rejects(
+      runTool("whois", ["-c", "sleep 5"], 200, { useSudo: false }),
+      /timed out after 0s/
+    );
+  } finally {
+    TOOL_PATHS.whois = orig;
+  }
+});
+
+test("wpscan options help no longer suggests the removed --threads flag", () => {
+  const opts = byName("wpscan").inputSchema.properties.options.description;
+  assert.ok(!opts.includes("--threads 10"), opts);
+  assert.ok(opts.includes("--max-threads 10"), opts);
 });
 
 test("ffuf accepts '&' in the url and options for multi-parameter fuzzing", async () => {

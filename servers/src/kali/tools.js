@@ -75,6 +75,34 @@ function buildEnum4linuxArgs(target, options) {
   return args;
 }
 
+// gobuster 3.8 moved the dns-mode domain flag: `-d` is now --delay, so
+// `gobuster dns -d example.com` dies with a flag parse error (measured on the
+// Node's gobuster 3.8.2, 2026-11-09). The domain flag is --domain/--do.
+function buildGobusterArgs({ mode = "dir", url, domain, wordlist, options }) {
+  assertSafe(mode, "mode");
+  const args = [mode];
+  if (mode === "dir" && url) {
+    assertSafe(url, "url");
+    assertTargetInScope(url, "url");
+    args.push("-u", url);
+  } else if (mode === "dns" && domain) {
+    assertSafe(domain, "domain");
+    assertTargetInScope(domain, "domain");
+    args.push("--domain", domain);
+  } else {
+    throw new Error("url required for dir mode, domain required for dns mode");
+  }
+  if (wordlist) {
+    assertSafe(wordlist, "wordlist");
+    args.push("-w", wordlist);
+  }
+  if (options) {
+    assertSafe(options, "options");
+    args.push(...options.split(/\s+/));
+  }
+  return args;
+}
+
 async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = true, cwd } = {}) {
   const bin = TOOL_PATHS[name];
   if (!bin) {
@@ -126,6 +154,17 @@ async function runTool(name, args, timeout = DEFAULT_TIMEOUT_MS, { useSudo = tru
           "scan (fewer ports, a smaller wordlist, nikto -Tuning) or raise " +
           "MSHIN_TOOL_TIMEOUT_MS on the Node."
       );
+    }
+    // execFile puts the child's output on err.stderr/err.stdout, not in
+    // err.message — without this a failed run reports only
+    // "Command failed: <cmd>" and the real reason (bad flag, missing
+    // wordlist, ...) never reaches the MCP client (measured 2026-11-09:
+    // wpscan's "Scan Aborted: invalid option" was invisible). Keep only the
+    // tail: a chatty tool can emit megabytes.
+    const detail = (err.stderr || err.stdout || "").trim().slice(-4000);
+    if (detail) {
+      const label = err.stderr ? "stderr" : "stdout";
+      throw new Error(`${err.message}\n--- ${label} ---\n${detail}`);
     }
     throw err;
   }
@@ -651,30 +690,7 @@ const tools = [
       required: [],
     },
     handler: async ({ mode = "dir", url, domain, wordlist, options }) => {
-      assertSafe(mode, "mode");
-      const args = [mode];
-      if (mode === "dir" && url) {
-        assertSafe(url, "url");
-        assertTargetInScope(url, "url");
-        args.push("-u", url);
-      } else if (mode === "dns" && domain) {
-        assertSafe(domain, "domain");
-        assertTargetInScope(domain, "domain");
-        args.push("-d", domain);
-      } else {
-        return {
-          content: [{ type: "text", text: "Error: url required for dir mode, domain required for dns mode" }],
-          isError: true,
-        };
-      }
-      if (wordlist) {
-        assertSafe(wordlist, "wordlist");
-        args.push("-w", wordlist);
-      }
-      if (options) {
-        assertSafe(options, "options");
-        args.push(...options.split(/\s+/));
-      }
+      const args = buildGobusterArgs({ mode, url, domain, wordlist, options });
       const output = await runTool("gobuster", args, 120_000);
       return { content: [{ type: "text", text: output }] };
     },
@@ -1005,7 +1021,9 @@ const tools = [
         },
         options: {
           type: "string",
-          description: "Additional WPScan options, e.g. '--threads 10 --random-user-agent'.",
+          description:
+            "Additional WPScan options, e.g. '--max-threads 10 --random-user-agent'. " +
+            "Do not use '--threads': current WPScan builds reject it and abort the scan.",
         },
       },
       required: ["url"],
@@ -1225,5 +1243,5 @@ const tools = [
   },
 ];
 
-export { tools, TOOL_PATHS, buildMsfScript, buildEnum4linuxArgs, assertDiscoveryNotFabricated };
+export { tools, TOOL_PATHS, runTool, buildMsfScript, buildEnum4linuxArgs, buildGobusterArgs, assertDiscoveryNotFabricated };
 export default tools;
