@@ -14,7 +14,7 @@
     "test": "node --check index.js && node --check call.js && node --check agent.js && node --check eval-harness.js && node --check session-logger.js && node --check findings-memory.js && node --check tool-call-extract.js && node --check fabrication-detect.js && node --check findings-memory.test.js && node --test --test-timeout=15000"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.32.0"
   },
   "engines": {
     "node": ">=20.0.0"
