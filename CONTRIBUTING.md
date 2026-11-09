@@ -84,6 +84,7 @@ mshin/
 ├── KALI-OPENLLM.md            # Complete single-file master guide
 ├── docs/
 │   ├── ARCHITECTURE.md        # System architecture
+│   ├── DEPLOYMENT-MODES.md    # The four deployment modes and their setup/caveats
 │   ├── SETUP.md               # Setup instructions
 │   ├── WORKFLOWS.md           # Example workflows
 │   ├── LIMA-LOCAL-DEV.md      # Lima VM setup on macOS (maintenance mode; bridged LAN guest)
