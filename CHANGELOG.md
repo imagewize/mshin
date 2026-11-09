@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-11-09
+
+Diagnosable tool failures, born from the 2026-11-09 concurrent-MCP benchmark (PR #62): a failed tool call returned only `Command failed: <cmd>` with the real reason lost, `gobuster dns` died on a flag rename in gobuster 3.8, and `wpscan`'s own help text suggested a flag current builds reject. Also records the benchmark and AGENTS.md notes that PR #62 merged after 0.28.1 was cut.
+
+### Added
+
+- **Concurrent MCP calls benchmark record** (`docs/EVAL-RUN-2026-11-09-CONCURRENT-MCP-CALLS.md`, from #62). Raw Streamable HTTP measurement against the Docker Node: 7 `tools/call` across 7 sessions fired at once finished in 136,250 ms wall ≈ max(call) 136,092 ms (sum 234,539 ms), and 3 calls on one shared session in 59,623 ms ≈ max 59,572 ms (sum 81,936 ms). The Node executes concurrent `tools/call` fully in parallel — across sessions and within one — so mshin-cli's `Promise.allSettled` passive batch is effective end to end. No server change was needed.
+- **macOS / BSD userland notes in `AGENTS.md`** (from #62), verified on the authoring Mac (Darwin 25.6): `/bin/bash` is bash 3.2 for `#!/bin/bash` scripts; GNU coreutils are absent (`timeout` does not exist — use the tool-call timeout parameter); BSD `sed -i ''`; BSD `stat -f %z`; millisecond timestamps via python (older macOS `date +%s%N` prints a literal `N`, which breaks bash arithmetic). Also records that harness shell calls need a structured arguments object, not a bare command string.
+
+### Fixed
+
+- **Tool errors now include the command's output** (`servers/src/kali/tools.js`). `runTool`'s catch rethrew the raw `execFile` error, whose message is only `Command failed: <cmd>` — the child's stderr (e.g. wpscan's `Scan Aborted: invalid option: --threads`) stayed on `err.stderr` and never reached the MCP client. The thrown error now appends the tail (last 4000 chars) of stderr/stdout under a `--- stderr ---` / `--- stdout ---` header. Timeout errors keep their distinct `timed out after Ns` message; spawn errors with no output (ENOENT) rethrow unchanged.
+- **`gobuster` dns mode uses `--domain`** (`servers/src/kali/tools.js`). gobuster 3.8.2 renamed the flag — `-d` is now `--delay`, the domain is `--domain`/`--do` — so `gobuster dns -d <domain>` died with `invalid value ... for flag -d: parse error` (measured on the Node). Arg building is extracted to an exported `buildGobusterArgs()` (same pattern as `buildMsfScript`/`buildEnum4linuxArgs`); a missing url/domain now throws, which `index.js` renders as the same `isError` result as before.
+- **`wpscan`'s options help no longer suggests `--threads`** (`servers/src/kali/tools.js`). Current WPScan builds reject it and abort the scan (`Scan Aborted: invalid option: --threads`, exit 1 — verified in the container); the example is now `'--max-threads 10 --random-user-agent'` with a warning not to use `--threads`.
+
+### Changed
+
+- **`runTool` is exported** for tests; 4 new cases in `tools.test.js`: stderr surfaced in the thrown error, timeout still distinct from a crash, `buildGobusterArgs` flag mapping and validation, wpscan help text. Suite: 84/84.
+- **Package versions aligned** to `0.28.2` in `servers/src/kali/package.json` and `clients/mshin-cli/package.json`, both `package-lock.json` files resynced.
+
+### Verified
+
+- `npm test` in `servers/src/kali/` passes 84/84; `npm test` in `clients/mshin-cli/` passes 137/137. `JSON.parse` on all four version-bearing files; no stale `0.28.1` version fields.
+- Live against the rebuilt Docker Node (`http://localhost:3001`, image rebuilt from this branch, container recreated): `wpscan` with `--threads 10` now returns `isError` text ending `--- stdout ---\nScan Aborted: invalid option: --threads` (738 ms) instead of a bare `Command failed`; `gobuster` dns mode against the project's own domain returns a real enumeration (Gobuster v3.8.2 banner, wordlist loaded, 1,785 ms) instead of the flag parse error.
+
 ## [0.28.1] - 2026-11-09
 
 ### Added
