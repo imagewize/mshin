@@ -95,6 +95,7 @@ mshin/
 │   ├── AGENT-PERFORMANCE.md            # Making mshin-cli faster: streaming, parallel tools, caching
 │   ├── EVAL-RUN-2026-10-20.md         # First model-comparison eval measurements
 │   ├── EVAL-RUN-2026-10-21.md         # Same suite against the Docker Node
+│   ├── EVAL-RUN-2026-11-09-CONCURRENT-MCP-CALLS.md  # Node runs concurrent tools/call in parallel (benchmark)
 │   ├── RASPBERRY-PI-NODE.md            # Raspberry Pi Node guide
 │   ├── VPS-NODE.md                    # VPS Node guide (internet targets, not your LAN)
 │   └── MAC-MINI-M4-CORE.md             # Mac Mini M4 Pro Core guide

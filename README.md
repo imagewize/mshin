@@ -323,6 +323,7 @@ bridged LAN guest.
 - [Agent Performance](docs/AGENT-PERFORMANCE.md) – Making mshin-cli faster: streaming, parallel tools, caching, and a richer system prompt
 - [Eval Run 2026-10-20](docs/EVAL-RUN-2026-10-20.md) – First model-comparison measurements: 7–8B pass, 4B fabricates, 32B unrunnable on 16GB
 - [Eval Run 2026-10-21](docs/EVAL-RUN-2026-10-21.md) – The same suite against the sandboxed Docker Node: 8B tier unchanged, sandbox is a drop-in Node
+- [Concurrent MCP Calls Benchmark 2026-11-09](docs/EVAL-RUN-2026-11-09-CONCURRENT-MCP-CALLS.md) – Raw measurement: the Node executes concurrent `tools/call` in parallel, across sessions and within one session
 - [Raspberry Pi Node](docs/RASPBERRY-PI-NODE.md) – Running the Node on a Raspberry Pi
 - [VPS Node](docs/VPS-NODE.md) – Running the Node on a VPS: faithful for internet targets, blind to your home LAN (Layer-2 truth)
 - [Mac Mini M4 Pro Core](docs/MAC-MINI-M4-CORE.md) – Running Core on Mac Mini M4 Pro 24GB with Raspberry Pi Node
